@@ -1,2 +1,6 @@
 backend/.env
 frontend/.env
+backend/.DS_Store
+frontend/.DS_Store
+frontend/src/.DS_Store
+frontend/src/pages/.DS_Store

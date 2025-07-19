@@ -9,6 +9,67 @@ const router = express.Router();
 // Middleware di autenticazione per tutte le route
 router.use(auth);
 
+// GET /api/conti-bancari/export - Export conti bancari
+router.get('/export', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { formato = 'csv' } = req.query;
+
+    const conti = await queryAll(`
+      SELECT 
+        cc.nome_banca,
+        cc.intestatario,
+        cc.iban,
+        cc.saldo_iniziale,
+        calcola_saldo_conto(cc.id) as saldo_corrente,
+        (calcola_saldo_conto(cc.id) - cc.saldo_iniziale) as variazione,
+        (SELECT COUNT(*) FROM movimenti m WHERE m.conto_id = cc.id) as numero_movimenti,
+        CASE WHEN cc.attivo THEN 'Attivo' ELSE 'Inattivo' END as stato,
+        cc.created_at::date as data_creazione
+      FROM conti_correnti cc 
+      WHERE cc.user_id = $1 
+      ORDER BY cc.nome_banca, cc.intestatario
+    `, [userId]);
+
+    if (formato === 'xlsx') {
+      const XLSX = require('xlsx');
+      const ws = XLSX.utils.json_to_sheet(conti);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Conti Bancari');
+
+      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="conti_bancari_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buffer);
+    } else {
+      // Default CSV
+      const fields = Object.keys(conti[0] || {});
+      let csvContent = fields.join(',') + '\n';
+      
+      conti.forEach(conto => {
+        const values = fields.map(field => {
+          let value = conto[field];
+          if (value === null || value === undefined) value = '';
+          if (typeof value === 'string' && value.includes(',')) {
+            value = `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        });
+        csvContent += values.join(',') + '\n';
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="conti_bancari_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csvContent);
+    }
+
+  } catch (error) {
+    console.error('Error exporting conti bancari:', error);
+    res.status(500).json({ error: 'Errore durante l\'export dei conti bancari' });
+  }
+});
+
 // GET /api/conti-bancari - Lista tutti i conti dell'utente
 router.get('/', async (req, res) => {
   try {

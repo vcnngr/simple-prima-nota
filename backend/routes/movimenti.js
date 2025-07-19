@@ -26,6 +26,343 @@ const movimentiFiltersSchema = require('joi').object({
   order_direction: require('joi').string().valid('ASC', 'DESC').default('DESC')
 });
 
+// GET /api/movimenti/export - Export movimenti (NUOVO FORMATO)
+router.get('/export', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { 
+      formato = 'csv',
+      data_inizio,
+      data_fine,
+      conto_id,
+      anagrafica_id,
+      tipo,
+      limit = 5000
+    } = req.query;
+
+    let whereConditions = ['m.user_id = $1'];
+    let params = [userId];
+    let paramIndex = 2;
+
+    // Filtri (come prima)
+    if (data_inizio) {
+      whereConditions.push(`m.data >= $${paramIndex}`);
+      params.push(data_inizio);
+      paramIndex++;
+    }
+
+    if (data_fine) {
+      whereConditions.push(`m.data <= $${paramIndex}`);
+      params.push(data_fine);
+      paramIndex++;
+    }
+
+    if (conto_id) {
+      whereConditions.push(`m.conto_id = $${paramIndex}`);
+      params.push(conto_id);
+      paramIndex++;
+    }
+
+    if (anagrafica_id) {
+      whereConditions.push(`m.anagrafica_id = $${paramIndex}`);
+      params.push(anagrafica_id);
+      paramIndex++;
+    }
+
+    if (tipo && ['Entrata', 'Uscita'].includes(tipo)) {
+      whereConditions.push(`m.tipo = $${paramIndex}`);
+      params.push(tipo);
+      paramIndex++;
+    }
+
+    // Query con calcolo saldo progressivo
+    const movimenti = await queryAll(`
+      SELECT 
+        m.data,
+        COALESCE(a.nome, 'Non specificato') as anagrafica,
+        COALESCE(cc.nome_banca, 'Non specificato') as conto,
+        COALESCE(a.categoria, m.tipo) as categoria,
+        m.descrizione as operazione,
+        CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE 0 END as entrate,
+        CASE WHEN m.tipo = 'Uscita' THEN m.importo ELSE 0 END as uscite,
+        COALESCE(m.note, '') as note
+      FROM movimenti m
+      LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
+      LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
+      WHERE ${whereConditions.join(' AND ')}
+      ORDER BY m.data ASC, m.created_at ASC
+      LIMIT ${paramIndex}
+    `, [...params, parseInt(limit)]);
+
+    // Calcola saldo progressivo
+    let saldoProgressivo = 0;
+    
+    // Se filtrato per conto specifico, calcola saldo iniziale
+    if (conto_id) {
+      const saldoIniziale = await queryOne(`
+        SELECT 
+          cc.saldo_iniziale,
+          COALESCE(SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE -m.importo END), 0) as movimenti_precedenti
+        FROM conti_correnti cc
+        LEFT JOIN movimenti m ON cc.id = m.conto_id AND m.data < COALESCE($3, '1900-01-01')
+        WHERE cc.id = $1 AND cc.user_id = $2
+        GROUP BY cc.saldo_iniziale
+      `, [conto_id, userId, data_inizio]);
+      
+      saldoProgressivo = parseFloat(saldoIniziale?.saldo_iniziale || 0) + parseFloat(saldoIniziale?.movimenti_precedenti || 0);
+    }
+
+    const movimentiConSaldo = movimenti.map(movimento => {
+      saldoProgressivo += parseFloat(movimento.entrate) - parseFloat(movimento.uscite);
+      return {
+        ...movimento,
+        saldo: saldoProgressivo
+      };
+    });
+
+    if (formato === 'xlsx') {
+      const XLSX = require('xlsx');
+      
+      // Prepara dati per Excel (formato del tuo CSV + Note)
+      const excelData = movimentiConSaldo.map(m => ({
+        'Data': m.data,
+        'Anagrafica': m.anagrafica,
+        'Conto': m.conto,
+        'Categoria': m.categoria,
+        'Operazione': m.operazione,
+        'Entrate': parseFloat(m.entrate).toFixed(2) + ' €',
+        'Uscite': parseFloat(m.uscite).toFixed(2) + ' €',
+        'Saldo': parseFloat(m.saldo).toFixed(2) + ' €',
+        'Note': m.note
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Prima Nota');
+
+      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="prima_nota_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buffer);
+    } else {
+      // CSV nel TUO formato esatto + Note
+      let csvContent = 'Data;Anagrafica;Conto;Categoria;Operazione;Entrate;Uscite;Saldo;Note\n';
+      
+      // Riga vuota come nel tuo file
+      csvContent += ';;;;;;;;;\n';
+      
+      movimentiConSaldo.forEach(movimento => {
+        const data = movimento.data;
+        const anagrafica = movimento.anagrafica.replace(/;/g, ','); // Sostituisce ; interni
+        const conto = movimento.conto.replace(/;/g, ',');
+        const categoria = movimento.categoria.replace(/;/g, ',');
+        const operazione = movimento.operazione.replace(/;/g, ',');
+        const entrate = parseFloat(movimento.entrate).toFixed(2).replace('.', ',') + ' €';
+        const uscite = parseFloat(movimento.uscite).toFixed(2).replace('.', ',') + ' €';
+        const saldo = parseFloat(movimento.saldo).toFixed(2).replace('.', ',') + ' €';
+        const note = movimento.note.replace(/;/g, ','); // Sostituisce ; interni
+        
+        csvContent += `${data};${anagrafica};${conto};${categoria};${operazione};${entrate};${uscite};${saldo};${note}\n`;
+      });
+
+      // Aggiungi riga riepilogativa finale
+      const totaleEntrate = movimentiConSaldo.reduce((sum, m) => sum + parseFloat(m.entrate), 0);
+      const totaleUscite = movimentiConSaldo.reduce((sum, m) => sum + parseFloat(m.uscite), 0);
+      const saldoFinale = totaleEntrate - totaleUscite;
+      const numeroTransazioni = movimentiConSaldo.length;
+
+      csvContent += `;;;;Numero transazioni:;${numeroTransazioni};${totaleEntrate.toFixed(2).replace('.', ',')} €;${totaleUscite.toFixed(2).replace('.', ',')} €;${saldoFinale.toFixed(2).replace('.', ',')} €**%**;\n`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="prima_nota_${new Date().toISOString().split('T')[0]}.csv"`);
+      
+      // Aggiungi BOM per Excel italiano
+      res.send('\uFEFF' + csvContent);
+    }
+
+  } catch (error) {
+    console.error('Error exporting movimenti:', error);
+    res.status(500).json({ error: 'Errore durante l\'export dei movimenti' });
+  }
+});
+
+router.get('/template', (req, res) => {
+  try {
+    let csvContent = 'Data;Anagrafica;Conto;Categoria;Operazione;Entrate;Uscite;Saldo;Note\n';
+    csvContent += ';;;;;;;;;\n'; // Riga vuota
+    csvContent += '2025-01-15;Cliente Esempio;Fineco;fattura;Fattura nr 001 del 15/01/2025;1500,00 €;0,00 €;1500,00 €;Note esempio entrata\n';
+    csvContent += '2025-01-16;Fornitore Test;Fineco;acquisti;Fattura FOR-123 del 16/01/2025;0,00 €;450,00 €;1050,00 €;Note esempio uscita\n';
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="template_prima_nota.csv"');
+    res.send('\uFEFF' + csvContent);
+  } catch (error) {
+    console.error('Error generating template:', error);
+    res.status(500).json({ error: 'Errore durante la generazione del template' });
+  }
+});
+
+// POST /api/movimenti/import - Import movimenti da CSV
+router.post('/import', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { csvData, skipFirstRows = 2 } = req.body; // Salta header e riga vuota
+
+    if (!csvData) {
+      return res.status(400).json({ error: 'Dati CSV richiesti' });
+    }
+
+    const righe = csvData.split('\n').slice(skipFirstRows); // Salta prime righe
+    const movimentiCreati = [];
+    const errori = [];
+
+    // Cache per conti e anagrafiche
+    const contiCache = {};
+    const anagraficheCache = {};
+
+    // Carica conti utente
+    const contiUtente = await queryAll(
+      'SELECT id, nome_banca FROM conti_correnti WHERE user_id = $1',
+      [userId]
+    );
+    contiUtente.forEach(conto => {
+      contiCache[conto.nome_banca.toLowerCase()] = conto.id;
+    });
+
+    // Carica anagrafiche utente
+    const anagraficheUtente = await queryAll(
+      'SELECT id, nome, tipo FROM anagrafiche WHERE user_id = $1',
+      [userId]
+    );
+    anagraficheUtente.forEach(anagrafica => {
+      anagraficheCache[anagrafica.nome.toLowerCase()] = anagrafica;
+    });
+
+    for (let i = 0; i < righe.length; i++) {
+      const riga = righe[i].trim();
+      
+      // Salta righe vuote e riga di totali
+      if (!riga || riga.includes('Numero transazioni:')) continue;
+
+      try {
+        const campi = riga.split(';');
+        
+        if (campi.length < 8) {
+          errori.push({
+            riga: i + skipFirstRows + 1,
+            errore: 'Numero di campi insufficiente (minimo 8)',
+            dati: riga
+          });
+          continue;
+        }
+
+        const [data, anagrafica, conto, categoria, operazione, entrate, uscite, saldo, note = ''] = campi;
+
+        // Parsing data
+        let dataMovimento;
+        try {
+          dataMovimento = new Date(data).toISOString().split('T')[0];
+        } catch (e) {
+          errori.push({
+            riga: i + skipFirstRows + 1,
+            errore: 'Data non valida',
+            dati: data
+          });
+          continue;
+        }
+
+        // Parsing importi
+        const importoEntrate = parseFloat(entrate.replace(/[€\s,]/g, '').replace(',', '.')) || 0;
+        const importoUscite = parseFloat(uscite.replace(/[€\s,]/g, '').replace(',', '.')) || 0;
+
+        // Determina tipo e importo
+        let tipoMovimento, importo;
+        if (importoEntrate > 0) {
+          tipoMovimento = 'Entrata';
+          importo = importoEntrate;
+        } else if (importoUscite > 0) {
+          tipoMovimento = 'Uscita';
+          importo = importoUscite;
+        } else {
+          errori.push({
+            riga: i + skipFirstRows + 1,
+            errore: 'Nessun importo valido trovato',
+            dati: `Entrate: ${entrate}, Uscite: ${uscite}`
+          });
+          continue;
+        }
+
+        // Trova conto
+        let contoId = null;
+        if (conto && conto !== 'Non specificato') {
+          contoId = contiCache[conto.toLowerCase()];
+          if (!contoId) {
+            // Crea nuovo conto se non esiste
+            const nuovoConto = await queryOne(`
+              INSERT INTO conti_correnti (user_id, nome_banca, intestatario, saldo_iniziale)
+              VALUES ($1, $2, $3, 0)
+              RETURNING id
+            `, [userId, conto, 'Importato da CSV']);
+            contoId = nuovoConto.id;
+            contiCache[conto.toLowerCase()] = contoId;
+          }
+        }
+
+        // Trova anagrafica
+        let anagraficaId = null;
+        if (anagrafica && anagrafica !== 'Non specificato') {
+          const anagraficaExistente = anagraficheCache[anagrafica.toLowerCase()];
+          if (anagraficaExistente) {
+            anagraficaId = anagraficaExistente.id;
+          } else {
+            // Crea nuova anagrafica
+            const tipoAnagrafica = tipoMovimento === 'Entrata' ? 'Cliente' : 'Fornitore';
+            const nuovaAnagrafica = await queryOne(`
+              INSERT INTO anagrafiche (user_id, nome, tipo, categoria)
+              VALUES ($1, $2, $3, $4)
+              RETURNING id
+            `, [userId, anagrafica, tipoAnagrafica, categoria || null]);
+            anagraficaId = nuovaAnagrafica.id;
+            anagraficheCache[anagrafica.toLowerCase()] = { id: anagraficaId, tipo: tipoAnagrafica };
+          }
+        }
+
+        // Crea movimento
+        const nuovoMovimento = await queryOne(`
+          INSERT INTO movimenti (user_id, data, anagrafica_id, conto_id, descrizione, importo, tipo, note)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          RETURNING *
+        `, [userId, dataMovimento, anagraficaId, contoId, operazione, importo, tipoMovimento, note || null]);
+
+        movimentiCreati.push(nuovoMovimento);
+
+      } catch (error) {
+        errori.push({
+          riga: i + skipFirstRows + 1,
+          errore: error.message,
+          dati: riga
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      movimenti_importati: movimentiCreati.length,
+      errori: errori.length,
+      dettagli: {
+        movimenti_creati: movimentiCreati,
+        errori: errori
+      },
+      message: `Import completato: ${movimentiCreati.length} movimenti importati, ${errori.length} errori`
+    });
+
+  } catch (error) {
+    console.error('Error importing CSV:', error);
+    res.status(500).json({ error: 'Errore durante l\'import del CSV' });
+  }
+});
+
 // GET /api/movimenti - Lista movimenti con filtri avanzati
 router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
   try {
@@ -103,6 +440,12 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
       paramIndex++;
     }
 
+    // Valida parametri di ordinamento per sicurezza
+    const validOrderBy = ['data', 'importo', 'created_at'];
+    const validDirection = ['ASC', 'DESC'];
+    const safeOrderBy = validOrderBy.includes(order_by) ? order_by : 'data';
+    const safeDirection = validDirection.includes(order_direction) ? order_direction : 'DESC';
+
     const movimenti = await queryAll(`
       SELECT 
         m.*,
@@ -114,7 +457,7 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
       LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
       LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
       WHERE ${whereConditions.join(' AND ')}
-      ORDER BY m.${order_by} ${order_direction}, m.created_at DESC
+      ORDER BY m.data DESC, m.created_at DESC
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     `, [...params, limit, offset]);
 

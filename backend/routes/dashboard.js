@@ -365,12 +365,14 @@ router.get('/alerts', async (req, res) => {
 
     // 4. Anagrafiche duplicate (stesso nome)
     const anagraficheDuplicate = await queryAll(`
-      SELECT nome, COUNT(*) as count
+      SELECT 
+        STRING_AGG(DISTINCT nome, ', ') as nome,
+        COUNT(*) as count
       FROM anagrafiche 
       WHERE user_id = $1 AND attivo = true
       GROUP BY LOWER(nome)
       HAVING COUNT(*) > 1
-    `, [userId]);
+      `, [userId]);
 
     anagraficheDuplicate.forEach(dup => {
       alerts.push({

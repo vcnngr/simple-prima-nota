@@ -43,6 +43,7 @@ router.post('/register', validate(schemas.user), async (req, res) => {
     );
     
     res.status(201).json({
+      success: true,
       message: 'Utente registrato con successo',
       user: {
         id: user.id,
@@ -86,6 +87,7 @@ router.post('/login', validate(schemas.login), async (req, res) => {
     );
     
     res.json({
+      success: true,
       message: 'Login effettuato con successo',
       user: {
         id: user.id,

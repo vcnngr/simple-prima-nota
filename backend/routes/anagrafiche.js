@@ -9,6 +9,90 @@ const router = express.Router();
 // Middleware di autenticazione per tutte le route
 router.use(auth);
 
+// GET /api/anagrafiche/export - Export anagrafiche
+router.get('/export', async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { formato = 'csv', tipo } = req.query;
+
+    let whereCondition = 'a.user_id = $1';
+    let params = [userId];
+
+    if (tipo && ['Cliente', 'Fornitore'].includes(tipo)) {
+      whereCondition += ' AND a.tipo = $2';
+      params.push(tipo);
+    }
+
+    const anagrafiche = await queryAll(`
+      SELECT 
+        a.nome,
+        a.tipo,
+        a.categoria,
+        a.email,
+        a.telefono,
+        a.piva,
+        a.indirizzo,
+        CASE WHEN a.attivo THEN 'Attivo' ELSE 'Inattivo' END as stato,
+        COALESCE(stats.numero_movimenti, 0) as numero_movimenti,
+        COALESCE(stats.totale_entrate, 0) as totale_entrate,
+        COALESCE(stats.totale_uscite, 0) as totale_uscite,
+        COALESCE(stats.ultimo_movimento, NULL) as ultimo_movimento,
+        a.created_at::date as data_creazione
+      FROM anagrafiche a
+      LEFT JOIN (
+        SELECT 
+          m.anagrafica_id,
+          COUNT(*) as numero_movimenti,
+          SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE 0 END) as totale_entrate,
+          SUM(CASE WHEN m.tipo = 'Uscita' THEN m.importo ELSE 0 END) as totale_uscite,
+          MAX(m.data) as ultimo_movimento
+        FROM movimenti m
+        WHERE m.user_id = $1
+        GROUP BY m.anagrafica_id
+      ) stats ON a.id = stats.anagrafica_id
+      WHERE ${whereCondition}
+      ORDER BY a.tipo, a.nome
+    `, params);
+
+    if (formato === 'xlsx') {
+      const XLSX = require('xlsx');
+      const ws = XLSX.utils.json_to_sheet(anagrafiche);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Anagrafiche');
+
+      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="anagrafiche_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buffer);
+    } else {
+      // Default CSV  
+      const fields = Object.keys(anagrafiche[0] || {});
+      let csvContent = fields.join(',') + '\n';
+      
+      anagrafiche.forEach(anagrafica => {
+        const values = fields.map(field => {
+          let value = anagrafica[field];
+          if (value === null || value === undefined) value = '';
+          if (typeof value === 'string' && value.includes(',')) {
+            value = `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        });
+        csvContent += values.join(',') + '\n';
+      });
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="anagrafiche_${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csvContent);
+    }
+
+  } catch (error) {
+    console.error('Error exporting anagrafiche:', error);
+    res.status(500).json({ error: 'Errore durante l\'export delle anagrafiche' });
+  }
+});
+
 // GET /api/anagrafiche - Lista tutte le anagrafiche dell'utente
 router.get('/', async (req, res) => {
   try {

@@ -81,17 +81,18 @@ CREATE INDEX idx_anagrafiche_tipo ON anagrafiche(tipo);
 CREATE INDEX idx_anagrafiche_user ON anagrafiche(user_id);
 CREATE INDEX idx_conti_user ON conti_correnti(user_id);
 
--- Funzione per calcolare saldo corrente
+-- Funzione per calcolare saldo corrente (CORRETTA)
 CREATE OR REPLACE FUNCTION calcola_saldo_conto(conto_id_param INTEGER)
 RETURNS DECIMAL(15,2) AS $$
 DECLARE
-    saldo_iniziale DECIMAL(15,2);
+    saldo_iniziale_var DECIMAL(15,2);  -- CORREZIONE: Rinominata per evitare ambiguità
     saldo_movimenti DECIMAL(15,2);
 BEGIN
     -- Ottieni saldo iniziale
-    SELECT saldo_iniziale INTO saldo_iniziale 
-    FROM conti_correnti 
-    WHERE id = conto_id_param;
+    -- CORREZIONE: Qualifica esplicitamente la colonna con cc.saldo_iniziale
+    SELECT cc.saldo_iniziale INTO saldo_iniziale_var
+    FROM conti_correnti cc
+    WHERE cc.id = conto_id_param;
     
     -- Calcola saldo dai movimenti
     SELECT COALESCE(
@@ -104,7 +105,7 @@ BEGIN
     FROM movimenti 
     WHERE conto_id = conto_id_param;
     
-    RETURN COALESCE(saldo_iniziale, 0) + COALESCE(saldo_movimenti, 0);
+    RETURN COALESCE(saldo_iniziale_var, 0) + COALESCE(saldo_movimenti, 0);  -- CORREZIONE: Usa la variabile rinominata
 END;
 $$ LANGUAGE plpgsql;
 
