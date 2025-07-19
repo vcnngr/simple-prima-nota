@@ -1,0 +1,82 @@
+# docker-compose.prod.yml
+
+services:
+  # Database PostgreSQL
+  db:
+    image: postgres:15
+    container_name: prima_nota_db
+    environment:
+      POSTGRES_DB: prima_nota
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - prima_nota_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: prima_nota_backend
+    environment:
+      NODE_ENV: production
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: prima_nota
+      DB_USER: postgres
+      DB_PASSWORD: password123
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - prima_nota_network
+
+  # Frontend React - MODALITÀ PRODUZIONE (NGINX con proxy API)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile  # Usa il Dockerfile multi-stage con nginx
+    container_name: prima_nota_frontend
+    environment:
+      # L'API sarà servita tramite nginx proxy, quindi usiamo path relativo
+      REACT_APP_API_URL: /api
+    ports:
+      - "3000:80"  # Nginx espone sulla porta 80
+    depends_on:
+      - backend
+    networks:
+      - prima_nota_network
+    # NESSUN volume mapping e NESSUN command override per produzione
+
+  # Adminer per gestione database (opzionale)
+  adminer:
+    image: adminer
+    container_name: prima_nota_adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      - prima_nota_network
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:
+
+networks:
+  prima_nota_network:
+    driver: bridge
