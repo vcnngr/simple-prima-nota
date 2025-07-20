@@ -31,6 +31,8 @@ import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import Table from '../../components/UI/Table';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
+import AutocompleteInput from '../../components/UI/AutocompleteInput';
+import { categorieAnagraficheAPI } from '../../services/api';
 
 const AnagrafichePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -574,11 +576,13 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors }
   } = useForm();
-  
+
   const watchTipo = watch('tipo');
-  
+  const watchCategoria = watch('categoria');
+
   React.useEffect(() => {
     if (anagrafica) {
       reset(anagrafica);
@@ -595,162 +599,198 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
       });
     }
   }, [anagrafica, reset]);
-  
+
   const onSubmit = (data) => {
-    onSave(data);
+    // Pulisci la categoria se vuota
+    const cleanData = {
+      ...data,
+      categoria: data.categoria?.trim() || null
+    };
+    onSave(cleanData);
   };
-  
+
+  const handleCategoriaSelect = (selection) => {
+    setValue('categoria', selection.nome);
+    
+    if (selection.isNew) {
+      // Opzionalmente potresti aprire un modal per creare la categoria completa
+      console.log('🆕 Nuova categoria anagrafica da creare:', selection.nome);
+      // TODO: Implementare creazione categoria se necessario
+    }
+  };
+
   return (
     <Modal
-    isOpen={isOpen}
-    onClose={onClose}
-    title={anagrafica ? 'Modifica Anagrafica' : 'Nuova Anagrafica'}
-    size="lg"
+      isOpen={isOpen}
+      onClose={onClose}
+      title={anagrafica ? 'Modifica Anagrafica' : 'Nuova Anagrafica'}
+      size="lg"
     >
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-    <label className="form-label">Nome *</label>
-    <input
-    type="text"
-    className={`form-input ${errors.nome ? 'border-danger-500' : ''}`}
-    placeholder="Nome cliente/fornitore"
-    {...register('nome', {
-      required: 'Nome è richiesto',
-      maxLength: {
-        value: 100,
-        message: 'Nome non può superare 100 caratteri'
-      }
-    })}
-    />
-    {errors.nome && (
-      <p className="form-error">{errors.nome.message}</p>
-    )}
-    </div>
-    
-    <div>
-    <label className="form-label">Tipo *</label>
-    <select
-    className={`form-select ${errors.tipo ? 'border-danger-500' : ''}`}
-    {...register('tipo', { required: 'Tipo è richiesto' })}
-    >
-    <option value="Cliente">Cliente</option>
-    <option value="Fornitore">Fornitore</option>
-    </select>
-    {errors.tipo && (
-      <p className="form-error">{errors.tipo.message}</p>
-    )}
-    </div>
-    </div>
-    
-    <div>
-    <label className="form-label">Categoria</label>
-    <input
-    type="text"
-    className="form-input"
-    placeholder={`Categoria ${watchTipo?.toLowerCase() || 'anagrafica'} (es. ${watchTipo === 'Cliente' ? 'Azienda, Privato' : 'Materiali, Servizi'})`}
-    {...register('categoria', {
-      maxLength: {
-        value: 50,
-        message: 'Categoria non può superare 50 caratteri'
-      }
-    })}
-    />
-    </div>
-    
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-    <label className="form-label">Email</label>
-    <input
-    type="email"
-    className={`form-input ${errors.email ? 'border-danger-500' : ''}`}
-    placeholder="email@esempio.it"
-    {...register('email', {
-      pattern: {
-        value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-        message: 'Email non valida'
-      }
-    })}
-    />
-    {errors.email && (
-      <p className="form-error">{errors.email.message}</p>
-    )}
-    </div>
-    
-    <div>
-    <label className="form-label">Telefono</label>
-    <input
-    type="tel"
-    className="form-input"
-    placeholder="+39 123 456 7890"
-    {...register('telefono', {
-      maxLength: {
-        value: 20,
-        message: 'Telefono non può superare 20 caratteri'
-      }
-    })}
-    />
-    </div>
-    </div>
-    
-    <div>
-    <label className="form-label">Partita IVA</label>
-    <input
-    type="text"
-    className={`form-input ${errors.piva ? 'border-danger-500' : ''}`}
-    placeholder="12345678901"
-    {...register('piva', {
-      pattern: {
-        value: /^[0-9]{11}$/,
-        message: 'Partita IVA deve essere di 11 cifre'
-      }
-    })}
-    />
-    {errors.piva && (
-      <p className="form-error">{errors.piva.message}</p>
-    )}
-    </div>
-    
-    <div>
-    <label className="form-label">Indirizzo</label>
-    <textarea
-    className="form-textarea"
-    rows={2}
-    placeholder="Via, Città, CAP"
-    {...register('indirizzo')}
-    />
-    </div>
-    
-    <div className="flex items-center">
-    <input
-    id="attivo"
-    type="checkbox"
-    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-    {...register('attivo')}
-    />
-    <label htmlFor="attivo" className="ml-2 block text-sm text-gray-700">
-    Anagrafica attiva
-    </label>
-    </div>
-    
-    <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-    <Button
-    type="button"
-    variant="outline"
-    onClick={onClose}
-    disabled={isLoading}
-    >
-    Annulla
-    </Button>
-    <Button
-    type="submit"
-    variant="primary"
-    loading={isLoading}
-    >
-    {anagrafica ? 'Aggiorna' : 'Crea'} Anagrafica
-    </Button>
-    </div>
-    </form>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Nome */}
+          <div>
+            <label className="form-label">Nome *</label>
+            <input
+              type="text"
+              className={`form-input ${errors.nome ? 'border-danger-500' : ''}`}
+              placeholder="Nome cliente/fornitore"
+              {...register('nome', {
+                required: 'Nome è richiesto',
+                maxLength: {
+                  value: 100,
+                  message: 'Nome non può superare 100 caratteri'
+                }
+              })}
+            />
+            {errors.nome && (
+              <p className="form-error">{errors.nome.message}</p>
+            )}
+          </div>
+
+          {/* Tipo */}
+          <div>
+            <label className="form-label">Tipo *</label>
+            <select
+              className={`form-select ${errors.tipo ? 'border-danger-500' : ''}`}
+              {...register('tipo', { required: 'Tipo è richiesto' })}
+            >
+              <option value="Cliente">Cliente</option>
+              <option value="Fornitore">Fornitore</option>
+            </select>
+            {errors.tipo && (
+              <p className="form-error">{errors.tipo.message}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Categoria con Autocompletamento */}
+        <div>
+          <label className="form-label">
+            Categoria
+            <span className="text-sm text-gray-500 ml-2">
+              (es. {watchTipo === 'Cliente' ? 'Azienda, Privato, Premium' : 'Materiali, Servizi, Consulenza'})
+            </span>
+          </label>
+          <AutocompleteInput
+            value={watchCategoria || ''}
+            onChange={(value) => setValue('categoria', value)}
+            onSelect={handleCategoriaSelect}
+            apiEndpoint="/categorie-anagrafiche"
+            placeholder={`Categoria ${watchTipo?.toLowerCase() || 'anagrafica'}...`}
+            createLabel="Crea nuova categoria"
+            allowCreate={true}
+            showColorDots={true}
+            error={!!errors.categoria}
+            className={errors.categoria ? 'border-danger-500' : ''}
+          />
+          {errors.categoria && (
+            <p className="form-error">{errors.categoria.message}</p>
+          )}
+          <p className="text-xs text-gray-500 mt-1">
+            Digita per cercare categorie esistenti o crearne di nuove
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Email */}
+          <div>
+            <label className="form-label">Email</label>
+            <input
+              type="email"
+              className={`form-input ${errors.email ? 'border-danger-500' : ''}`}
+              placeholder="email@esempio.it"
+              {...register('email', {
+                pattern: {
+                  value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                  message: 'Email non valida'
+                }
+              })}
+            />
+            {errors.email && (
+              <p className="form-error">{errors.email.message}</p>
+            )}
+          </div>
+
+          {/* Telefono */}
+          <div>
+            <label className="form-label">Telefono</label>
+            <input
+              type="tel"
+              className="form-input"
+              placeholder="+39 123 456 7890"
+              {...register('telefono', {
+                maxLength: {
+                  value: 20,
+                  message: 'Telefono non può superare 20 caratteri'
+                }
+              })}
+            />
+          </div>
+        </div>
+
+        {/* Partita IVA */}
+        <div>
+          <label className="form-label">Partita IVA</label>
+          <input
+            type="text"
+            className={`form-input ${errors.piva ? 'border-danger-500' : ''}`}
+            placeholder="12345678901"
+            {...register('piva', {
+              pattern: {
+                value: /^[0-9]{11}$/,
+                message: 'Partita IVA deve essere di 11 cifre'
+              }
+            })}
+          />
+          {errors.piva && (
+            <p className="form-error">{errors.piva.message}</p>
+          )}
+        </div>
+
+        {/* Indirizzo */}
+        <div>
+          <label className="form-label">Indirizzo</label>
+          <textarea
+            className="form-textarea"
+            rows={2}
+            placeholder="Via, Città, CAP"
+            {...register('indirizzo')}
+          />
+        </div>
+
+        {/* Attivo */}
+        <div className="flex items-center">
+          <input
+            id="attivo"
+            type="checkbox"
+            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            {...register('attivo')}
+          />
+          <label htmlFor="attivo" className="ml-2 block text-sm text-gray-700">
+            Anagrafica attiva
+          </label>
+        </div>
+
+        {/* Buttons */}
+        <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            Annulla
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            loading={isLoading}
+          >
+            {anagrafica ? 'Aggiorna' : 'Crea'} Anagrafica
+          </Button>
+        </div>
+      </form>
     </Modal>
   );
 };

@@ -30,6 +30,8 @@ import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import Table from '../../components/UI/Table';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
+import AutocompleteInput from '../../components/UI/AutocompleteInput';
+import { categorieMovimentiAPI } from '../../services/api';
 
 const MovimentiPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -779,11 +781,13 @@ const MovimentoModal = ({ isOpen, onClose, movimento, onSave, isLoading, conti, 
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors }
   } = useForm();
-  
+
   const watchTipo = watch('tipo');
-  
+  const watchCategoria = watch('categoria');
+
   React.useEffect(() => {
     if (movimento) {
       reset({
@@ -796,172 +800,223 @@ const MovimentoModal = ({ isOpen, onClose, movimento, onSave, isLoading, conti, 
         anagrafica_id: '',
         conto_id: '',
         descrizione: '',
+        categoria: '',
         importo: '',
         tipo: 'Entrata',
         note: ''
       });
     }
   }, [movimento, reset]);
-  
+
   const onSubmit = (data) => {
     const formattedData = {
       ...data,
       anagrafica_id: data.anagrafica_id || null,
+      categoria: data.categoria?.trim() || null,
       importo: parseFloat(data.importo)
     };
     onSave(formattedData);
   };
-  
+
+  const handleCategoriaSelect = (selection) => {
+    setValue('categoria', selection.nome);
+    
+    if (selection.isNew) {
+      console.log('🆕 Nuova categoria movimento da creare:', selection.nome, 'per tipo:', watchTipo);
+      // TODO: Implementare creazione categoria se necessario
+    }
+  };
+
   return (
     <Modal
-    isOpen={isOpen}
-    onClose={onClose}
-    title={movimento ? 'Modifica Movimento' : 'Nuovo Movimento'}
-    size="lg"
+      isOpen={isOpen}
+      onClose={onClose}
+      title={movimento ? 'Modifica Movimento' : 'Nuovo Movimento'}
+      size="lg"
     >
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-    <label className="form-label">Data *</label>
-    <input
-    type="date"
-    className={`form-input ${errors.data ? 'border-danger-500' : ''}`}
-    {...register('data', { required: 'Data è richiesta' })}
-    />
-    {errors.data && (
-      <p className="form-error">{errors.data.message}</p>
-    )}
-    </div>
-    
-    <div>
-    <label className="form-label">Tipo *</label>
-    <select
-    className={`form-select ${errors.tipo ? 'border-danger-500' : ''}`}
-    {...register('tipo', { required: 'Tipo è richiesto' })}
-    >
-    <option value="Entrata">Entrata</option>
-    <option value="Uscita">Uscita</option>
-    </select>
-    {errors.tipo && (
-      <p className="form-error">{errors.tipo.message}</p>
-    )}
-    </div>
-    </div>
-    
-    <div>
-    <label className="form-label">Descrizione *</label>
-    <input
-    type="text"
-    className={`form-input ${errors.descrizione ? 'border-danger-500' : ''}`}
-    placeholder="Descrizione del movimento"
-    {...register('descrizione', {
-      required: 'Descrizione è richiesta',
-      maxLength: {
-        value: 255,
-        message: 'Descrizione non può superare 255 caratteri'
-      }
-    })}
-    />
-    {errors.descrizione && (
-      <p className="form-error">{errors.descrizione.message}</p>
-    )}
-    </div>
-    
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-    <label className="form-label">Conto *</label>
-    <select
-    className={`form-select ${errors.conto_id ? 'border-danger-500' : ''}`}
-    {...register('conto_id', { required: 'Conto è richiesto' })}
-    >
-    <option value="">Seleziona conto</option>
-    {conti?.map(conto => (
-      <option key={conto.id} value={conto.id}>
-      {conto.nome_banca} - {conto.intestatario}
-      </option>
-    ))}
-    </select>
-    {errors.conto_id && (
-      <p className="form-error">{errors.conto_id.message}</p>
-    )}
-    </div>
-    
-    <div>
-    <label className="form-label">
-    {watchTipo === 'Entrata' ? 'Cliente' : 'Fornitore'}
-    </label>
-    <select
-    className="form-select"
-    {...register('anagrafica_id')}
-    >
-    <option value="">Seleziona {watchTipo === 'Entrata' ? 'cliente' : 'fornitore'}</option>
-    {anagrafiche?.filter(a => 
-      watchTipo === 'Entrata' ? a.tipo === 'Cliente' : a.tipo === 'Fornitore'
-    ).map(anagrafica => (
-      <option key={anagrafica.id} value={anagrafica.id}>
-      {anagrafica.nome} {anagrafica.categoria && `(${anagrafica.categoria})`}
-      </option>
-    ))}
-    </select>
-    </div>
-    </div>
-    
-    <div>
-    <label className="form-label">Importo *</label>
-    <div className="relative">
-    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">€</span>
-    <input
-    type="number"
-    step="0.01"
-    min="0"
-    className={`form-input pl-8 ${errors.importo ? 'border-danger-500' : ''}`}
-    placeholder="0.00"
-    {...register('importo', {
-      required: 'Importo è richiesto',
-      min: {
-        value: 0.01,
-        message: 'Importo deve essere maggiore di 0'
-      },
-      max: {
-        value: 999999999,
-        message: 'Importo troppo alto'
-      }
-    })}
-    />
-    </div>
-    {errors.importo && (
-      <p className="form-error">{errors.importo.message}</p>
-    )}
-    </div>
-    
-    <div>
-    <label className="form-label">Note</label>
-    <textarea
-    className="form-textarea"
-    rows={3}
-    placeholder="Note aggiuntive (opzionali)"
-    {...register('note')}
-    />
-    </div>
-    
-    <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-    <Button
-    type="button"
-    variant="outline"
-    onClick={onClose}
-    disabled={isLoading}
-    >
-    Annulla
-    </Button>
-    <Button
-    type="submit"
-    variant="primary"
-    loading={isLoading}
-    >
-    {movimento ? 'Aggiorna' : 'Crea'} Movimento
-    </Button>
-    </div>
-    </form>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Data */}
+          <div>
+            <label className="form-label">Data *</label>
+            <input
+              type="date"
+              className={`form-input ${errors.data ? 'border-danger-500' : ''}`}
+              {...register('data', { required: 'Data è richiesta' })}
+            />
+            {errors.data && (
+              <p className="form-error">{errors.data.message}</p>
+            )}
+          </div>
+
+          {/* Tipo */}
+          <div>
+            <label className="form-label">Tipo *</label>
+            <select
+              className={`form-select ${errors.tipo ? 'border-danger-500' : ''}`}
+              {...register('tipo', { required: 'Tipo è richiesto' })}
+            >
+              <option value="Entrata">Entrata</option>
+              <option value="Uscita">Uscita</option>
+            </select>
+            {errors.tipo && (
+              <p className="form-error">{errors.tipo.message}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Descrizione */}
+        <div>
+          <label className="form-label">Descrizione *</label>
+          <input
+            type="text"
+            className={`form-input ${errors.descrizione ? 'border-danger-500' : ''}`}
+            placeholder="Descrizione del movimento"
+            {...register('descrizione', {
+              required: 'Descrizione è richiesta',
+              maxLength: {
+                value: 255,
+                message: 'Descrizione non può superare 255 caratteri'
+              }
+            })}
+          />
+          {errors.descrizione && (
+            <p className="form-error">{errors.descrizione.message}</p>
+          )}
+        </div>
+
+        {/* Categoria Movimento con Autocompletamento */}
+        <div>
+          <label className="form-label">
+            Categoria
+            <span className="text-sm text-gray-500 ml-2">
+              (es. {watchTipo === 'Entrata' ? 'Vendite, Consulenze, Rimborsi' : 'Spese Ufficio, Stipendi, Materiali'})
+            </span>
+          </label>
+          <AutocompleteInput
+            value={watchCategoria || ''}
+            onChange={(value) => setValue('categoria', value)}
+            onSelect={handleCategoriaSelect}
+            apiEndpoint="/categorie-movimenti"
+            queryParams={{ tipo: watchTipo }} // Filtra per tipo movimento
+            placeholder={`Categoria ${watchTipo?.toLowerCase() || 'movimento'}...`}
+            createLabel="Crea nuova categoria movimento"
+            allowCreate={true}
+            showColorDots={true}
+            error={!!errors.categoria}
+            className={errors.categoria ? 'border-danger-500' : ''}
+          />
+          {errors.categoria && (
+            <p className="form-error">{errors.categoria.message}</p>
+          )}
+          <p className="text-xs text-gray-500 mt-1">
+            Opzionale. Aiuta a classificare i movimenti per analisi e report
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Conto */}
+          <div>
+            <label className="form-label">Conto *</label>
+            <select
+              className={`form-select ${errors.conto_id ? 'border-danger-500' : ''}`}
+              {...register('conto_id', { required: 'Conto è richiesto' })}
+            >
+              <option value="">Seleziona conto</option>
+              {conti?.map(conto => (
+                <option key={conto.id} value={conto.id}>
+                  {conto.nome_banca} - {conto.intestatario}
+                </option>
+              ))}
+            </select>
+            {errors.conto_id && (
+              <p className="form-error">{errors.conto_id.message}</p>
+            )}
+          </div>
+
+          {/* Anagrafica */}
+          <div>
+            <label className="form-label">
+              {watchTipo === 'Entrata' ? 'Cliente' : 'Fornitore'}
+            </label>
+            <select
+              className="form-select"
+              {...register('anagrafica_id')}
+            >
+              <option value="">Seleziona {watchTipo === 'Entrata' ? 'cliente' : 'fornitore'}</option>
+              {anagrafiche?.filter(a => 
+                watchTipo === 'Entrata' ? a.tipo === 'Cliente' : a.tipo === 'Fornitore'
+              ).map(anagrafica => (
+                <option key={anagrafica.id} value={anagrafica.id}>
+                  {anagrafica.nome} {anagrafica.categoria && `(${anagrafica.categoria})`}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Opzionale. Associa il movimento a un cliente o fornitore
+            </p>
+          </div>
+        </div>
+
+        {/* Importo */}
+        <div>
+          <label className="form-label">Importo *</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">€</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              className={`form-input pl-8 ${errors.importo ? 'border-danger-500' : ''}`}
+              placeholder="0.00"
+              {...register('importo', {
+                required: 'Importo è richiesto',
+                min: {
+                  value: 0.01,
+                  message: 'Importo deve essere maggiore di 0'
+                },
+                max: {
+                  value: 999999999,
+                  message: 'Importo troppo alto'
+                }
+              })}
+            />
+          </div>
+          {errors.importo && (
+            <p className="form-error">{errors.importo.message}</p>
+          )}
+        </div>
+
+        {/* Note */}
+        <div>
+          <label className="form-label">Note</label>
+          <textarea
+            className="form-textarea"
+            rows={3}
+            placeholder="Note aggiuntive (opzionali)"
+            {...register('note')}
+          />
+        </div>
+
+        {/* Buttons */}
+        <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            Annulla
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            loading={isLoading}
+          >
+            {movimento ? 'Aggiorna' : 'Crea'} Movimento
+          </Button>
+        </div>
+      </form>
     </Modal>
   );
 };

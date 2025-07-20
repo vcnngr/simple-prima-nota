@@ -85,6 +85,60 @@ export const movimentiAPI = {
   getStatisticheMensili: (params = {}) => api.get('/movimenti/statistiche/mensili', { params }),
 };
 
+// Categorie Anagrafiche API
+export const categorieAnagraficheAPI = {
+  // Lista tutte le categorie
+  getAll: (params = {}) => api.get('/categorie-anagrafiche', { params }),
+  
+  // Autocompletamento
+  getSuggestions: (query, params = {}) => 
+    api.get('/categorie-anagrafiche/suggestions', { 
+      params: { q: query, ...params } 
+    }),
+  
+  // Dettaglio categoria
+  getById: (id) => api.get(`/categorie-anagrafiche/${id}`),
+  
+  // Crea categoria
+  create: (data) => api.post('/categorie-anagrafiche', data),
+  
+  // Aggiorna categoria
+  update: (id, data) => api.put(`/categorie-anagrafiche/${id}`, data),
+  
+  // Elimina categoria
+  delete: (id) => api.delete(`/categorie-anagrafiche/${id}`),
+  
+  // Attiva/disattiva categoria
+  toggle: (id) => api.patch(`/categorie-anagrafiche/${id}/toggle`),
+};
+
+// Categorie Movimenti API
+export const categorieMovimentiAPI = {
+  // Lista tutte le categorie
+  getAll: (params = {}) => api.get('/categorie-movimenti', { params }),
+  
+  // Autocompletamento con filtro per tipo
+  getSuggestions: (query, tipo = null, params = {}) => 
+    api.get('/categorie-movimenti/suggestions', { 
+      params: { q: query, tipo, ...params } 
+    }),
+  
+  // Dettaglio categoria
+  getById: (id) => api.get(`/categorie-movimenti/${id}`),
+  
+  // Crea categoria
+  create: (data) => api.post('/categorie-movimenti', data),
+  
+  // Aggiorna categoria
+  update: (id, data) => api.put(`/categorie-movimenti/${id}`, data),
+  
+  // Elimina categoria
+  delete: (id) => api.delete(`/categorie-movimenti/${id}`),
+  
+  // Attiva/disattiva categoria
+  toggle: (id) => api.patch(`/categorie-movimenti/${id}/toggle`),
+};
+
 // Dashboard API
 export const dashboardAPI = {
   getDashboard: () => api.get('/dashboard'),
