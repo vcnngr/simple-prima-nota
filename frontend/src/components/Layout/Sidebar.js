@@ -5,7 +5,8 @@ import {
   LayoutDashboard, 
   CreditCard, 
   Users, 
-  ArrowUpDown, 
+  ArrowUpDown,
+  Tag, 
   FileText, 
   User,
   LogOut,
@@ -38,6 +39,12 @@ const navigation = [
     href: '/movimenti',
     icon: ArrowUpDown,
     description: 'Entrate e uscite'
+  },
+  {
+    name: 'Categorie',
+    href: '/categorie', 
+    icon: Tag,
+    description: 'Categorie Anagrafiche/Movimenti'
   },
   {
     name: 'Reports',

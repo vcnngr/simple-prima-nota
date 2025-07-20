@@ -14,6 +14,7 @@ import DashboardPage from './pages/Dashboard/DashboardPage';
 import ContiBancariPage from './pages/ContiBancari/ContiBancariPage';
 import AnagrafichePage from './pages/Anagrafiche/AnagrafichePage';
 import MovimentiPage from './pages/Movimenti/MovimentiPage';
+import CategoriePage from './pages/Categorie/CategoriePage';
 import ReportsPage from './pages/Reports/ReportsPage';
 import ProfilePage from './pages/Profile/ProfilePage';
 
@@ -121,6 +122,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <MovimentiPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route
+                path="/categorie"
+                element={
+                  <ProtectedRoute>
+                    <CategoriePage />
                   </ProtectedRoute>
                 } 
               />

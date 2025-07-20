@@ -1,8 +1,22 @@
 -- Database Schema per Prima Nota Contabile
--- PostgreSQL
+-- PostgreSQL - Script di inizializzazione
 
--- Creazione database
-CREATE DATABASE prima_nota;
+-- Connessione al database prima_nota (assicurati che esista)
+\c prima_nota;
+
+-- Drop delle tabelle esistenti (se presenti) per ricreazione pulita
+DROP TABLE IF EXISTS movimenti CASCADE;
+DROP TABLE IF EXISTS anagrafiche CASCADE;
+DROP TABLE IF EXISTS conti_correnti CASCADE;
+DROP TABLE IF EXISTS utenti CASCADE;
+
+-- Drop delle funzioni esistenti
+DROP FUNCTION IF EXISTS calcola_saldo_conto(INTEGER);
+DROP FUNCTION IF EXISTS update_updated_at_column();
+
+-- Drop delle view esistenti
+DROP VIEW IF EXISTS v_saldi_conti;
+DROP VIEW IF EXISTS v_movimenti_dettaglio;
 
 -- Tabella utenti
 CREATE TABLE utenti (
@@ -67,17 +81,18 @@ CREATE INDEX idx_anagrafiche_tipo ON anagrafiche(tipo);
 CREATE INDEX idx_anagrafiche_user ON anagrafiche(user_id);
 CREATE INDEX idx_conti_user ON conti_correnti(user_id);
 
--- Funzione per calcolare saldo corrente
+-- Funzione per calcolare saldo corrente (CORRETTA)
 CREATE OR REPLACE FUNCTION calcola_saldo_conto(conto_id_param INTEGER)
 RETURNS DECIMAL(15,2) AS $$
 DECLARE
-    saldo_iniziale DECIMAL(15,2);
+    saldo_iniziale_var DECIMAL(15,2);  -- CORREZIONE: Rinominata per evitare ambiguità
     saldo_movimenti DECIMAL(15,2);
 BEGIN
     -- Ottieni saldo iniziale
-    SELECT saldo_iniziale INTO saldo_iniziale 
-    FROM conti_correnti 
-    WHERE id = conto_id_param;
+    -- CORREZIONE: Qualifica esplicitamente la colonna con cc.saldo_iniziale
+    SELECT cc.saldo_iniziale INTO saldo_iniziale_var
+    FROM conti_correnti cc
+    WHERE cc.id = conto_id_param;
     
     -- Calcola saldo dai movimenti
     SELECT COALESCE(
@@ -90,7 +105,7 @@ BEGIN
     FROM movimenti 
     WHERE conto_id = conto_id_param;
     
-    RETURN COALESCE(saldo_iniziale, 0) + COALESCE(saldo_movimenti, 0);
+    RETURN COALESCE(saldo_iniziale_var, 0) + COALESCE(saldo_movimenti, 0);  -- CORREZIONE: Usa la variabile rinominata
 END;
 $$ LANGUAGE plpgsql;
 
@@ -173,3 +188,7 @@ FROM movimenti m
 LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
 LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
 ORDER BY m.data DESC, m.created_at DESC;
+
+-- Verifica che le tabelle siano state create correttamente
+SELECT 'Tabelle create con successo!' as status;
+SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;

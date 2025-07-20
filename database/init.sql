@@ -1,8 +1,26 @@
--- ==============================================================================
--- FILE: database/init.sql
--- POSIZIONE: database/init.sql (PER INSTALLAZIONI NUOVE)
--- DESCRIZIONE: Schema completo Prima Nota Contabile con sistema categorie flessibili
--- ==============================================================================
+-- Database Schema per Prima Nota Contabile con Sistema Categorie
+-- PostgreSQL - Script di inizializzazione CORRETTO
+-- Versione: 2.0 - Basato su init.sql con aggiunte da init_categorie.sql
+
+-- Connessione al database prima_nota (assicurati che esista)
+\c prima_nota;
+
+-- Drop delle tabelle esistenti (se presenti) per ricreazione pulita
+DROP TABLE IF EXISTS movimenti CASCADE;
+DROP TABLE IF EXISTS anagrafiche CASCADE;
+DROP TABLE IF EXISTS categorie_movimenti CASCADE;
+DROP TABLE IF EXISTS categorie_anagrafiche CASCADE;
+DROP TABLE IF EXISTS conti_correnti CASCADE;
+DROP TABLE IF EXISTS utenti CASCADE;
+
+-- Drop delle funzioni esistenti
+DROP FUNCTION IF EXISTS calcola_saldo_conto(INTEGER);
+DROP FUNCTION IF EXISTS update_updated_at_column();
+
+-- Drop delle view esistenti
+DROP VIEW IF EXISTS v_saldi_conti CASCADE;
+DROP VIEW IF EXISTS v_movimenti_dettaglio CASCADE;
+DROP VIEW IF EXISTS vista_movimenti_completa CASCADE;
 
 -- Abilita estensioni
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -10,86 +28,62 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ==============================================================================
 -- 1. TABELLA UTENTI
 -- ==============================================================================
-CREATE TABLE IF NOT EXISTS utenti (
+CREATE TABLE utenti (
     id SERIAL PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    email VARCHAR(100) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indici utenti
-CREATE INDEX IF NOT EXISTS idx_utenti_username ON utenti(username);
-CREATE INDEX IF NOT EXISTS idx_utenti_email ON utenti(email);
+CREATE INDEX idx_utenti_username ON utenti(username);
+CREATE INDEX idx_utenti_email ON utenti(email);
 
 -- ==============================================================================
 -- 2. TABELLA CONTI CORRENTI
 -- ==============================================================================
-CREATE TABLE IF NOT EXISTS conti_correnti (
+CREATE TABLE conti_correnti (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
     nome_banca VARCHAR(100) NOT NULL,
     intestatario VARCHAR(100) NOT NULL,
     iban VARCHAR(34),
     saldo_iniziale DECIMAL(15,2) DEFAULT 0.00,
     attivo BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    user_id INTEGER REFERENCES utenti(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indici conti correnti
-CREATE INDEX IF NOT EXISTS idx_conti_correnti_user_id ON conti_correnti(user_id);
-CREATE INDEX IF NOT EXISTS idx_conti_correnti_attivo ON conti_correnti(user_id, attivo);
+CREATE INDEX idx_conti_correnti_user_id ON conti_correnti(user_id);
+CREATE INDEX idx_conti_correnti_attivo ON conti_correnti(user_id, attivo);
 
 -- ==============================================================================
--- 3. TABELLA CATEGORIE ANAGRAFICHE (NUOVO)
+-- 3. TABELLA CATEGORIE ANAGRAFICHE
 -- ==============================================================================
-CREATE TABLE IF NOT EXISTS categorie_anagrafiche (
+CREATE TABLE categorie_anagrafiche (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
     nome VARCHAR(100) NOT NULL,
     descrizione TEXT,
     colore VARCHAR(7) DEFAULT '#6B7280',
     attiva BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, nome)
 );
 
 -- Indici categorie anagrafiche
-CREATE INDEX IF NOT EXISTS idx_categorie_anagrafiche_user_id ON categorie_anagrafiche(user_id);
-CREATE INDEX IF NOT EXISTS idx_categorie_anagrafiche_nome ON categorie_anagrafiche(user_id, nome);
-CREATE INDEX IF NOT EXISTS idx_categorie_anagrafiche_attiva ON categorie_anagrafiche(user_id, attiva);
+CREATE INDEX idx_categorie_anagrafiche_user_id ON categorie_anagrafiche(user_id);
+CREATE INDEX idx_categorie_anagrafiche_nome ON categorie_anagrafiche(user_id, nome);
+CREATE INDEX idx_categorie_anagrafiche_attiva ON categorie_anagrafiche(user_id, attiva);
 
 -- ==============================================================================
--- 4. TABELLA ANAGRAFICHE
+-- 4. TABELLA CATEGORIE MOVIMENTI
 -- ==============================================================================
-CREATE TABLE IF NOT EXISTS anagrafiche (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
-    nome VARCHAR(100) NOT NULL,
-    tipo VARCHAR(20) CHECK (tipo IN ('Cliente', 'Fornitore')) NOT NULL,
-    categoria VARCHAR(100), -- ✅ RESO FLESSIBILE
-    email VARCHAR(100),
-    telefono VARCHAR(20),
-    piva VARCHAR(20),
-    indirizzo TEXT,
-    attivo BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Indici anagrafiche
-CREATE INDEX IF NOT EXISTS idx_anagrafiche_user_id ON anagrafiche(user_id);
-CREATE INDEX IF NOT EXISTS idx_anagrafiche_tipo ON anagrafiche(user_id, tipo);
-CREATE INDEX IF NOT EXISTS idx_anagrafiche_categoria ON anagrafiche(categoria);
-CREATE INDEX IF NOT EXISTS idx_anagrafiche_attivo ON anagrafiche(user_id, attivo);
-
--- ==============================================================================
--- 5. TABELLA CATEGORIE MOVIMENTI (NUOVO)
--- ==============================================================================
-CREATE TABLE IF NOT EXISTS categorie_movimenti (
+CREATE TABLE categorie_movimenti (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
     nome VARCHAR(100) NOT NULL,
@@ -97,77 +91,95 @@ CREATE TABLE IF NOT EXISTS categorie_movimenti (
     descrizione TEXT,
     colore VARCHAR(7) DEFAULT '#6B7280',
     attiva BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, nome)
 );
 
 -- Indici categorie movimenti
-CREATE INDEX IF NOT EXISTS idx_categorie_movimenti_user_id ON categorie_movimenti(user_id);
-CREATE INDEX IF NOT EXISTS idx_categorie_movimenti_tipo ON categorie_movimenti(user_id, tipo);
-CREATE INDEX IF NOT EXISTS idx_categorie_movimenti_attiva ON categorie_movimenti(user_id, attiva);
+CREATE INDEX idx_categorie_movimenti_user_id ON categorie_movimenti(user_id);
+CREATE INDEX idx_categorie_movimenti_tipo ON categorie_movimenti(user_id, tipo);
+CREATE INDEX idx_categorie_movimenti_attiva ON categorie_movimenti(user_id, attiva);
+
+-- ==============================================================================
+-- 5. TABELLA ANAGRAFICHE (clienti/fornitori)
+-- ==============================================================================
+CREATE TABLE anagrafiche (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL,
+    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('Cliente', 'Fornitore')),
+    categoria VARCHAR(100), -- Campo flessibile per categoria
+    email VARCHAR(100),
+    telefono VARCHAR(20),
+    piva VARCHAR(20),
+    indirizzo TEXT,
+    attivo BOOLEAN DEFAULT true,
+    user_id INTEGER REFERENCES utenti(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indici anagrafiche
+CREATE INDEX idx_anagrafiche_tipo ON anagrafiche(tipo);
+CREATE INDEX idx_anagrafiche_user ON anagrafiche(user_id);
+CREATE INDEX idx_anagrafiche_categoria ON anagrafiche(categoria);
+CREATE INDEX idx_anagrafiche_attivo ON anagrafiche(user_id, attivo);
 
 -- ==============================================================================
 -- 6. TABELLA MOVIMENTI
 -- ==============================================================================
-CREATE TABLE IF NOT EXISTS movimenti (
+CREATE TABLE movimenti (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
     data DATE NOT NULL,
     anagrafica_id INTEGER REFERENCES anagrafiche(id) ON DELETE SET NULL,
-    conto_id INTEGER NOT NULL REFERENCES conti_correnti(id) ON DELETE CASCADE,
-    descrizione VARCHAR(255) NOT NULL,
-    categoria VARCHAR(100), -- ✅ NUOVO CAMPO FLESSIBILE
+    conto_id INTEGER REFERENCES conti_correnti(id) ON DELETE CASCADE,
+    descrizione TEXT NOT NULL,
+    categoria VARCHAR(100), -- Campo flessibile per categoria movimento
     importo DECIMAL(15,2) NOT NULL CHECK (importo > 0),
-    tipo VARCHAR(10) CHECK (tipo IN ('Entrata', 'Uscita')) NOT NULL,
+    tipo VARCHAR(20) NOT NULL CHECK (tipo IN ('Entrata', 'Uscita')),
     note TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+    user_id INTEGER REFERENCES utenti(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indici movimenti
-CREATE INDEX IF NOT EXISTS idx_movimenti_user_id ON movimenti(user_id);
-CREATE INDEX IF NOT EXISTS idx_movimenti_data ON movimenti(user_id, data);
-CREATE INDEX IF NOT EXISTS idx_movimenti_tipo ON movimenti(user_id, tipo);
-CREATE INDEX IF NOT EXISTS idx_movimenti_conto_id ON movimenti(conto_id);
-CREATE INDEX IF NOT EXISTS idx_movimenti_anagrafica_id ON movimenti(anagrafica_id);
-CREATE INDEX IF NOT EXISTS idx_movimenti_categoria ON movimenti(categoria);
-CREATE INDEX IF NOT EXISTS idx_movimenti_data_desc ON movimenti(user_id, data DESC);
+CREATE INDEX idx_movimenti_data ON movimenti(data);
+CREATE INDEX idx_movimenti_conto ON movimenti(conto_id);
+CREATE INDEX idx_movimenti_anagrafica ON movimenti(anagrafica_id);
+CREATE INDEX idx_movimenti_user ON movimenti(user_id);
+CREATE INDEX idx_movimenti_tipo ON movimenti(user_id, tipo);
+CREATE INDEX idx_movimenti_categoria ON movimenti(categoria);
+CREATE INDEX idx_movimenti_data_desc ON movimenti(user_id, data DESC);
 
 -- ==============================================================================
 -- 7. FUNZIONI STORED PROCEDURE
 -- ==============================================================================
 
--- Funzione per calcolare saldo conto
+-- Funzione per calcolare saldo corrente (CORRETTA)
 CREATE OR REPLACE FUNCTION calcola_saldo_conto(conto_id_param INTEGER)
 RETURNS DECIMAL(15,2) AS $$
 DECLARE
-    saldo_iniziale DECIMAL(15,2);
-    movimento_totale DECIMAL(15,2);
-    saldo_finale DECIMAL(15,2);
+    saldo_iniziale_var DECIMAL(15,2);
+    saldo_movimenti DECIMAL(15,2);
 BEGIN
     -- Ottieni saldo iniziale
-    SELECT saldo_iniziale INTO saldo_iniziale
-    FROM conti_correnti 
-    WHERE id = conto_id_param;
+    SELECT cc.saldo_iniziale INTO saldo_iniziale_var
+    FROM conti_correnti cc
+    WHERE cc.id = conto_id_param;
     
-    IF saldo_iniziale IS NULL THEN
-        RETURN 0;
-    END IF;
-    
-    -- Calcola totale movimenti
-    SELECT COALESCE(SUM(
-        CASE 
+    -- Calcola saldo dai movimenti
+    SELECT COALESCE(
+        SUM(CASE 
             WHEN tipo = 'Entrata' THEN importo 
-            ELSE -importo 
-        END
-    ), 0) INTO movimento_totale
+            WHEN tipo = 'Uscita' THEN -importo 
+            ELSE 0 
+        END), 0
+    ) INTO saldo_movimenti
     FROM movimenti 
     WHERE conto_id = conto_id_param;
     
-    saldo_finale := saldo_iniziale + movimento_totale;
-    
-    RETURN saldo_finale;
+    RETURN COALESCE(saldo_iniziale_var, 0) + COALESCE(saldo_movimenti, 0);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -175,7 +187,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -185,168 +197,127 @@ $$ LANGUAGE plpgsql;
 -- ==============================================================================
 
 -- Trigger per utenti
-CREATE TRIGGER update_utenti_updated_at 
-    BEFORE UPDATE ON utenti 
+CREATE TRIGGER update_utenti_updated_at BEFORE UPDATE ON utenti
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger per conti correnti
-CREATE TRIGGER update_conti_correnti_updated_at 
-    BEFORE UPDATE ON conti_correnti 
+CREATE TRIGGER update_conti_updated_at BEFORE UPDATE ON conti_correnti
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger per categorie anagrafiche
-CREATE TRIGGER update_categorie_anagrafiche_updated_at 
-    BEFORE UPDATE ON categorie_anagrafiche 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Trigger per anagrafiche
-CREATE TRIGGER update_anagrafiche_updated_at 
-    BEFORE UPDATE ON anagrafiche 
+CREATE TRIGGER update_categorie_anagrafiche_updated_at BEFORE UPDATE ON categorie_anagrafiche
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger per categorie movimenti
-CREATE TRIGGER update_categorie_movimenti_updated_at 
-    BEFORE UPDATE ON categorie_movimenti 
+CREATE TRIGGER update_categorie_movimenti_updated_at BEFORE UPDATE ON categorie_movimenti
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger per anagrafiche
+CREATE TRIGGER update_anagrafiche_updated_at BEFORE UPDATE ON anagrafiche
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger per movimenti
-CREATE TRIGGER update_movimenti_updated_at 
-    BEFORE UPDATE ON movimenti 
+CREATE TRIGGER update_movimenti_updated_at BEFORE UPDATE ON movimenti
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ==============================================================================
--- 9. DATI DI ESEMPIO (OPZIONALI)
+-- 9. DATI DI ESEMPIO
 -- ==============================================================================
 
--- Utente di test (password: password123)
-INSERT INTO utenti (username, email, password_hash) 
-VALUES (
-    'admin', 
-    'admin@primanota.local', 
-    '$2b$10$yxaU3JOqC8dpeH8fLFtRWOAzzNvqTNQNF44GcPIxWtct6B54HEEuK'
-) ON CONFLICT (username) DO NOTHING;
+-- Utenti di esempio
+INSERT INTO utenti (username, password_hash, email) VALUES
+('admin', '$2b$10$yxaU3JOqC8dpeH8fLFtRWOAzzNvqTNQNF44GcPIxWtct6B54HEEuK', 'admin@example.com'),
+('demo', '$2b$10$7gusA60TTbNH2RMgwdGm0.3ZYMAtgLG2CTsLMuFF8nSuH4kCmtwrO', 'demo@example.com');
 
--- Categorie anagrafiche di default per l'utente admin
-INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, colore) 
-SELECT u.id, 'Generale', 'Categoria generale per anagrafiche', '#6B7280'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
+-- Categorie anagrafiche di default per utente admin
+INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, colore) VALUES
+(1, 'Generale', 'Categoria generale per anagrafiche', '#6B7280'),
+(1, 'Clienti Premium', 'Clienti di alto valore', '#10B981'),
+(1, 'Fornitori Principali', 'Fornitori strategici', '#F59E0B'),
+(1, 'Consulenti', 'Professionisti e consulenti', '#8B5CF6'),
+(1, 'Azienda', 'Clienti aziendali', '#3B82F6'),
+(1, 'Privato', 'Clienti privati', '#EC4899'),
+(1, 'Materiali', 'Fornitori di materiali', '#F97316'),
+(1, 'Servizi', 'Fornitori di servizi', '#06B6D4'),
+(1, 'Utenze', 'Fornitori utenze e servizi', '#84CC16');
 
-INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, colore) 
-SELECT u.id, 'Clienti Premium', 'Clienti di alto valore', '#10B981'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
+-- Categorie movimenti di default per utente admin
+INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore) VALUES
+(1, 'Generale', 'Entrambi', 'Categoria generale per movimenti', '#6B7280'),
+(1, 'Vendite', 'Entrata', 'Ricavi da vendite di prodotti/servizi', '#10B981'),
+(1, 'Consulenze', 'Entrata', 'Ricavi da attività di consulenza', '#06B6D4'),
+(1, 'Spese Operative', 'Uscita', 'Costi operativi generali', '#EF4444'),
+(1, 'Stipendi', 'Uscita', 'Pagamenti stipendi e compensi', '#8B5CF6'),
+(1, 'Materiali', 'Uscita', 'Acquisto di materiali e forniture', '#F59E0B'),
+(1, 'Consulenza', 'Uscita', 'Pagamenti per consulenze', '#EC4899'),
+(1, 'Utenze', 'Uscita', 'Pagamenti utenze e bollette', '#84CC16');
 
-INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, colore) 
-SELECT u.id, 'Fornitori Principali', 'Fornitori strategici', '#F59E0B'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
+-- Conti correnti di esempio
+INSERT INTO conti_correnti (nome_banca, intestatario, iban, saldo_iniziale, user_id) VALUES
+('Banca Intesa', 'Mario Rossi', 'IT60X0542811101000000123456', 5000.00, 1),
+('UniCredit', 'Mario Rossi', 'IT45R0300203280284975791020', 2500.00, 1),
+('PostePay Evolution', 'Mario Rossi', 'IT76P0760103200000001234567', 800.00, 1);
 
-INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, colore) 
-SELECT u.id, 'Consulenti', 'Professionisti e consulenti', '#8B5CF6'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
+-- Anagrafiche di esempio (CORRETTE con categorie esistenti)
+INSERT INTO anagrafiche (nome, tipo, categoria, email, telefono, piva, user_id) VALUES
+('Fornitore Materiali SRL', 'Fornitore', 'Materiali', 'info@fornitoremateriali.it', '0123456789', '12345678901', 1),
+('Cliente Principale SpA', 'Cliente', 'Azienda', 'cliente@principale.it', '0987654321', '10987654321', 1),
+('Consulente Fiscale', 'Fornitore', 'Consulenti', 'consulente@fiscale.it', '0555123456', '11122233344', 1),
+('Cliente Privato', 'Cliente', 'Privato', 'privato@email.it', '3331234567', NULL, 1),
+('Fornitore Energia', 'Fornitore', 'Utenze', 'bollette@energia.it', '800123456', '99988877766', 1);
 
--- Categorie movimenti di default per l'utente admin
-INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore)
-SELECT u.id, 'Generale', 'Entrambi', 'Categoria generale per movimenti', '#6B7280'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
+-- Movimenti di esempio (CORRETTI con categorie esistenti)
+INSERT INTO movimenti (data, anagrafica_id, conto_id, descrizione, categoria, importo, tipo, note, user_id) VALUES
+('2024-12-01', 2, 1, 'Fattura n. 001/2024', 'Vendite', 1200.00, 'Entrata', 'Pagamento fattura dicembre', 1),
+('2024-12-02', 1, 1, 'Acquisto materiali', 'Materiali', 450.00, 'Uscita', 'Materiali per progetto X', 1),
+('2024-12-03', 3, 1, 'Consulenza fiscale', 'Consulenza', 200.00, 'Uscita', 'Consulenza mensile', 1),
+('2024-12-05', 4, 2, 'Servizio consulenza', 'Consulenze', 800.00, 'Entrata', 'Consulenza privata', 1),
+('2024-12-07', 5, 2, 'Bolletta energia', 'Utenze', 150.00, 'Uscita', 'Bolletta novembre', 1),
+('2024-12-10', 2, 1, 'Fattura n. 002/2024', 'Vendite', 950.00, 'Entrata', 'Secondo pagamento dicembre', 1),
+('2024-12-12', 1, 3, 'Acquisto attrezzature', 'Materiali', 320.00, 'Uscita', 'Nuove attrezzature', 1),
+('2024-12-15', 4, 1, 'Consulenza extra', 'Consulenze', 400.00, 'Entrata', 'Lavoro straordinario', 1);
 
-INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore)
-SELECT u.id, 'Vendite', 'Entrata', 'Ricavi da vendite di prodotti/servizi', '#10B981'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
+-- ==============================================================================
+-- 10. VISTE PER REPORT
+-- ==============================================================================
 
-INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore)
-SELECT u.id, 'Consulenze', 'Entrata', 'Ricavi da attività di consulenza', '#06B6D4'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
-
-INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore)
-SELECT u.id, 'Spese Operative', 'Uscita', 'Costi operativi generali', '#EF4444'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
-
-INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore)
-SELECT u.id, 'Stipendi', 'Uscita', 'Pagamenti stipendi e compensi', '#8B5CF6'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
-
-INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore)
-SELECT u.id, 'Materiali', 'Uscita', 'Acquisto di materiali e forniture', '#F59E0B'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
-
-INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore)
-SELECT u.id, 'Tasse', 'Uscita', 'Pagamenti fiscali e tributari', '#EC4899'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT (user_id, nome) DO NOTHING;
-
--- Conto corrente di esempio
-INSERT INTO conti_correnti (user_id, nome_banca, intestatario, iban, saldo_iniziale)
-SELECT u.id, 'Banca Esempio', 'Mario Rossi', 'IT60X0542811101000000123456', 10000.00
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT DO NOTHING;
-
--- Anagrafiche di esempio
-INSERT INTO anagrafiche (user_id, nome, tipo, categoria, email, telefono)
-SELECT u.id, 'Cliente Esempio SRL', 'Cliente', 'Clienti Premium', 'cliente@esempio.it', '+39 123 456 7890'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO anagrafiche (user_id, nome, tipo, categoria, email, telefono)
-SELECT u.id, 'Fornitore Test SPA', 'Fornitore', 'Fornitori Principali', 'fornitore@test.it', '+39 098 765 4321'
-FROM utenti u WHERE u.username = 'admin'
-ON CONFLICT DO NOTHING;
-
--- Movimenti di esempio
-INSERT INTO movimenti (user_id, data, anagrafica_id, conto_id, descrizione, categoria, importo, tipo, note)
+-- Vista per saldi conti
+CREATE VIEW v_saldi_conti AS
 SELECT 
-    u.id, 
-    CURRENT_DATE - INTERVAL '7 days',
-    a.id,
-    c.id,
-    'Fattura di vendita esempio',
-    'Vendite',
-    1500.00,
-    'Entrata',
-    'Fattura nr. 001/2024'
-FROM utenti u
-CROSS JOIN anagrafiche a
-CROSS JOIN conti_correnti c
-WHERE u.username = 'admin' 
-  AND a.user_id = u.id 
-  AND a.tipo = 'Cliente'
-  AND c.user_id = u.id
-LIMIT 1
-ON CONFLICT DO NOTHING;
+    cc.id,
+    cc.nome_banca,
+    cc.intestatario,
+    cc.iban,
+    cc.saldo_iniziale,
+    calcola_saldo_conto(cc.id) as saldo_corrente,
+    cc.attivo,
+    cc.user_id
+FROM conti_correnti cc
+WHERE cc.attivo = true;
 
-INSERT INTO movimenti (user_id, data, anagrafica_id, conto_id, descrizione, categoria, importo, tipo, note)
+-- Vista dettaglio movimenti (CORRETTA)
+CREATE VIEW v_movimenti_dettaglio AS
 SELECT 
-    u.id, 
-    CURRENT_DATE - INTERVAL '5 days',
-    a.id,
-    c.id,
-    'Acquisto materiali ufficio',
-    'Materiali',
-    350.00,
-    'Uscita',
-    'Fattura FOR-123/2024'
-FROM utenti u
-CROSS JOIN anagrafiche a
-CROSS JOIN conti_correnti c
-WHERE u.username = 'admin' 
-  AND a.user_id = u.id 
-  AND a.tipo = 'Fornitore'
-  AND c.user_id = u.id
-LIMIT 1
-ON CONFLICT DO NOTHING;
+    m.id,
+    m.data,
+    a.nome as anagrafica_nome,
+    a.tipo as anagrafica_tipo,
+    a.categoria as anagrafica_categoria,
+    cc.nome_banca,
+    m.descrizione,
+    m.categoria as movimento_categoria,
+    m.importo,
+    m.tipo,
+    m.note,
+    m.created_at,
+    m.user_id
+FROM movimenti m
+LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
+LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
+ORDER BY m.data DESC, m.created_at DESC;
 
--- ==============================================================================
--- 10. VISTA RIEPILOGATIVA (OPZIONALE)
--- ==============================================================================
-CREATE OR REPLACE VIEW vista_movimenti_completa AS
+-- Vista completa movimenti con colori categorie
+CREATE VIEW vista_movimenti_completa AS
 SELECT 
     m.id,
     m.user_id,
@@ -362,12 +333,14 @@ SELECT
     cc.nome_banca,
     cc.intestatario,
     cm.colore as categoria_colore,
+    ca.colore as anagrafica_categoria_colore,
     m.created_at,
     m.updated_at
 FROM movimenti m
 LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
 LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
-LEFT JOIN categorie_movimenti cm ON m.categoria = cm.nome AND m.user_id = cm.user_id;
+LEFT JOIN categorie_movimenti cm ON m.categoria = cm.nome AND m.user_id = cm.user_id
+LEFT JOIN categorie_anagrafiche ca ON a.categoria = ca.nome AND a.user_id = ca.user_id;
 
 -- ==============================================================================
 -- 11. COMMENTI DOCUMENTAZIONE
@@ -382,23 +355,25 @@ COMMENT ON TABLE movimenti IS 'Movimenti contabili (entrate e uscite)';
 COMMENT ON COLUMN categorie_anagrafiche.colore IS 'Colore hex per UI (#RRGGBB)';
 COMMENT ON COLUMN categorie_movimenti.tipo IS 'Tipo movimento: Entrata, Uscita o Entrambi';
 COMMENT ON COLUMN categorie_movimenti.colore IS 'Colore hex per UI (#RRGGBB)';
-COMMENT ON COLUMN anagrafiche.categoria IS 'Categoria flessibile definita dall\'utente';
+COMMENT ON COLUMN anagrafiche.categoria IS 'Categoria flessibile definita dall''utente';
 COMMENT ON COLUMN movimenti.categoria IS 'Categoria flessibile per classificazione movimento';
 
 COMMENT ON FUNCTION calcola_saldo_conto(INTEGER) IS 'Calcola il saldo corrente di un conto';
 COMMENT ON FUNCTION update_updated_at_column() IS 'Aggiorna automaticamente il campo updated_at';
 
 -- ==============================================================================
--- FINE INIZIALIZZAZIONE DATABASE
+-- VERIFICA INSTALLAZIONE
 -- ==============================================================================
 
--- Verifica installazione
+-- Verifica che le tabelle siano state create correttamente
 DO $$ 
 BEGIN
     RAISE NOTICE 'Prima Nota Contabile - Database inizializzato con successo!';
-    RAISE NOTICE 'Versione: 2.0 con Sistema Categorie Flessibili';
-    RAISE NOTICE 'Tabelle create: %, %, %, %, %, %', 
-        'utenti', 'conti_correnti', 'categorie_anagrafiche', 
-        'anagrafiche', 'categorie_movimenti', 'movimenti';
-    RAISE NOTICE 'Utente di test: admin / password123';
+    RAISE NOTICE 'Versione: 2.0 CORRETTA con Sistema Categorie Flessibili';
+    RAISE NOTICE 'Basato su init.sql con miglioramenti da init_categorie.sql';
+    RAISE NOTICE 'Tabelle create: utenti, conti_correnti, categorie_anagrafiche, anagrafiche, categorie_movimenti, movimenti';
+    RAISE NOTICE 'Utente di test: admin / password123, demo / password';
 END $$;
+
+SELECT 'Tabelle create con successo!' as status;
+SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;
