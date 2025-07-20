@@ -630,92 +630,88 @@ router.post('/', validate(schemas.movimento), async (req, res) => {
   }
 });
 
-// PUT /api/movimenti/:id - Aggiorna movimento esistente
+// PUT /api/movimenti/:id - Aggiorna movimento
 router.put('/:id', validate(schemas.movimentoUpdate), async (req, res) => {
   try {
-    const { id } = req.params;
-    const updates = req.body;
+    const movimentoId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const updateData = req.body;
 
-    // Verifica che il movimento appartenga all'utente
+    console.log('📝 Update movimento:', { movimentoId, userId, updateData });
+
+    // Verifica che il movimento esista e appartenga all'utente
     const existingMovimento = await queryOne(
-      'SELECT * FROM movimenti WHERE id = $1 AND user_id = $2',
-      [id, req.user.id]
+      'SELECT id, conto_id FROM movimenti WHERE id = $1 AND user_id = $2',
+      [movimentoId, userId]
     );
 
     if (!existingMovimento) {
       return res.status(404).json({ error: 'Movimento non trovato' });
     }
 
-    // Prepara i campi da aggiornare
-    const fieldsToUpdate = [];
-    const params = [];
-    let paramIndex = 1;
-
-    for (const [field, value] of Object.entries(updates)) {
-      if (value !== undefined) {
-        fieldsToUpdate.push(`${field} = $${paramIndex}`);
-        params.push(value);
-        paramIndex++;
+    // Se cambia il conto, verifica che il nuovo conto appartenga all'utente
+    if (updateData.conto_id && updateData.conto_id !== existingMovimento.conto_id) {
+      const conto = await queryOne(
+        'SELECT id FROM conti_correnti WHERE id = $1 AND user_id = $2',
+        [updateData.conto_id, userId]
+      );
+      
+      if (!conto) {
+        return res.status(400).json({ error: 'Conto bancario non valido' });
       }
     }
 
-    if (fieldsToUpdate.length === 0) {
+    // Se cambia l'anagrafica, verifica che appartenga all'utente
+    if (updateData.anagrafica_id) {
+      const anagrafica = await queryOne(
+        'SELECT id FROM anagrafiche WHERE id = $1 AND user_id = $2',
+        [updateData.anagrafica_id, userId]
+      );
+      
+      if (!anagrafica) {
+        return res.status(400).json({ error: 'Anagrafica non valida' });
+      }
+    }
+
+    // Costruisci query di update dinamica
+    const fields = [];
+    const values = [];
+    let paramIndex = 1;
+
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] !== undefined) {
+        fields.push(`${key} = $${paramIndex}`);
+        values.push(updateData[key]);
+        paramIndex++;
+      }
+    });
+
+    if (fields.length === 0) {
       return res.status(400).json({ error: 'Nessun campo da aggiornare' });
     }
 
-    // Verifica conto se aggiornato
-    if (updates.conto_id) {
-      const conto = await queryOne(
-        'SELECT id, attivo FROM conti_correnti WHERE id = $1 AND user_id = $2',
-        [updates.conto_id, req.user.id]
-      );
+    fields.push(`updated_at = NOW()`);
+    values.push(movimentoId, userId);
 
-      if (!conto || !conto.attivo) {
-        return res.status(400).json({ error: 'Conto corrente non valido o disattivato' });
-      }
-    }
-
-    // Verifica anagrafica se aggiornata
-    if (updates.anagrafica_id) {
-      const anagrafica = await queryOne(
-        'SELECT id, attivo FROM anagrafiche WHERE id = $1 AND user_id = $2',
-        [updates.anagrafica_id, req.user.id]
-      );
-
-      if (!anagrafica || !anagrafica.attivo) {
-        return res.status(400).json({ error: 'Anagrafica non valida o disattivata' });
-      }
-    }
-
-    fieldsToUpdate.push('updated_at = CURRENT_TIMESTAMP');
-    params.push(id, req.user.id);
-
-    const result = await query(`
+    const updateQuery = `
       UPDATE movimenti 
-      SET ${fieldsToUpdate.join(', ')}
+      SET ${fields.join(', ')}
       WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
       RETURNING *
-    `, params);
+    `;
 
-    const updatedMovimento = result.rows[0];
+    console.log('🔄 Update query:', updateQuery);
+    
+    const result = await queryOne(updateQuery, values);
 
-    // Recupera i dettagli completi
-    const movimentoCompleto = await queryOne(`
-      SELECT 
-        m.*,
-        a.nome as anagrafica_nome,
-        a.tipo as anagrafica_tipo,
-        cc.nome_banca,
-        cc.intestatario
-      FROM movimenti m
-      LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
-      LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
-      WHERE m.id = $1
-    `, [updatedMovimento.id]);
+    res.json({
+      success: true,
+      message: 'Movimento aggiornato con successo',
+      data: result
+    });
 
-    res.json(movimentoCompleto);
   } catch (error) {
-    console.error('Error updating movimento:', error);
+    console.error('❌ Error updating movimento:', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento del movimento' });
   }
 });

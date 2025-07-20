@@ -293,72 +293,64 @@ router.post('/', validate(schemas.anagrafica), async (req, res) => {
   }
 });
 
-// PUT /api/anagrafiche/:id - Aggiorna anagrafica esistente
-router.put('/:id', validate(schemas.anagrafica), async (req, res) => {
+// PUT /api/anagrafiche/:id - Aggiorna anagrafica
+router.put('/:id', validate(schemas.anagraficaUpdate), async (req, res) => {
   try {
-    const { id } = req.params;
-    const { nome, tipo, categoria, email, telefono, piva, indirizzo, attivo } = req.body;
-    
-    // Verifica che l'anagrafica appartenga all'utente
+    const anagraficaId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const updateData = req.body;
+
+    console.log('📝 Update anagrafica:', { anagraficaId, userId, updateData });
+
+    // Verifica che l'anagrafica esista e appartenga all'utente
     const existingAnagrafica = await queryOne(
       'SELECT id FROM anagrafiche WHERE id = $1 AND user_id = $2',
-      [id, req.user.id]
+      [anagraficaId, userId]
     );
-    
+
     if (!existingAnagrafica) {
       return res.status(404).json({ error: 'Anagrafica non trovata' });
     }
-    
-    // Verifica nome duplicato (escludendo l'anagrafica corrente)
-    const duplicateName = await queryOne(
-      'SELECT id FROM anagrafiche WHERE LOWER(nome) = LOWER($1) AND tipo = $2 AND user_id = $3 AND id != $4',
-      [nome, tipo, req.user.id, id]
-    );
-    
-    if (duplicateName) {
-      return res.status(400).json({ 
-        error: `Esiste già un ${tipo.toLowerCase()} con questo nome` 
-      });
-    }
-    
-    // Verifica P.IVA duplicata (se fornita, escludendo l'anagrafica corrente)
-    if (piva && piva.trim()) {
-      const duplicatePiva = await queryOne(
-        'SELECT id, nome FROM anagrafiche WHERE piva = $1 AND user_id = $2 AND id != $3',
-        [piva.trim(), req.user.id, id]
-      );
-      
-      if (duplicatePiva) {
-        return res.status(400).json({ 
-          error: `P.IVA già associata a: ${duplicatePiva.nome}` 
-        });
+
+    // Costruisci query di update dinamica
+    const fields = [];
+    const values = [];
+    let paramIndex = 1;
+
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] !== undefined) {
+        fields.push(`${key} = $${paramIndex}`);
+        values.push(updateData[key]);
+        paramIndex++;
       }
+    });
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'Nessun campo da aggiornare' });
     }
-    
-    const result = await query(`
+
+    fields.push(`updated_at = NOW()`);
+    values.push(anagraficaId, userId);
+
+    const updateQuery = `
       UPDATE anagrafiche 
-      SET nome = $1, tipo = $2, categoria = $3, email = $4, telefono = $5, 
-          piva = $6, indirizzo = $7, attivo = $8, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $9 AND user_id = $10
+      SET ${fields.join(', ')}
+      WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
       RETURNING *
-    `, [
-      nome, 
-      tipo, 
-      categoria || null, 
-      email || null, 
-      telefono || null, 
-      piva || null, 
-      indirizzo || null, 
-      attivo !== false, 
-      id, 
-      req.user.id
-    ]);
+    `;
+
+    console.log('🔄 Update query:', updateQuery);
     
-    const updatedAnagrafica = result.rows[0];
-    
-    res.json(updatedAnagrafica);
+    const result = await queryOne(updateQuery, values);
+
+    res.json({
+      success: true,
+      message: 'Anagrafica aggiornata con successo',
+      data: result
+    });
+
   } catch (error) {
-    console.error('Error updating anagrafica:', error);
+    console.error('❌ Error updating anagrafica:', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento dell\'anagrafica' });
   }
 });

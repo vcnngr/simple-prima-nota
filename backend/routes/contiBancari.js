@@ -172,53 +172,66 @@ router.post('/', validate(schemas.contoBancario), async (req, res) => {
   }
 });
 
-// PUT /api/conti-bancari/:id - Aggiorna conto esistente
-router.put('/:id', validate(schemas.contoBancario), async (req, res) => {
+// PUT /api/conti-bancari/:id - Aggiorna conto bancario
+router.put('/:id', validate(schemas.contoBancarioUpdate), async (req, res) => {
   try {
-    const { id } = req.params;
-    const { nome_banca, intestatario, iban, saldo_iniziale, attivo } = req.body;
-    
-    // Verifica che il conto appartenga all'utente
+    const contoId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const updateData = req.body;
+
+    console.log('📝 Update conto:', { contoId, userId, updateData });
+
+    // Verifica che il conto esista e appartenga all'utente
     const existingConto = await queryOne(
       'SELECT id FROM conti_correnti WHERE id = $1 AND user_id = $2',
-      [id, req.user.id]
+      [contoId, userId]
     );
-    
+
     if (!existingConto) {
       return res.status(404).json({ error: 'Conto bancario non trovato' });
     }
-    
-    // Verifica IBAN duplicato (escludendo il conto corrente)
-    if (iban && iban.trim()) {
-      const duplicateIban = await queryOne(
-        'SELECT id FROM conti_correnti WHERE iban = $1 AND user_id = $2 AND id != $3',
-        [iban.trim(), req.user.id, id]
-      );
-      
-      if (duplicateIban) {
-        return res.status(400).json({ error: 'Esiste già un conto con questo IBAN' });
+
+    // Costruisci query di update dinamica
+    const fields = [];
+    const values = [];
+    let paramIndex = 1;
+
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] !== undefined) {
+        fields.push(`${key} = $${paramIndex}`);
+        values.push(updateData[key]);
+        paramIndex++;
       }
+    });
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'Nessun campo da aggiornare' });
     }
-    
-    const result = await query(`
+
+    // Aggiungi condizioni WHERE
+    fields.push(`updated_at = NOW()`);
+    values.push(contoId, userId);
+
+    const updateQuery = `
       UPDATE conti_correnti 
-      SET nome_banca = $1, intestatario = $2, iban = $3, saldo_iniziale = $4, attivo = $5, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $6 AND user_id = $7
+      SET ${fields.join(', ')}
+      WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
       RETURNING *
-    `, [nome_banca, intestatario, iban || null, saldo_iniziale || 0, attivo !== false, id, req.user.id]);
-    
-    const updatedConto = result.rows[0];
-    
-    // Aggiungi il saldo corrente
-    const saldoCorrente = await queryOne(
-      'SELECT calcola_saldo_conto($1) as saldo_corrente',
-      [id]
-    );
-    updatedConto.saldo_corrente = saldoCorrente.saldo_corrente;
-    
-    res.json(updatedConto);
+    `;
+
+    console.log('🔄 Update query:', updateQuery);
+    console.log('🔄 Update values:', values);
+
+    const result = await queryOne(updateQuery, values);
+
+    res.json({
+      success: true,
+      message: 'Conto bancario aggiornato con successo',
+      data: result
+    });
+
   } catch (error) {
-    console.error('Error updating conto bancario:', error);
+    console.error('❌ Error updating conto bancario:', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento del conto bancario' });
   }
 });
