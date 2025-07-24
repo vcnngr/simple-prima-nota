@@ -45,6 +45,105 @@ export const authAPI = {
   verifyToken: () => api.get('/auth/verify'),
   getProfile: () => api.get('/auth/profile'),
   changePassword: (passwordData) => api.post('/auth/change-password', passwordData),
+  
+  // ✅ CORRETTI - Usano api (Axios) invece di apiRequest
+  
+  // Statistiche account per conferma eliminazione
+  getAccountStats: () => api.get('/auth/account/stats'),
+  
+  // Eliminazione account
+  deleteAccount: (password) => api.delete('/auth/account', { data: { password } }),
+  
+  // Export backup completo
+  // Export backup completo
+  exportBackup: async () => {
+    try {
+      console.log('📦 Inizio export backup...');
+      
+      const response = await fetch(`${API_BASE_URL}/auth/backup/export`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Errore ${response.status}: ${response.statusText}`);
+      }
+      
+      // Ottieni statistiche e metadata dai headers
+      const backupSize = response.headers.get('X-Backup-Size');
+      const backupStats = response.headers.get('X-Backup-Stats');
+      const username = response.headers.get('X-Backup-Username');
+      
+      const data = await response.json();
+      
+      console.log('✅ Backup ricevuto:', {
+        size: backupSize + ' MB',
+        stats: backupStats ? JSON.parse(backupStats) : null
+      });
+      
+      return {
+        data,
+        size: backupSize,
+        stats: backupStats ? JSON.parse(backupStats) : null,
+        username: username
+      };
+      
+    } catch (error) {
+      console.error('❌ Errore export backup:', error);
+      throw error;
+    }
+  },
+  
+  // Import backup
+  importBackup: (backupData, mode = 'replace') => 
+    api.post('/auth/backup/import', { backupData, mode }),
+  
+  // Validazione backup (solo frontend)
+  validateBackupFile: (fileContent) => {
+    try {
+      const backup = JSON.parse(fileContent);
+      
+      // Controlli base
+      if (!backup.metadata || !backup.user) {
+        return { 
+          isValid: false, 
+          error: 'File backup non valido: struttura mancante' 
+        };
+      }
+      
+      if (backup.metadata.app_name && !backup.metadata.app_name.includes('Prima Nota')) {
+        return { 
+          isValid: false, 
+          error: 'Questo backup non è compatibile con Prima Nota Contabile' 
+        };
+      }
+      
+      // Calcola statistiche
+      const stats = {
+        conti: backup.conti_correnti?.length || 0,
+        anagrafiche: backup.anagrafiche?.length || 0,
+        movimenti: backup.movimenti?.length || 0,
+        tipologie: backup.tipologie_anagrafiche?.length || 0,
+        categorie: (backup.categorie_anagrafiche?.length || 0) + (backup.categorie_movimenti?.length || 0),
+        export_date: backup.metadata.export_date,
+        version: backup.metadata.version,
+        username: backup.user.username
+      };
+      
+      return { 
+        isValid: true, 
+        backup, 
+        stats 
+      };
+      
+    } catch (error) {
+      return { 
+        isValid: false, 
+        error: 'File non valido: impossibile leggere il contenuto JSON' 
+      };
+    }
+  },
 };
 
 // Conti Bancari API
@@ -71,6 +170,12 @@ export const anagraficheAPI = {
   toggleStato: (id) => api.patch(`/anagrafiche/${id}/toggle-stato`),
   getMovimenti: (id, params = {}) => api.get(`/anagrafiche/${id}/movimenti`, { params }),
   getStatistiche: (id, params = {}) => api.get(`/anagrafiche/${id}/statistiche`, { params }),
+  // NUOVI METODI PER TIPOLOGIE
+  getTipologie: (params = {}) => api.get('/anagrafiche/tipologie', { params }),
+  createTipologia: (data) => api.post('/anagrafiche/tipologie', data),
+  updateTipologia: (id, data) => api.put(`/anagrafiche/tipologie/${id}`, data),
+  deleteTipologia: (id) => api.delete(`/anagrafiche/tipologie/${id}`),
+  toggleStatoTipologia: (id) => api.patch(`/anagrafiche/tipologie/${id}/toggle-stato`),
 };
 
 // Movimenti API
@@ -89,25 +194,19 @@ export const movimentiAPI = {
 export const categorieAnagraficheAPI = {
   // Lista tutte le categorie
   getAll: (params = {}) => api.get('/categorie-anagrafiche', { params }),
-  
   // Autocompletamento
   getSuggestions: (query, params = {}) => 
     api.get('/categorie-anagrafiche/suggestions', { 
-      params: { q: query, ...params } 
-    }),
-  
+    params: { q: query, ...params } 
+  }),
   // Dettaglio categoria
   getById: (id) => api.get(`/categorie-anagrafiche/${id}`),
-  
   // Crea categoria
   create: (data) => api.post('/categorie-anagrafiche', data),
-  
   // Aggiorna categoria
   update: (id, data) => api.put(`/categorie-anagrafiche/${id}`, data),
-  
   // Elimina categoria
   delete: (id) => api.delete(`/categorie-anagrafiche/${id}`),
-  
   // Attiva/disattiva categoria
   toggle: (id) => api.patch(`/categorie-anagrafiche/${id}/toggle`),
 };
@@ -115,26 +214,20 @@ export const categorieAnagraficheAPI = {
 // Categorie Movimenti API
 export const categorieMovimentiAPI = {
   // Lista tutte le categorie
-  getAll: (params = {}) => api.get('/categorie-movimenti', { params }),
-  
+  getAll: (params = {}) => api.get('/categorie-movimenti', { params }),  
   // Autocompletamento con filtro per tipo
   getSuggestions: (query, tipo = null, params = {}) => 
     api.get('/categorie-movimenti/suggestions', { 
-      params: { q: query, tipo, ...params } 
-    }),
-  
+    params: { q: query, tipo, ...params } 
+  }),
   // Dettaglio categoria
   getById: (id) => api.get(`/categorie-movimenti/${id}`),
-  
   // Crea categoria
   create: (data) => api.post('/categorie-movimenti', data),
-  
   // Aggiorna categoria
   update: (id, data) => api.put(`/categorie-movimenti/${id}`, data),
-  
   // Elimina categoria
   delete: (id) => api.delete(`/categorie-movimenti/${id}`),
-  
   // Attiva/disattiva categoria
   toggle: (id) => api.patch(`/categorie-movimenti/${id}/toggle`),
 };
@@ -211,7 +304,7 @@ export const apiUtils = {
       };
     }
   },
-
+  
   // Download file da blob
   downloadBlob: (blob, filename) => {
     const url = window.URL.createObjectURL(blob);
@@ -223,7 +316,7 @@ export const apiUtils = {
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   },
-
+  
   // Formattazione parametri query
   formatQueryParams: (params) => {
     const formatted = {};
@@ -239,7 +332,7 @@ export const apiUtils = {
     });
     return formatted;
   },
-
+  
   // Debounce per ricerche
   debounce: (func, wait) => {
     let timeout;

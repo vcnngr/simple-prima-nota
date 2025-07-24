@@ -1,4 +1,4 @@
-// routes/anagrafiche.js
+// routes/anagrafiche.js - VERSIONE FLESSIBILE CON TIPOLOGIE
 const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
 const auth = require('../middleware/auth');
@@ -9,24 +9,248 @@ const router = express.Router();
 // Middleware di autenticazione per tutte le route
 router.use(auth);
 
-// GET /api/anagrafiche/export - Export anagrafiche
+// ==============================================================================
+// ENDPOINTS TIPOLOGIE ANAGRAFICHE (ORDINAMENTO IMPORTANTE!)
+// ==============================================================================
+
+// GET /api/anagrafiche/tipologie - Lista tipologie
+router.get('/tipologie', async (req, res) => {
+  try {
+    const tipologie = await queryAll(`
+      SELECT id, nome, descrizione, tipo_movimento_default, colore, icona, attiva,
+             created_at, updated_at
+      FROM tipologie_anagrafiche 
+      WHERE user_id = $1 
+      ORDER BY nome
+    `, [req.user.id]);
+    
+    res.json(tipologie);
+  } catch (error) {
+    console.error('Error fetching tipologie:', error);
+    res.status(500).json({ error: 'Errore durante il caricamento delle tipologie' });
+  }
+});
+
+// POST /api/anagrafiche/tipologie - Crea tipologia
+router.post('/tipologie', validate(schemas.tipologiaAnagrafica), async (req, res) => {
+  try {
+    const { nome, descrizione, tipo_movimento_default, colore, icona } = req.body;
+    
+    const existingTipologia = await queryOne(
+      'SELECT id FROM tipologie_anagrafiche WHERE LOWER(nome) = LOWER($1) AND user_id = $2',
+      [nome, req.user.id]
+    );
+    
+    if (existingTipologia) {
+      return res.status(400).json({ 
+        error: `Esiste già una tipologia con questo nome: ${nome}` 
+      });
+    }
+    
+    const result = await query(`
+      INSERT INTO tipologie_anagrafiche 
+      (nome, descrizione, tipo_movimento_default, colore, icona, user_id) 
+      VALUES ($1, $2, $3, $4, $5, $6) 
+      RETURNING *
+    `, [nome, descrizione || null, tipo_movimento_default, colore || '#6B7280', icona || 'user', req.user.id]);
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating tipologia:', error);
+    res.status(500).json({ error: 'Errore durante la creazione della tipologia' });
+  }
+});
+
+// GET /api/anagrafiche/tipologie/:id - Dettaglio tipologia
+router.get('/tipologie/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const tipologia = await queryOne(`
+      SELECT id, nome, descrizione, tipo_movimento_default, colore, icona, attiva,
+             created_at, updated_at
+      FROM tipologie_anagrafiche 
+      WHERE id = $1 AND user_id = $2
+    `, [id, req.user.id]);
+    
+    if (!tipologia) {
+      return res.status(404).json({ error: 'Tipologia non trovata' });
+    }
+    
+    res.json(tipologia);
+  } catch (error) {
+    console.error('Error fetching tipologia detail:', error);
+    res.status(500).json({ error: 'Errore durante il caricamento della tipologia' });
+  }
+});
+
+// PUT /api/anagrafiche/tipologie/:id - Aggiorna tipologia
+router.put('/tipologie/:id', validate(schemas.tipologiaAnagraficaUpdate), async (req, res) => {
+  try {
+    const tipologiaId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const updateData = req.body;
+
+    console.log('📝 Update tipologia:', { tipologiaId, userId, updateData });
+
+    // Verifica che la tipologia esista e appartenga all'utente
+    const existingTipologia = await queryOne(
+      'SELECT id FROM tipologie_anagrafiche WHERE id = $1 AND user_id = $2',
+      [tipologiaId, userId]
+    );
+
+    if (!existingTipologia) {
+      return res.status(404).json({ error: 'Tipologia non trovata' });
+    }
+
+    // Verifica unicità nome (se viene cambiato)
+    if (updateData.nome) {
+      const duplicateName = await queryOne(
+        'SELECT id FROM tipologie_anagrafiche WHERE LOWER(nome) = LOWER($1) AND user_id = $2 AND id != $3',
+        [updateData.nome, userId, tipologiaId]
+      );
+      
+      if (duplicateName) {
+        return res.status(400).json({ 
+          error: `Esiste già una tipologia con questo nome: ${updateData.nome}` 
+        });
+      }
+    }
+
+    // Costruisci query di update dinamica
+    const fields = [];
+    const values = [];
+    let paramIndex = 1;
+
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] !== undefined) {
+        fields.push(`${key} = $${paramIndex}`);
+        values.push(updateData[key]);
+        paramIndex++;
+      }
+    });
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'Nessun campo da aggiornare' });
+    }
+
+    fields.push(`updated_at = NOW()`);
+    values.push(tipologiaId, userId);
+
+    const updateQuery = `
+      UPDATE tipologie_anagrafiche 
+      SET ${fields.join(', ')}
+      WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
+      RETURNING *
+    `;
+
+    console.log('🔄 Update query:', updateQuery);
+    
+    const result = await queryOne(updateQuery, values);
+
+    res.json({
+      success: true,
+      message: 'Tipologia aggiornata con successo',
+      data: result
+    });
+
+  } catch (error) {
+    console.error('❌ Error updating tipologia:', error);
+    res.status(500).json({ error: 'Errore durante l\'aggiornamento della tipologia' });
+  }
+});
+
+// DELETE /api/anagrafiche/tipologie/:id - Elimina tipologia
+router.delete('/tipologie/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verifica che la tipologia appartenga all'utente
+    const tipologia = await queryOne(
+      'SELECT id, nome FROM tipologie_anagrafiche WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    
+    if (!tipologia) {
+      return res.status(404).json({ error: 'Tipologia non trovata' });
+    }
+    
+    // Verifica se ci sono anagrafiche associate
+    const anagrafiche = await queryOne(
+      'SELECT COUNT(*) as count FROM anagrafiche WHERE tipologia_id = $1',
+      [id]
+    );
+    
+    if (parseInt(anagrafiche.count) > 0) {
+      return res.status(400).json({ 
+        error: 'Impossibile eliminare la tipologia: sono presenti anagrafiche associate',
+        suggestion: 'Disattiva la tipologia invece di eliminarla, oppure rimuovi prima i riferimenti dalle anagrafiche'
+      });
+    }
+    
+    await query(
+      'DELETE FROM tipologie_anagrafiche WHERE id = $1 AND user_id = $2',
+      [id, req.user.id]
+    );
+    
+    res.json({ message: `Tipologia "${tipologia.nome}" eliminata con successo` });
+  } catch (error) {
+    console.error('Error deleting tipologia:', error);
+    res.status(500).json({ error: 'Errore durante l\'eliminazione della tipologia' });
+  }
+});
+
+// PATCH /api/anagrafiche/tipologie/:id/toggle-stato - Attiva/disattiva tipologia
+router.patch('/tipologie/:id/toggle-stato', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await query(`
+      UPDATE tipologie_anagrafiche 
+      SET attiva = NOT attiva, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND user_id = $2
+      RETURNING *
+    `, [id, req.user.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tipologia non trovata' });
+    }
+    
+    const updatedTipologia = result.rows[0];
+    
+    res.json({
+      message: `Tipologia "${updatedTipologia.nome}" ${updatedTipologia.attiva ? 'attivata' : 'disattivata'} con successo`,
+      tipologia: updatedTipologia
+    });
+  } catch (error) {
+    console.error('Error toggling tipologia stato:', error);
+    res.status(500).json({ error: 'Errore durante il cambio stato della tipologia' });
+  }
+});
+
+// ==============================================================================
+// ENDPOINTS ANAGRAFICHE (DOPO LE TIPOLOGIE PER EVITARE CONFLITTI DI ROUTING)
+// ==============================================================================
+
+// GET /api/anagrafiche/export - Export anagrafiche (AGGIORNATO)
 router.get('/export', async (req, res) => {
   try {
     const userId = req.user.id;
-    const { formato = 'csv', tipo } = req.query;
+    const { formato = 'csv', tipologia_id } = req.query;
 
     let whereCondition = 'a.user_id = $1';
     let params = [userId];
 
-    if (tipo && ['Cliente', 'Fornitore'].includes(tipo)) {
-      whereCondition += ' AND a.tipo = $2';
-      params.push(tipo);
+    if (tipologia_id) {
+      whereCondition += ' AND a.tipologia_id = $2';
+      params.push(tipologia_id);
     }
 
     const anagrafiche = await queryAll(`
       SELECT 
         a.nome,
-        a.tipo,
+        COALESCE(ta.nome, 'Senza tipologia') as tipologia,
+        ta.tipo_movimento_default,
         a.categoria,
         a.email,
         a.telefono,
@@ -39,6 +263,7 @@ router.get('/export', async (req, res) => {
         COALESCE(stats.ultimo_movimento, NULL) as ultimo_movimento,
         a.created_at::date as data_creazione
       FROM anagrafiche a
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       LEFT JOIN (
         SELECT 
           m.anagrafica_id,
@@ -51,7 +276,7 @@ router.get('/export', async (req, res) => {
         GROUP BY m.anagrafica_id
       ) stats ON a.id = stats.anagrafica_id
       WHERE ${whereCondition}
-      ORDER BY a.tipo, a.nome
+      ORDER BY ta.nome, a.nome
     `, params);
 
     if (formato === 'xlsx') {
@@ -93,37 +318,33 @@ router.get('/export', async (req, res) => {
   }
 });
 
-// GET /api/anagrafiche - Lista tutte le anagrafiche dell'utente
+// GET /api/anagrafiche - Lista tutte le anagrafiche (AGGIORNATO)
 router.get('/', async (req, res) => {
   try {
-    const { tipo, categoria, search, attivo } = req.query;
+    const { tipologia_id, categoria, search, attivo } = req.query;
     
     let whereConditions = ['a.user_id = $1'];
     let params = [req.user.id];
     let paramIndex = 2;
     
-    // Filtro per tipo
-    if (tipo && ['Cliente', 'Fornitore'].includes(tipo)) {
-      whereConditions.push(`a.tipo = $${paramIndex}`);
-      params.push(tipo);
+    if (tipologia_id) {
+      whereConditions.push(`a.tipologia_id = $${paramIndex}`);
+      params.push(tipologia_id);
       paramIndex++;
     }
     
-    // Filtro per categoria
     if (categoria) {
       whereConditions.push(`a.categoria ILIKE $${paramIndex}`);
       params.push(`%${categoria}%`);
       paramIndex++;
     }
     
-    // Filtro per stato attivo
     if (attivo !== undefined) {
       whereConditions.push(`a.attivo = $${paramIndex}`);
       params.push(attivo === 'true');
       paramIndex++;
     }
     
-    // Ricerca testuale
     if (search) {
       whereConditions.push(`(a.nome ILIKE $${paramIndex} OR a.email ILIKE $${paramIndex} OR a.piva ILIKE $${paramIndex})`);
       params.push(`%${search}%`);
@@ -133,14 +354,19 @@ router.get('/', async (req, res) => {
     const anagrafiche = await queryAll(`
       SELECT 
         a.*,
+        ta.nome as tipologia_nome,
+        ta.tipo_movimento_default,
+        ta.colore as tipologia_colore,
+        ta.icona as tipologia_icona,
         COUNT(m.id) as numero_movimenti,
         COALESCE(SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE 0 END), 0) as totale_entrate,
         COALESCE(SUM(CASE WHEN m.tipo = 'Uscita' THEN m.importo ELSE 0 END), 0) as totale_uscite,
         MAX(m.data) as ultimo_movimento
       FROM anagrafiche a
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       LEFT JOIN movimenti m ON a.id = m.anagrafica_id
       WHERE ${whereConditions.join(' AND ')}
-      GROUP BY a.id
+      GROUP BY a.id, ta.nome, ta.tipo_movimento_default, ta.colore, ta.icona
       ORDER BY a.nome
     `, params);
     
@@ -151,17 +377,17 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/anagrafiche/categorie - Lista categorie uniche
+// GET /api/anagrafiche/categorie - Lista categorie uniche (INVARIATO)
 router.get('/categorie', async (req, res) => {
   try {
-    const { tipo } = req.query;
+    const { tipologia_id } = req.query;
     
     let whereCondition = 'user_id = $1 AND categoria IS NOT NULL AND categoria != \'\'';
     let params = [req.user.id];
     
-    if (tipo && ['Cliente', 'Fornitore'].includes(tipo)) {
-      whereCondition += ' AND tipo = $2';
-      params.push(tipo);
+    if (tipologia_id) {
+      whereCondition += ' AND tipologia_id = $2';
+      params.push(tipologia_id);
     }
     
     const categorie = await queryAll(`
@@ -179,24 +405,30 @@ router.get('/categorie', async (req, res) => {
   }
 });
 
-// GET /api/anagrafiche/attive - Solo anagrafiche attive (per dropdown)
+// GET /api/anagrafiche/attive - Solo anagrafiche attive (AGGIORNATO)
 router.get('/attive', async (req, res) => {
   try {
-    const { tipo } = req.query;
+    const { tipologia_id } = req.query;
     
-    let whereCondition = 'user_id = $1 AND attivo = true';
+    let whereCondition = 'a.user_id = $1 AND a.attivo = true';
     let params = [req.user.id];
     
-    if (tipo && ['Cliente', 'Fornitore'].includes(tipo)) {
-      whereCondition += ' AND tipo = $2';
-      params.push(tipo);
+    if (tipologia_id) {
+      whereCondition += ' AND a.tipologia_id = $2';
+      params.push(tipologia_id);
     }
     
     const anagrafiche = await queryAll(`
-      SELECT id, nome, tipo, categoria, email, telefono
-      FROM anagrafiche 
+      SELECT 
+        a.id, a.nome, a.categoria, a.email, a.telefono,
+        ta.nome as tipologia_nome, 
+        ta.tipo_movimento_default,
+        ta.colore as tipologia_colore,
+        ta.icona as tipologia_icona
+      FROM anagrafiche a
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       WHERE ${whereCondition}
-      ORDER BY nome
+      ORDER BY a.nome
     `, params);
     
     res.json(anagrafiche);
@@ -206,7 +438,7 @@ router.get('/attive', async (req, res) => {
   }
 });
 
-// GET /api/anagrafiche/:id - Dettaglio singola anagrafica
+// GET /api/anagrafiche/:id - Dettaglio singola anagrafica (AGGIORNATO)
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -214,15 +446,21 @@ router.get('/:id', async (req, res) => {
     const anagrafica = await queryOne(`
       SELECT 
         a.*,
+        ta.nome as tipologia_nome,
+        ta.descrizione as tipologia_descrizione,
+        ta.tipo_movimento_default,
+        ta.colore as tipologia_colore,
+        ta.icona as tipologia_icona,
         COUNT(m.id) as numero_movimenti,
         COALESCE(SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE 0 END), 0) as totale_entrate,
         COALESCE(SUM(CASE WHEN m.tipo = 'Uscita' THEN m.importo ELSE 0 END), 0) as totale_uscite,
         MAX(m.data) as ultimo_movimento,
         MIN(m.data) as primo_movimento
       FROM anagrafiche a
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       LEFT JOIN movimenti m ON a.id = m.anagrafica_id
       WHERE a.id = $1 AND a.user_id = $2
-      GROUP BY a.id
+      GROUP BY a.id, ta.nome, ta.descrizione, ta.tipo_movimento_default, ta.colore, ta.icona
     `, [id, req.user.id]);
     
     if (!anagrafica) {
@@ -236,20 +474,20 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST /api/anagrafiche - Crea nuova anagrafica
+// POST /api/anagrafiche - Crea nuova anagrafica (AGGIORNATO)
 router.post('/', validate(schemas.anagrafica), async (req, res) => {
   try {
-    const { nome, tipo, categoria, email, telefono, piva, indirizzo, attivo } = req.body;
+    const { nome, tipologia_id, categoria, email, telefono, piva, indirizzo, attivo } = req.body;
     
-    // Verifica se esiste già un'anagrafica con stesso nome e tipo
+    // Verifica se esiste già un'anagrafica con stesso nome
     const existingAnagrafica = await queryOne(
-      'SELECT id FROM anagrafiche WHERE LOWER(nome) = LOWER($1) AND tipo = $2 AND user_id = $3',
-      [nome, tipo, req.user.id]
+      'SELECT id FROM anagrafiche WHERE LOWER(nome) = LOWER($1) AND user_id = $2',
+      [nome, req.user.id]
     );
     
     if (existingAnagrafica) {
       return res.status(400).json({ 
-        error: `Esiste già un ${tipo.toLowerCase()} con questo nome` 
+        error: `Esiste già un'anagrafica con questo nome: ${nome}` 
       });
     }
     
@@ -269,12 +507,12 @@ router.post('/', validate(schemas.anagrafica), async (req, res) => {
     
     const result = await query(`
       INSERT INTO anagrafiche 
-      (nome, tipo, categoria, email, telefono, piva, indirizzo, attivo, user_id) 
+      (nome, tipologia_id, categoria, email, telefono, piva, indirizzo, attivo, user_id) 
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
       RETURNING *
     `, [
       nome, 
-      tipo, 
+      tipologia_id || null, 
       categoria || null, 
       email || null, 
       telefono || null, 
@@ -293,7 +531,7 @@ router.post('/', validate(schemas.anagrafica), async (req, res) => {
   }
 });
 
-// PUT /api/anagrafiche/:id - Aggiorna anagrafica
+// PUT /api/anagrafiche/:id - Aggiorna anagrafica (AGGIORNATO)
 router.put('/:id', validate(schemas.anagraficaUpdate), async (req, res) => {
   try {
     const anagraficaId = parseInt(req.params.id);
@@ -355,6 +593,7 @@ router.put('/:id', validate(schemas.anagraficaUpdate), async (req, res) => {
   }
 });
 
+// DELETE, TOGGLE e altri endpoint rimangono INVARIATI
 // DELETE /api/anagrafiche/:id - Elimina anagrafica (solo se non ha movimenti)
 router.delete('/:id', async (req, res) => {
   try {
@@ -423,13 +662,12 @@ router.patch('/:id/toggle-stato', async (req, res) => {
   }
 });
 
-// GET /api/anagrafiche/:id/movimenti - Movimenti dell'anagrafica
+// GET /api/anagrafiche/:id/movimenti - Movimenti dell'anagrafica (INVARIATO)
 router.get('/:id/movimenti', async (req, res) => {
   try {
     const { id } = req.params;
     const { limit = 50, offset = 0 } = req.query;
     
-    // Verifica che l'anagrafica appartenga all'utente
     const anagrafica = await queryOne(
       'SELECT id FROM anagrafiche WHERE id = $1 AND user_id = $2',
       [id, req.user.id]
@@ -451,7 +689,6 @@ router.get('/:id/movimenti', async (req, res) => {
       LIMIT $3 OFFSET $4
     `, [id, req.user.id, limit, offset]);
     
-    // Conta il totale per la paginazione
     const totalCount = await queryOne(
       'SELECT COUNT(*) as count FROM movimenti WHERE anagrafica_id = $1 AND user_id = $2',
       [id, req.user.id]
@@ -472,13 +709,12 @@ router.get('/:id/movimenti', async (req, res) => {
   }
 });
 
-// GET /api/anagrafiche/:id/statistiche - Statistiche anagrafica per mese
+// GET /api/anagrafiche/:id/statistiche - Statistiche anagrafica per mese (INVARIATO)
 router.get('/:id/statistiche', async (req, res) => {
   try {
     const { id } = req.params;
     const { mesi = 12 } = req.query;
     
-    // Verifica che l'anagrafica appartenga all'utente
     const anagrafica = await queryOne(
       'SELECT id FROM anagrafiche WHERE id = $1 AND user_id = $2',
       [id, req.user.id]

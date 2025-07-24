@@ -1,4 +1,4 @@
-// src/pages/Reports/ReportsPage.js
+// src/pages/Reports/ReportsPage.js - VERSIONE AGGIORNATA CON TIPOLOGIE
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
 import { motion } from 'framer-motion';
@@ -14,7 +14,9 @@ import {
   FileType,
   Eye,
   Settings,
-  RefreshCw
+  RefreshCw,
+  Users,
+  Building
 } from 'lucide-react';
 import { reportsAPI, contiBancariAPI, anagraficheAPI } from '../../services/api';
 import Card from '../../components/UI/Card';
@@ -31,9 +33,10 @@ const ReportsPage = () => {
   const [reportData, setReportData] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Query per dati dropdown
+  // Query per dati dropdown (AGGIORNATO)
   const { data: conti } = useQuery('conti-attivi', contiBancariAPI.getAttivi);
   const { data: anagrafiche } = useQuery('anagrafiche-attive', anagraficheAPI.getAttive);
+  const { data: tipologie } = useQuery('tipologie-anagrafiche', anagraficheAPI.getTipologie);
 
   const tabs = [
     {
@@ -46,7 +49,7 @@ const ReportsPage = () => {
       id: 'movimenti-anagrafica',
       name: 'Per Anagrafica',
       icon: BarChart3,
-      description: 'Analisi movimenti per cliente/fornitore'
+      description: 'Analisi movimenti per tipologia/anagrafica'
     },
     {
       id: 'entrate-uscite',
@@ -117,7 +120,7 @@ const ReportsPage = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Genera report dettagliati e analisi dei tuoi dati contabili
+            Genera report dettagliati e analisi dei tuoi dati contabili con tipologie flessibili
           </p>
         </div>
         <div className="mt-4 sm:mt-0 flex space-x-3">
@@ -206,6 +209,7 @@ const ReportsPage = () => {
                   onExport={handleExport}
                   isLoading={isGenerating}
                   anagrafiche={anagrafiche}
+                  tipologie={tipologie}
                 />
               )}
               {activeTab === 'entrate-uscite' && (
@@ -214,6 +218,7 @@ const ReportsPage = () => {
                   onExport={handleExport}
                   isLoading={isGenerating}
                   conti={conti}
+                  tipologie={tipologie}
                 />
               )}
               {activeTab === 'bilancio-mensile' && (
@@ -222,6 +227,7 @@ const ReportsPage = () => {
                   onExport={handleExport}
                   isLoading={isGenerating}
                   conti={conti}
+                  tipologie={tipologie}
                 />
               )}
             </Card.Body>
@@ -264,7 +270,7 @@ const ReportsPage = () => {
   );
 };
 
-// Componenti di form per ogni tipo di report
+// Componenti di form per ogni tipo di report (AGGIORNATI)
 const EstrattoConto = ({ onGenerate, onExport, isLoading, conti }) => {
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: {
@@ -364,18 +370,31 @@ const EstrattoConto = ({ onGenerate, onExport, isLoading, conti }) => {
   );
 };
 
-const MovimentiAnagrafica = ({ onGenerate, onExport, isLoading, anagrafiche }) => {
+const MovimentiAnagrafica = ({ onGenerate, onExport, isLoading, anagrafiche, tipologie }) => {
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: {
       data_inizio: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
       data_fine: new Date().toISOString().split('T')[0],
       anagrafica_id: '',
+      tipologia_id: '', // NUOVO
       tipo: ''
     }
   });
 
   const onSubmit = (data) => {
     onGenerate(data, 'getMovimentiAnagrafica');
+  };
+
+  // Helper per ottenere icona tipologia
+  const getIconForTipologia = (iconName) => {
+    const iconMap = {
+      'user': Users,
+      'building': Building,
+      'truck': Building,
+      'star': Users,
+      'users': Users
+    };
+    return iconMap[iconName] || Users;
   };
 
   return (
@@ -407,13 +426,30 @@ const MovimentiAnagrafica = ({ onGenerate, onExport, isLoading, anagrafiche }) =
         </select>
       </div>
 
+      {/* NUOVO: Filtro per tipologia */}
+      <div>
+        <label className="form-label">Tipologia Anagrafica</label>
+        <select className="form-select" {...register('tipologia_id')}>
+          <option value="">Tutte le tipologie</option>
+          {tipologie?.map(tipologia => {
+            const Icon = getIconForTipologia(tipologia.icona);
+            return (
+              <option key={tipologia.id} value={tipologia.id}>
+                {tipologia.nome} ({tipologia.tipo_movimento_default})
+              </option>
+            );
+          })}
+        </select>
+      </div>
+
       <div>
         <label className="form-label">Anagrafica Specifica</label>
         <select className="form-select" {...register('anagrafica_id')}>
           <option value="">Tutte le anagrafiche</option>
           {anagrafiche?.map(anagrafica => (
             <option key={anagrafica.id} value={anagrafica.id}>
-              {anagrafica.nome} ({anagrafica.tipo})
+              {anagrafica.nome} 
+              {anagrafica.tipologia_nome && ` (${anagrafica.tipologia_nome})`}
             </option>
           ))}
         </select>
@@ -464,12 +500,13 @@ const MovimentiAnagrafica = ({ onGenerate, onExport, isLoading, anagrafiche }) =
   );
 };
 
-const EntrateUscite = ({ onGenerate, onExport, isLoading, conti }) => {
+const EntrateUscite = ({ onGenerate, onExport, isLoading, conti, tipologie }) => {
   const { register, handleSubmit, formState: { errors } } = useForm({
     defaultValues: {
       data_inizio: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
       data_fine: new Date().toISOString().split('T')[0],
       conto_id: '',
+      tipologia_id: '', // NUOVO
       categoria: ''
     }
   });
@@ -505,6 +542,19 @@ const EntrateUscite = ({ onGenerate, onExport, isLoading, conti }) => {
           {conti?.map(conto => (
             <option key={conto.id} value={conto.id}>
               {conto.nome_banca}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* NUOVO: Filtro per tipologia */}
+      <div>
+        <label className="form-label">Tipologia Anagrafica</label>
+        <select className="form-select" {...register('tipologia_id')}>
+          <option value="">Tutte le tipologie</option>
+          {tipologie?.map(tipologia => (
+            <option key={tipologia.id} value={tipologia.id}>
+              {tipologia.nome} ({tipologia.tipo_movimento_default})
             </option>
           ))}
         </select>
@@ -565,11 +615,12 @@ const EntrateUscite = ({ onGenerate, onExport, isLoading, conti }) => {
   );
 };
 
-const BilancioMensile = ({ onGenerate, onExport, isLoading, conti }) => {
+const BilancioMensile = ({ onGenerate, onExport, isLoading, conti, tipologie }) => {
   const { register, handleSubmit } = useForm({
     defaultValues: {
       anno: new Date().getFullYear(),
-      conto_id: ''
+      conto_id: '',
+      tipologia_id: '' // NUOVO
     }
   });
 
@@ -598,6 +649,19 @@ const BilancioMensile = ({ onGenerate, onExport, isLoading, conti }) => {
           {conti?.map(conto => (
             <option key={conto.id} value={conto.id}>
               {conto.nome_banca}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* NUOVO: Filtro per tipologia */}
+      <div>
+        <label className="form-label">Tipologia Anagrafica</label>
+        <select className="form-select" {...register('tipologia_id')}>
+          <option value="">Tutte le tipologie</option>
+          {tipologie?.map(tipologia => (
+            <option key={tipologia.id} value={tipologia.id}>
+              {tipologia.nome} ({tipologia.tipo_movimento_default})
             </option>
           ))}
         </select>
@@ -681,8 +745,164 @@ const ReportResults = ({ data, type }) => {
         </div>
       )}
 
+      {/* Distribuzione Tipologie (NUOVO) */}
+      {data.distribuzione_tipologie && (
+        <div className="space-y-4">
+          <h4 className="text-lg font-medium text-gray-900">Distribuzione per Tipologie</h4>
+          
+          {data.distribuzione_tipologie.entrate?.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h5 className="text-md font-medium text-success-600 mb-2">Entrate per Tipologia</h5>
+                <div className="space-y-2">
+                  {data.distribuzione_tipologie.entrate.slice(0, 5).map((tipologia, index) => (
+                    <div key={tipologia.tipologia} className="flex items-center justify-between p-2 bg-success-50 rounded">
+                      <div className="flex items-center">
+                        <div 
+                          className="w-3 h-3 rounded-full mr-2"
+                          style={{ backgroundColor: tipologia.colore || '#10b981' }}
+                        />
+                        <span className="text-sm text-gray-700">{tipologia.tipologia}</span>
+                      </div>
+                      <span className="text-sm font-medium text-success-600">
+                        €{parseFloat(tipologia.totale).toLocaleString('it-IT', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <h5 className="text-md font-medium text-danger-600 mb-2">Uscite per Tipologia</h5>
+                <div className="space-y-2">
+                  {data.distribuzione_tipologie.uscite.slice(0, 5).map((tipologia, index) => (
+                    <div key={tipologia.tipologia} className="flex items-center justify-between p-2 bg-danger-50 rounded">
+                      <div className="flex items-center">
+                        <div 
+                          className="w-3 h-3 rounded-full mr-2"
+                          style={{ backgroundColor: tipologia.colore || '#ef4444' }}
+                        />
+                        <span className="text-sm text-gray-700">{tipologia.tipologia}</span>
+                      </div>
+                      <span className="text-sm font-medium text-danger-600">
+                        €{parseFloat(tipologia.totale).toLocaleString('it-IT', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Top Tipologie (NUOVO per bilancio mensile) */}
+      {data.top_tipologie && (
+        <div className="space-y-4">
+          <h4 className="text-lg font-medium text-gray-900">Top Tipologie dell'Anno</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.top_tipologie.slice(0, 10).map((tipologia, index) => (
+              <div key={`${tipologia.tipologia}-${tipologia.tipo}`} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3"
+                       style={{ backgroundColor: (tipologia.colore || '#6B7280') + '20' }}>
+                    <span className="text-xs font-semibold" style={{ color: tipologia.colore || '#6B7280' }}>
+                      #{index + 1}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {tipologia.tipologia}
+                    </p>
+                    <div className="flex items-center space-x-2">
+                      <Badge variant={tipologia.tipo === 'Entrata' ? 'success' : 'danger'} size="xs">
+                        {tipologia.tipo}
+                      </Badge>
+                      <span className="text-xs text-gray-500">
+                        {tipologia.numero_movimenti} movimenti
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={`text-sm font-semibold ${
+                    tipologia.tipo === 'Entrata' ? 'text-success-600' : 'text-danger-600'
+                  }`}>
+                    €{parseFloat(tipologia.totale).toLocaleString('it-IT', { 
+                      minimumFractionDigits: 2 
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Raggruppamento per tipologia (per report movimenti anagrafica) */}
+      {data.raggruppamento && (
+        <div className="space-y-4">
+          <h4 className="text-lg font-medium text-gray-900">Dettaglio per Tipologia e Anagrafica</h4>
+          {data.raggruppamento.map((gruppo, index) => (
+            <div key={index} className="border rounded-lg overflow-hidden">
+              <div className="p-4 bg-gray-50 border-b">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <div 
+                      className="w-4 h-4 rounded-full mr-3"
+                      style={{ backgroundColor: gruppo.tipologia.colore || '#6B7280' }}
+                    />
+                    <div>
+                      <h5 className="font-medium text-gray-900">
+                        {gruppo.tipologia.nome}
+                      </h5>
+                      <p className="text-sm text-gray-600">
+                        {gruppo.anagrafica.nome}
+                        {gruppo.anagrafica.categoria && ` • ${gruppo.anagrafica.categoria}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {gruppo.totali.numero_movimenti} movimenti
+                    </p>
+                    <p className={`text-lg font-bold ${
+                      gruppo.totali.saldo_netto >= 0 ? 'text-success-600' : 'text-danger-600'
+                    }`}>
+                      €{parseFloat(gruppo.totali.saldo_netto).toLocaleString('it-IT', { 
+                        minimumFractionDigits: 2 
+                      })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Entrate:</span>
+                    <span className="ml-2 font-medium text-success-600">
+                      €{parseFloat(gruppo.totali.totale_entrate).toLocaleString('it-IT', { 
+                        minimumFractionDigits: 2 
+                      })}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Uscite:</span>
+                    <span className="ml-2 font-medium text-danger-600">
+                      €{parseFloat(gruppo.totali.totale_uscite).toLocaleString('it-IT', { 
+                        minimumFractionDigits: 2 
+                      })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <Alert type="success">
-        Report generato con successo! Utilizza i pulsanti di export per scaricare i dati.
+        Report generato con successo! Utilizza i pulsanti di export per scaricare i dati in formato CSV, Excel o PDF.
       </Alert>
     </div>
   );

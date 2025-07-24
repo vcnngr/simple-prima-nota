@@ -1,4 +1,4 @@
-// src/pages/Anagrafiche/AnagrafichePage.js
+// src/pages/Anagrafiche/AnagrafichePage.js - VERSIONE FLESSIBILE CON TIPOLOGIE
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { useSearchParams } from 'react-router-dom';
@@ -19,7 +19,8 @@ import {
   Filter,
   Search,
   Download,
-  Tag
+  Tag,
+  Settings
 } from 'lucide-react';
 import { anagraficheAPI } from '../../services/api';
 import Card from '../../components/UI/Card';
@@ -33,6 +34,7 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import AutocompleteInput from '../../components/UI/AutocompleteInput';
 import { categorieAnagraficheAPI } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
 
 const AnagrafichePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -40,9 +42,11 @@ const AnagrafichePage = () => {
   const [editingAnagrafica, setEditingAnagrafica] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filtroTipo, setFiltroTipo] = useState('tutti');
+  const [filtroTipologia, setFiltroTipologia] = useState(''); // AGGIORNATO
   const [filtroCategoria, setFiltroCategoria] = useState('');
   const [filtroStato, setFiltroStato] = useState('tutti');
+
+  const navigate = useNavigate();
   
   const queryClient = useQueryClient();
   
@@ -54,11 +58,16 @@ const AnagrafichePage = () => {
     }
   }, [searchParams]);
   
-  // Query per ottenere anagrafiche
+  // Query per ottenere anagrafiche (AGGIORNATO)
   const { data: anagrafiche, isLoading, error } = useQuery(
-    ['anagrafiche', { tipo: filtroTipo !== 'tutti' ? filtroTipo : undefined, search: searchTerm, attivo: filtroStato !== 'tutti' ? filtroStato === 'attivi' : undefined, categoria: filtroCategoria || undefined }],
+    ['anagrafiche', { 
+      tipologia_id: filtroTipologia || undefined, 
+      search: searchTerm, 
+      attivo: filtroStato !== 'tutti' ? filtroStato === 'attivi' : undefined, 
+      categoria: filtroCategoria || undefined 
+    }],
     () => anagraficheAPI.getAll({
-      tipo: filtroTipo !== 'tutti' ? filtroTipo : undefined,
+      tipologia_id: filtroTipologia || undefined,
       search: searchTerm || undefined,
       attivo: filtroStato !== 'tutti' ? filtroStato === 'attivi' : undefined,
       categoria: filtroCategoria || undefined
@@ -66,6 +75,15 @@ const AnagrafichePage = () => {
     {
       refetchOnWindowFocus: false,
       keepPreviousData: true
+    }
+  );
+  
+  // Query per tipologie (NUOVO)
+  const { data: tipologie } = useQuery(
+    'tipologie-anagrafiche',
+    anagraficheAPI.getTipologie,
+    {
+      refetchOnWindowFocus: false,
     }
   );
   
@@ -78,11 +96,12 @@ const AnagrafichePage = () => {
     }
   );
   
-  // Mutations
+  // Mutations (INVARIATE)
   const createMutation = useMutation(anagraficheAPI.create, {
     onSuccess: () => {
       queryClient.invalidateQueries('anagrafiche');
       queryClient.invalidateQueries('anagrafiche-categorie');
+      queryClient.invalidateQueries('tipologie-anagrafiche');
       setShowModal(false);
       setEditingAnagrafica(null);
       toast.success('Anagrafica creata con successo');
@@ -98,6 +117,7 @@ const AnagrafichePage = () => {
       onSuccess: () => {
         queryClient.invalidateQueries('anagrafiche');
         queryClient.invalidateQueries('anagrafiche-categorie');
+        queryClient.invalidateQueries('tipologie-anagrafiche');
         setShowModal(false);
         setEditingAnagrafica(null);
         toast.success('Anagrafica aggiornata con successo');
@@ -128,17 +148,22 @@ const AnagrafichePage = () => {
     }
   });
   
-  // Calcoli riassuntivi
+  // Calcoli riassuntivi (AGGIORNATO)
   const riassunto = React.useMemo(() => {
-    if (!anagrafiche) return { totale: 0, clienti: 0, fornitori: 0, attive: 0 };
+    if (!anagrafiche || !tipologie) return { totale: 0, per_tipologia: {}, attive: 0 };
+    
+    const perTipologia = {};
+    tipologie.forEach(tip => {
+      perTipologia[tip.nome] = anagrafiche.filter(a => a.tipologia_nome === tip.nome).length;
+    });
     
     return {
       totale: anagrafiche.length,
-      clienti: anagrafiche.filter(a => a.tipo === 'Cliente').length,
-      fornitori: anagrafiche.filter(a => a.tipo === 'Fornitore').length,
-      attive: anagrafiche.filter(a => a.attivo).length
+      per_tipologia: perTipologia,
+      attive: anagrafiche.filter(a => a.attivo).length,
+      tipologie_count: tipologie.length
     };
-  }, [anagrafiche]);
+  }, [anagrafiche, tipologie]);
   
   const handleEdit = (anagrafica) => {
     setEditingAnagrafica(anagrafica);
@@ -158,7 +183,7 @@ const AnagrafichePage = () => {
   const handleExport = async (formato) => {
     try {
       const params = new URLSearchParams({ formato });
-      if (filtroTipo !== 'tutti') params.append('tipo', filtroTipo);
+      if (filtroTipologia) params.append('tipologia_id', filtroTipologia);
       
       const response = await fetch(`/api/anagrafiche/export?${params}`, {
         headers: {
@@ -189,9 +214,21 @@ const AnagrafichePage = () => {
   
   const resetFiltri = () => {
     setSearchTerm('');
-    setFiltroTipo('tutti');
+    setFiltroTipologia('');
     setFiltroCategoria('');
     setFiltroStato('tutti');
+  };
+
+  // Helper per ottenere icona tipologia (NUOVO)
+  const getIconForTipologia = (iconName) => {
+    const iconMap = {
+      'user': UserPlus,
+      'building': Building,
+      'truck': Building, // Fallback
+      'star': UserPlus,
+      'users': Users
+    };
+    return iconMap[iconName] || UserPlus;
   };
   
   if (isLoading) {
@@ -217,7 +254,7 @@ const AnagrafichePage = () => {
     <div>
     <h1 className="text-2xl font-bold text-gray-900">Anagrafiche</h1>
     <p className="mt-1 text-sm text-gray-600">
-    Gestisci clienti e fornitori
+    Gestisci le tue anagrafiche con tipologie personalizzabili
     </p>
     </div>
     <div className="mt-4 sm:mt-0 flex space-x-3">
@@ -228,6 +265,14 @@ const AnagrafichePage = () => {
     >
     <Filter className="w-4 h-4 mr-1" />
     Filtri
+    </Button>
+    <Button
+    variant="outline"
+    onClick={() => navigate('/tipologie')}
+    className="flex items-center"
+    >
+    <Settings className="w-4 h-4 mr-1" />
+    Tipologie
     </Button>
     <Button
     variant="primary"
@@ -242,7 +287,7 @@ const AnagrafichePage = () => {
     </div>
     </div>
     
-    {/* Riassunto */}
+    {/* Riassunto (AGGIORNATO) */}
     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
     <Card>
     <Card.Body className="flex items-center">
@@ -257,29 +302,25 @@ const AnagrafichePage = () => {
     </Card.Body>
     </Card>
     
-    <Card>
-    <Card.Body className="flex items-center">
-    <div className="flex-shrink-0 p-3 bg-success-100 rounded-lg">
-    <UserPlus className="w-6 h-6 text-success-600" />
-    </div>
-    <div className="ml-4">
-    <p className="text-sm font-medium text-gray-600">Clienti</p>
-    <p className="text-2xl font-semibold text-success-600">{riassunto.clienti}</p>
-    </div>
-    </Card.Body>
-    </Card>
-    
-    <Card>
-    <Card.Body className="flex items-center">
-    <div className="flex-shrink-0 p-3 bg-warning-100 rounded-lg">
-    <Building className="w-6 h-6 text-warning-600" />
-    </div>
-    <div className="ml-4">
-    <p className="text-sm font-medium text-gray-600">Fornitori</p>
-    <p className="text-2xl font-semibold text-warning-600">{riassunto.fornitori}</p>
-    </div>
-    </Card.Body>
-    </Card>
+    {/* Mostra top 3 tipologie */}
+    {tipologie?.slice(0, 3).map((tipologia, index) => {
+      const Icon = getIconForTipologia(tipologia.icona);
+      return (
+        <Card key={tipologia.id}>
+        <Card.Body className="flex items-center">
+        <div className="flex-shrink-0 p-3 rounded-lg" style={{backgroundColor: tipologia.colore + '20'}}>
+        <Icon className="w-6 h-6" style={{color: tipologia.colore}} />
+        </div>
+        <div className="ml-4">
+        <p className="text-sm font-medium text-gray-600">{tipologia.nome}</p>
+        <p className="text-2xl font-semibold" style={{color: tipologia.colore}}>
+        {riassunto.per_tipologia[tipologia.nome] || 0}
+        </p>
+        </div>
+        </Card.Body>
+        </Card>
+      );
+    })}
     
     <Card>
     <Card.Body className="flex items-center">
@@ -287,14 +328,15 @@ const AnagrafichePage = () => {
     <Tag className="w-6 h-6 text-gray-600" />
     </div>
     <div className="ml-4">
-    <p className="text-sm font-medium text-gray-600">Categorie</p>
-    <p className="text-2xl font-semibold text-gray-900">{categorie?.length || 0}</p>
+    <p className="text-sm font-medium text-gray-600">Tipologie</p>
+    <p className="text-2xl font-semibold text-gray-900">{riassunto.tipologie_count}</p>
+    <p className="text-xs text-gray-500">configurabili</p>
     </div>
     </Card.Body>
     </Card>
     </div>
     
-    {/* Filtri */}
+    {/* Filtri (AGGIORNATO) */}
     {showFilters && (
       <motion.div
       initial={{ opacity: 0, height: 0 }}
@@ -318,15 +360,18 @@ const AnagrafichePage = () => {
       </div>
       </div>
       <div>
-      <label className="form-label">Tipo</label>
+      <label className="form-label">Tipologia</label>
       <select
       className="form-select"
-      value={filtroTipo}
-      onChange={(e) => setFiltroTipo(e.target.value)}
+      value={filtroTipologia}
+      onChange={(e) => setFiltroTipologia(e.target.value)}
       >
-      <option value="tutti">Tutti</option>
-      <option value="Cliente">Solo Clienti</option>
-      <option value="Fornitore">Solo Fornitori</option>
+      <option value="">Tutte le tipologie</option>
+      {tipologie?.map((tipologia) => (
+        <option key={tipologia.id} value={tipologia.id}>
+        {tipologia.nome}
+        </option>
+      ))}
       </select>
       </div>
       <div>
@@ -367,7 +412,7 @@ const AnagrafichePage = () => {
       </motion.div>
     )}
     
-    {/* Tabella anagrafiche */}
+    {/* Tabella anagrafiche (AGGIORNATA) */}
     <Card>
     <Card.Header className="flex items-center justify-between">
     <h3 className="text-lg font-semibold text-gray-900">
@@ -399,7 +444,7 @@ const AnagrafichePage = () => {
     <Table.Header>
     <Table.Row>
     <Table.HeaderCell>Nome</Table.HeaderCell>
-    <Table.HeaderCell>Tipo</Table.HeaderCell>
+    <Table.HeaderCell>Tipologia</Table.HeaderCell>
     <Table.HeaderCell>Categoria</Table.HeaderCell>
     <Table.HeaderCell>Contatti</Table.HeaderCell>
     <Table.HeaderCell className="text-right">Movimenti</Table.HeaderCell>
@@ -410,144 +455,148 @@ const AnagrafichePage = () => {
     </Table.Row>
     </Table.Header>
     <Table.Body loading={isLoading} emptyMessage="Nessuna anagrafica trovata">
-    {anagrafiche?.map((anagrafica) => (
-      <Table.Row key={anagrafica.id}>
-      <Table.Cell>
-      <div className="flex items-center">
-      <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
-        anagrafica.tipo === 'Cliente' ? 'bg-success-100' : 'bg-warning-100'
-      }`}>
-      {anagrafica.tipo === 'Cliente' ? (
-        <UserPlus className={`w-5 h-5 ${
-          anagrafica.tipo === 'Cliente' ? 'text-success-600' : 'text-warning-600'
-        }`} />
-      ) : (
-        <Building className={`w-5 h-5 ${
-          anagrafica.tipo === 'Cliente' ? 'text-success-600' : 'text-warning-600'
-        }`} />
-      )}
-      </div>
-      <div className="ml-3">
-      <p className="text-sm font-medium text-gray-900">
-      {anagrafica.nome}
-      </p>
-      {anagrafica.piva && (
-        <p className="text-xs text-gray-500">
-        P.IVA: {anagrafica.piva}
-        </p>
-      )}
-      </div>
-      </div>
-      </Table.Cell>
-      <Table.Cell>
-      <Badge 
-      variant={anagrafica.tipo === 'Cliente' ? 'success' : 'warning'}
-      >
-      {anagrafica.tipo}
-      </Badge>
-      </Table.Cell>
-      <Table.Cell>
-      {anagrafica.categoria ? (
-        <Badge variant="gray">{anagrafica.categoria}</Badge>
-      ) : (
-        <span className="text-gray-400">-</span>
-      )}
-      </Table.Cell>
-      <Table.Cell>
-      <div className="space-y-1">
-      {anagrafica.email && (
-        <div className="flex items-center text-xs text-gray-600">
-        <Mail className="w-3 h-3 mr-1" />
-        {anagrafica.email}
+    {anagrafiche?.map((anagrafica) => {
+      const IconTipologia = getIconForTipologia(anagrafica.tipologia_icona);
+      return (
+        <Table.Row key={anagrafica.id}>
+        <Table.Cell>
+        <div className="flex items-center">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center" 
+             style={{backgroundColor: (anagrafica.tipologia_colore || '#6B7280') + '20'}}>
+        <IconTipologia className="w-5 h-5" 
+                       style={{color: anagrafica.tipologia_colore || '#6B7280'}} />
         </div>
-      )}
-      {anagrafica.telefono && (
-        <div className="flex items-center text-xs text-gray-600">
-        <Phone className="w-3 h-3 mr-1" />
-        {anagrafica.telefono}
-        </div>
-      )}
-      {!anagrafica.email && !anagrafica.telefono && (
-        <span className="text-gray-400">-</span>
-      )}
-      </div>
-      </Table.Cell>
-      <Table.Cell className="text-right">
-      <p className="text-sm text-gray-900">
-      {anagrafica.numero_movimenti || 0}
-      </p>
-      {anagrafica.ultimo_movimento && (
-        <p className="text-xs text-gray-500">
-        {new Date(anagrafica.ultimo_movimento).toLocaleDateString('it-IT')}
+        <div className="ml-3">
+        <p className="text-sm font-medium text-gray-900">
+        {anagrafica.nome}
         </p>
-      )}
-      </Table.Cell>
-      <Table.Cell className="text-right">
-      <p className="text-sm font-semibold text-success-600">
-      €{parseFloat(anagrafica.totale_entrate || 0).toLocaleString('it-IT', { 
-        minimumFractionDigits: 2 
-      })}
-      </p>
-      </Table.Cell>
-      <Table.Cell className="text-right">
-      <p className="text-sm font-semibold text-danger-600">
-      €{parseFloat(anagrafica.totale_uscite || 0).toLocaleString('it-IT', { 
-        minimumFractionDigits: 2 
-      })}
-      </p>
-      </Table.Cell>
-      <Table.Cell>
-      <Badge 
-      variant={anagrafica.attivo ? 'success' : 'gray'}
-      className="flex items-center"
-      >
-      <span className={`w-2 h-2 rounded-full mr-1 ${
-        anagrafica.attivo ? 'bg-success-500' : 'bg-gray-400'
-      }`} />
-      {anagrafica.attivo ? 'Attivo' : 'Inattivo'}
-      </Badge>
-      </Table.Cell>
-      <Table.Cell className="text-right">
-      <div className="flex items-center justify-end space-x-1">
-      <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => handleEdit(anagrafica)}
-      title="Modifica"
-      >
-      <Edit className="w-4 h-4" />
-      </Button>
-      <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => handleToggleStato(anagrafica)}
-      title={anagrafica.attivo ? 'Disattiva' : 'Attiva'}
-      >
-      {anagrafica.attivo ? (
-        <ToggleRight className="w-4 h-4 text-success-600" />
-      ) : (
-        <ToggleLeft className="w-4 h-4 text-gray-400" />
-      )}
-      </Button>
-      <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => handleDelete(anagrafica)}
-      title="Elimina"
-      className="text-danger-600 hover:text-danger-700"
-      >
-      <Trash2 className="w-4 h-4" />
-      </Button>
-      </div>
-      </Table.Cell>
-      </Table.Row>
-    ))}
+        {anagrafica.piva && (
+          <p className="text-xs text-gray-500">
+          P.IVA: {anagrafica.piva}
+          </p>
+        )}
+        </div>
+        </div>
+        </Table.Cell>
+        <Table.Cell>
+        {anagrafica.tipologia_nome ? (
+          <Badge 
+          variant="custom"
+          className="flex items-center"
+          style={{
+            backgroundColor: (anagrafica.tipologia_colore || '#6B7280') + '20',
+            color: anagrafica.tipologia_colore || '#6B7280'
+          }}
+          >
+          {anagrafica.tipologia_nome}
+          </Badge>
+        ) : (
+          <Badge variant="gray">Senza tipologia</Badge>
+        )}
+        </Table.Cell>
+        <Table.Cell>
+        {anagrafica.categoria ? (
+          <Badge variant="gray">{anagrafica.categoria}</Badge>
+        ) : (
+          <span className="text-gray-400">-</span>
+        )}
+        </Table.Cell>
+        <Table.Cell>
+        <div className="space-y-1">
+        {anagrafica.email && (
+          <div className="flex items-center text-xs text-gray-600">
+          <Mail className="w-3 h-3 mr-1" />
+          {anagrafica.email}
+          </div>
+        )}
+        {anagrafica.telefono && (
+          <div className="flex items-center text-xs text-gray-600">
+          <Phone className="w-3 h-3 mr-1" />
+          {anagrafica.telefono}
+          </div>
+        )}
+        {!anagrafica.email && !anagrafica.telefono && (
+          <span className="text-gray-400">-</span>
+        )}
+        </div>
+        </Table.Cell>
+        <Table.Cell className="text-right">
+        <p className="text-sm text-gray-900">
+        {anagrafica.numero_movimenti || 0}
+        </p>
+        {anagrafica.ultimo_movimento && (
+          <p className="text-xs text-gray-500">
+          {new Date(anagrafica.ultimo_movimento).toLocaleDateString('it-IT')}
+          </p>
+        )}
+        </Table.Cell>
+        <Table.Cell className="text-right">
+        <p className="text-sm font-semibold text-success-600">
+        €{parseFloat(anagrafica.totale_entrate || 0).toLocaleString('it-IT', { 
+          minimumFractionDigits: 2 
+        })}
+        </p>
+        </Table.Cell>
+        <Table.Cell className="text-right">
+        <p className="text-sm font-semibold text-danger-600">
+        €{parseFloat(anagrafica.totale_uscite || 0).toLocaleString('it-IT', { 
+          minimumFractionDigits: 2 
+        })}
+        </p>
+        </Table.Cell>
+        <Table.Cell>
+        <Badge 
+        variant={anagrafica.attivo ? 'success' : 'gray'}
+        className="flex items-center"
+        >
+        <span className={`w-2 h-2 rounded-full mr-1 ${
+          anagrafica.attivo ? 'bg-success-500' : 'bg-gray-400'
+        }`} />
+        {anagrafica.attivo ? 'Attivo' : 'Inattivo'}
+        </Badge>
+        </Table.Cell>
+        <Table.Cell className="text-right">
+        <div className="flex items-center justify-end space-x-1">
+        <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => handleEdit(anagrafica)}
+        title="Modifica"
+        >
+        <Edit className="w-4 h-4" />
+        </Button>
+        <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => handleToggleStato(anagrafica)}
+        title={anagrafica.attivo ? 'Disattiva' : 'Attiva'}
+        >
+        {anagrafica.attivo ? (
+          <ToggleRight className="w-4 h-4 text-success-600" />
+        ) : (
+          <ToggleLeft className="w-4 h-4 text-gray-400" />
+        )}
+        </Button>
+        <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => handleDelete(anagrafica)}
+        title="Elimina"
+        className="text-danger-600 hover:text-danger-700"
+        >
+        <Trash2 className="w-4 h-4" />
+        </Button>
+        </div>
+        </Table.Cell>
+        </Table.Row>
+      );
+    })}
     </Table.Body>
     </Table>
     </Card.Body>
     </Card>
     
-    {/* Modal Form */}
+    {/* Modal Form (AGGIORNATO) */}
     <AnagraficaModal
     isOpen={showModal}
     onClose={() => {
@@ -564,13 +613,14 @@ const AnagrafichePage = () => {
       }
     }}
     isLoading={createMutation.isLoading || updateMutation.isLoading}
+    tipologie={tipologie}
     />
     </div>
   );
 };
 
-// Componente Modal per Form Anagrafica
-const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => {
+// Componente Modal per Form Anagrafica (AGGIORNATO)
+const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading, tipologie }) => {
   const {
     register,
     handleSubmit,
@@ -580,16 +630,22 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
     formState: { errors }
   } = useForm();
 
-  const watchTipo = watch('tipo');
+  const watchTipologiaId = watch('tipologia_id');
   const watchCategoria = watch('categoria');
+
+  // Trova tipologia selezionata per mostrare info
+  const tipologiaSelezionata = tipologie?.find(t => t.id == watchTipologiaId);
 
   React.useEffect(() => {
     if (anagrafica) {
-      reset(anagrafica);
+      reset({
+        ...anagrafica,
+        tipologia_id: anagrafica.tipologia_id || ''
+      });
     } else {
       reset({
         nome: '',
-        tipo: 'Cliente',
+        tipologia_id: '',
         categoria: '',
         email: '',
         telefono: '',
@@ -601,9 +657,9 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
   }, [anagrafica, reset]);
 
   const onSubmit = (data) => {
-    // Pulisci la categoria se vuota
     const cleanData = {
       ...data,
+      tipologia_id: data.tipologia_id || null,
       categoria: data.categoria?.trim() || null
     };
     onSave(cleanData);
@@ -613,9 +669,7 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
     setValue('categoria', selection.nome);
     
     if (selection.isNew) {
-      // Opzionalmente potresti aprire un modal per creare la categoria completa
       console.log('🆕 Nuova categoria anagrafica da creare:', selection.nome);
-      // TODO: Implementare creazione categoria se necessario
     }
   };
 
@@ -634,7 +688,7 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
             <input
               type="text"
               className={`form-input ${errors.nome ? 'border-danger-500' : ''}`}
-              placeholder="Nome cliente/fornitore"
+              placeholder="Nome anagrafica"
               {...register('nome', {
                 required: 'Nome è richiesto',
                 maxLength: {
@@ -648,18 +702,27 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
             )}
           </div>
 
-          {/* Tipo */}
+          {/* Tipologia (NUOVO) */}
           <div>
-            <label className="form-label">Tipo *</label>
+            <label className="form-label">Tipologia</label>
             <select
-              className={`form-select ${errors.tipo ? 'border-danger-500' : ''}`}
-              {...register('tipo', { required: 'Tipo è richiesto' })}
+              className={`form-select ${errors.tipologia_id ? 'border-danger-500' : ''}`}
+              {...register('tipologia_id')}
             >
-              <option value="Cliente">Cliente</option>
-              <option value="Fornitore">Fornitore</option>
+              <option value="">Seleziona tipologia</option>
+              {tipologie?.map(tipologia => (
+                <option key={tipologia.id} value={tipologia.id}>
+                  {tipologia.nome} ({tipologia.tipo_movimento_default})
+                </option>
+              ))}
             </select>
-            {errors.tipo && (
-              <p className="form-error">{errors.tipo.message}</p>
+            {tipologiaSelezionata && (
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Tipologia per movimenti: <span className="font-medium">{tipologiaSelezionata.tipo_movimento_default}</span>
+              </p>
+            )}
+            {errors.tipologia_id && (
+              <p className="form-error">{errors.tipologia_id.message}</p>
             )}
           </div>
         </div>
@@ -669,7 +732,7 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
           <label className="form-label">
             Categoria
             <span className="text-sm text-gray-500 ml-2">
-              (es. {watchTipo === 'Cliente' ? 'Azienda, Privato, Premium' : 'Materiali, Servizi, Consulenza'})
+              (es. VIP, Locale, Strategico)
             </span>
           </label>
           <AutocompleteInput
@@ -677,7 +740,7 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
             onChange={(value) => setValue('categoria', value)}
             onSelect={handleCategoriaSelect}
             apiEndpoint="/categorie-anagrafiche"
-            placeholder={`Categoria ${watchTipo?.toLowerCase() || 'anagrafica'}...`}
+            placeholder="Categoria anagrafica..."
             createLabel="Crea nuova categoria"
             allowCreate={true}
             showColorDots={true}
@@ -688,7 +751,7 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading }) => 
             <p className="form-error">{errors.categoria.message}</p>
           )}
           <p className="text-xs text-gray-500 mt-1">
-            Digita per cercare categorie esistenti o crearne di nuove
+            Opzionale. Aiuta a organizzare le anagrafiche per analisi
           </p>
         </div>
 

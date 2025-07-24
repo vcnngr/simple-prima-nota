@@ -1,5 +1,5 @@
 // ==============================================================================
-// FILE: backend/middleware/validation.js
+// FILE: backend/middleware/validation.js - VERSIONE FLESSIBILE
 // POSIZIONE: backend/middleware/validation.js (SOSTITUISCI COMPLETAMENTE)
 // ==============================================================================
 
@@ -7,7 +7,7 @@ const Joi = require('joi');
 
 const schemas = {
   // ============================================================================
-  // SCHEMA UTENTI E AUTH
+  // SCHEMA UTENTI E AUTH (INVARIATI)
   // ============================================================================
   user: Joi.object({
     username: Joi.string()
@@ -43,7 +43,7 @@ const schemas = {
   }),
 
   // ============================================================================
-  // SCHEMA CONTI BANCARI
+  // SCHEMA CONTI BANCARI (INVARIATI)
   // ============================================================================
   contoBancario: Joi.object({
     nome_banca: Joi.string().max(100).required(),
@@ -62,12 +62,46 @@ const schemas = {
   }).options({ stripUnknown: true }),
 
   // ============================================================================
-  // SCHEMA ANAGRAFICHE (AGGIORNATI)
+  // SCHEMA TIPOLOGIE ANAGRAFICHE (NUOVI)
+  // ============================================================================
+  tipologiaAnagrafica: Joi.object({
+    nome: Joi.string().max(100).required().messages({
+      'string.max': 'Nome tipologia non può superare 100 caratteri',
+      'any.required': 'Nome tipologia è richiesto'
+    }),
+    descrizione: Joi.string().max(500).allow('', null).optional(),
+    tipo_movimento_default: Joi.string().valid('Entrata', 'Uscita', 'Entrambi').default('Entrambi').messages({
+      'any.only': 'Tipo movimento deve essere Entrata, Uscita o Entrambi'
+    }),
+    colore: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional().messages({
+      'string.pattern.base': 'Colore deve essere in formato hex (#RRGGBB)'
+    }),
+    icona: Joi.string().max(50).optional()
+  }).options({ stripUnknown: true }),
+
+  tipologiaAnagraficaUpdate: Joi.object({
+    nome: Joi.string().max(100).optional().messages({
+      'string.max': 'Nome tipologia non può superare 100 caratteri'
+    }),
+    descrizione: Joi.string().max(500).allow('', null).optional(),
+    tipo_movimento_default: Joi.string().valid('Entrata', 'Uscita', 'Entrambi').optional().messages({
+      'any.only': 'Tipo movimento deve essere Entrata, Uscita o Entrambi'
+    }),
+    colore: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional().messages({
+      'string.pattern.base': 'Colore deve essere in formato hex (#RRGGBB)'
+    }),
+    icona: Joi.string().max(50).optional(),
+    attiva: Joi.boolean().optional()
+  }).options({ stripUnknown: true }),
+
+  // ============================================================================
+  // SCHEMA ANAGRAFICHE (AGGIORNATI - TIPOLOGIE FLESSIBILI)
   // ============================================================================
   anagrafica: Joi.object({
     nome: Joi.string().max(100).required(),
-    tipo: Joi.string().valid('Cliente', 'Fornitore').required(),
-    categoria: Joi.string().max(100).allow('', null).optional(), // ✅ LIBERA
+    tipologia_id: Joi.number().integer().allow(null).optional(),
+    tipo_movimento_preferito: Joi.string().valid('Entrata', 'Uscita', 'Entrambi').allow(null).optional(),
+    categoria: Joi.string().max(100).allow('', null).optional(),
     email: Joi.string().email().allow('', null).optional(),
     telefono: Joi.string().max(20).allow('', null).optional(),
     piva: Joi.string().max(20).allow('', null).optional(),
@@ -77,8 +111,9 @@ const schemas = {
 
   anagraficaUpdate: Joi.object({
     nome: Joi.string().max(100).optional(),
-    tipo: Joi.string().valid('Cliente', 'Fornitore').optional(),
-    categoria: Joi.string().max(100).allow('', null).optional(), // ✅ LIBERA
+    tipologia_id: Joi.number().integer().allow(null).optional(),
+    tipo_movimento_preferito: Joi.string().valid('Entrata', 'Uscita', 'Entrambi').allow(null).optional(),
+    categoria: Joi.string().max(100).allow('', null).optional(),
     email: Joi.string().email().allow('', null).optional(),
     telefono: Joi.string().max(20).allow('', null).optional(),
     piva: Joi.string().max(20).allow('', null).optional(),
@@ -87,14 +122,14 @@ const schemas = {
   }).options({ stripUnknown: true }),
 
   // ============================================================================
-  // SCHEMA MOVIMENTI (AGGIORNATI)
+  // SCHEMA MOVIMENTI (INVARIATI)
   // ============================================================================
   movimento: Joi.object({
     data: Joi.date().required(),
     anagrafica_id: Joi.number().integer().allow(null).optional(),
     conto_id: Joi.number().integer().required(),
     descrizione: Joi.string().max(255).required(),
-    categoria: Joi.string().max(100).allow('', null).optional(), // ✅ NUOVO CAMPO
+    categoria: Joi.string().max(100).allow('', null).optional(),
     importo: Joi.number().positive().precision(2).required(),
     tipo: Joi.string().valid('Entrata', 'Uscita').required(),
     note: Joi.string().allow('', null).optional()
@@ -105,14 +140,14 @@ const schemas = {
     anagrafica_id: Joi.number().integer().allow(null).optional(),
     conto_id: Joi.number().integer().optional(),
     descrizione: Joi.string().max(255).optional(),
-    categoria: Joi.string().max(100).allow('', null).optional(), // ✅ NUOVO CAMPO
+    categoria: Joi.string().max(100).allow('', null).optional(),
     importo: Joi.number().positive().precision(2).optional(),
     tipo: Joi.string().valid('Entrata', 'Uscita').optional(),
     note: Joi.string().allow('', null).optional()
   }).options({ stripUnknown: true }),
 
   // ============================================================================
-  // SCHEMA CATEGORIE ANAGRAFICHE (NUOVI)
+  // SCHEMA CATEGORIE ANAGRAFICHE (INVARIATI)
   // ============================================================================
   categoriaAnagrafica: Joi.object({
     nome: Joi.string().max(100).required().messages({
@@ -137,7 +172,7 @@ const schemas = {
   }).options({ stripUnknown: true }),
 
   // ============================================================================
-  // SCHEMA CATEGORIE MOVIMENTI (NUOVI)
+  // SCHEMA CATEGORIE MOVIMENTI (INVARIATI)
   // ============================================================================
   categoriaMovimento: Joi.object({
     nome: Joi.string().max(100).required().messages({
@@ -168,7 +203,7 @@ const schemas = {
   }).options({ stripUnknown: true }),
 
   // ============================================================================
-  // SCHEMA UTILITY
+  // SCHEMA UTILITY (INVARIATI)
   // ============================================================================
   dateRange: Joi.object({
     data_inizio: Joi.date().required(),
@@ -176,7 +211,7 @@ const schemas = {
   })
 };
 
-// Middleware per validazione con debug dettagliato
+// Middleware per validazione con debug dettagliato (INVARIATO)
 const validate = (schema) => {
   return (req, res, next) => {
     console.log('🔍 VALIDATION DEBUG:', {
@@ -222,7 +257,7 @@ const validate = (schema) => {
   };
 };
 
-// Middleware per validazione parametri query
+// Middleware per validazione parametri query (INVARIATO)
 const validateQuery = (schema) => {
   return (req, res, next) => {
     console.log('🔍 QUERY VALIDATION:', {
@@ -255,7 +290,7 @@ const validateQuery = (schema) => {
   };
 };
 
-// Middleware per validazione parametri URL
+// Middleware per validazione parametri URL (INVARIATO)
 const validateParams = (schema) => {
   return (req, res, next) => {
     const { error, value } = schema.validate(req.params);

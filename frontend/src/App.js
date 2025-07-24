@@ -17,6 +17,7 @@ import MovimentiPage from './pages/Movimenti/MovimentiPage';
 import CategoriePage from './pages/Categorie/CategoriePage';
 import ReportsPage from './pages/Reports/ReportsPage';
 import ProfilePage from './pages/Profile/ProfilePage';
+import TipologiePage from './pages/Tipologie/TipologiePage';
 
 // Configurazione React Query
 const queryClient = new QueryClient({
@@ -116,6 +117,14 @@ function App() {
                     <AnagrafichePage />
                   </ProtectedRoute>
                 } 
+              />
+              <Route
+                path="/tipologie"
+                element={
+                  <ProtectedRoute>
+                    <TipologiePage />
+                  </ProtectedRoute>
+                }
               />
               <Route 
                 path="/movimenti" 

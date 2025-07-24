@@ -1,4 +1,4 @@
-// routes/dashboard.js
+// routes/dashboard.js - VERSIONE FLESSIBILE CON TIPOLOGIE
 const express = require('express');
 const { queryOne, queryAll } = require('../config/database');
 const auth = require('../middleware/auth');
@@ -9,12 +9,12 @@ const router = express.Router();
 // Middleware di autenticazione
 router.use(auth);
 
-// GET /api/dashboard - Dashboard completa
+// GET /api/dashboard - Dashboard completa (AGGIORNATA)
 router.get('/', async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Saldi conti correnti
+    // 1. Saldi conti correnti (INVARIATO)
     const saldi = await queryAll(`
       SELECT 
         cc.id,
@@ -28,7 +28,7 @@ router.get('/', async (req, res) => {
       ORDER BY cc.nome_banca
     `, [userId]);
 
-    // 2. Totali generali
+    // 2. Totali generali (INVARIATO)
     const totaliGenerali = await queryOne(`
       SELECT 
         COUNT(DISTINCT cc.id) as numero_conti,
@@ -42,22 +42,26 @@ router.get('/', async (req, res) => {
       WHERE cc.user_id = $1 AND cc.attivo = true
     `, [userId]);
 
-    // 3. Movimenti recenti (ultimi 10)
+    // 3. Movimenti recenti (AGGIORNATO CON TIPOLOGIE)
     const movimentiRecenti = await queryAll(`
       SELECT 
         m.*,
         a.nome as anagrafica_nome,
-        a.tipo as anagrafica_tipo,
+        ta.nome as tipologia_nome,
+        ta.tipo_movimento_default,
+        ta.colore as tipologia_colore,
+        ta.icona as tipologia_icona,
         cc.nome_banca
       FROM movimenti m
       LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
       WHERE m.user_id = $1
       ORDER BY m.data DESC, m.created_at DESC
       LIMIT 10
     `, [userId]);
 
-    // 4. Statistiche mese corrente vs mese precedente
+    // 4. Statistiche mese corrente vs mese precedente (INVARIATO)
     const currentMonth = moment().format('YYYY-MM');
     const previousMonth = moment().subtract(1, 'month').format('YYYY-MM');
 
@@ -78,47 +82,53 @@ router.get('/', async (req, res) => {
       ORDER BY mese DESC
     `, [userId]);
 
-    // 5. Top 5 clienti per entrate (ultimi 3 mesi)
-    const topClienti = await queryAll(`
+    // 5. Top anagrafiche per entrate (AGGIORNATO - SENZA FILTRO CLIENTE)
+    const topEntrate = await queryAll(`
       SELECT 
         a.id,
         a.nome,
         a.categoria,
+        ta.nome as tipologia_nome,
+        ta.colore as tipologia_colore,
+        ta.icona as tipologia_icona,
         COUNT(m.id) as numero_movimenti,
         SUM(m.importo) as totale_entrate
       FROM anagrafiche a
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       JOIN movimenti m ON a.id = m.anagrafica_id
       WHERE a.user_id = $1 
-        AND a.tipo = 'Cliente' 
         AND a.attivo = true
         AND m.tipo = 'Entrata'
         AND m.data >= CURRENT_DATE - INTERVAL '3 months'
-      GROUP BY a.id, a.nome, a.categoria
+      GROUP BY a.id, a.nome, a.categoria, ta.nome, ta.colore, ta.icona
       ORDER BY totale_entrate DESC
       LIMIT 5
     `, [userId]);
 
-    // 6. Top 5 fornitori per uscite (ultimi 3 mesi)
-    const topFornitori = await queryAll(`
+    // 6. Top anagrafiche per uscite (AGGIORNATO - SENZA FILTRO FORNITORE)
+    const topUscite = await queryAll(`
       SELECT 
         a.id,
         a.nome,
         a.categoria,
+        ta.nome as tipologia_nome,
+        ta.colore as tipologia_colore,
+        ta.icona as tipologia_icona,
         COUNT(m.id) as numero_movimenti,
         SUM(m.importo) as totale_uscite
       FROM anagrafiche a
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       JOIN movimenti m ON a.id = m.anagrafica_id
       WHERE a.user_id = $1 
-        AND a.tipo = 'Fornitore' 
         AND a.attivo = true
         AND m.tipo = 'Uscita'
         AND m.data >= CURRENT_DATE - INTERVAL '3 months'
-      GROUP BY a.id, a.nome, a.categoria
+      GROUP BY a.id, a.nome, a.categoria, ta.nome, ta.colore, ta.icona
       ORDER BY totale_uscite DESC
       LIMIT 5
     `, [userId]);
 
-    // 7. Andamento ultimi 6 mesi
+    // 7. Andamento ultimi 6 mesi (INVARIATO)
     const andamentoMensile = await queryAll(`
       SELECT 
         TO_CHAR(DATE_TRUNC('month', data), 'YYYY-MM') as mese,
@@ -134,32 +144,65 @@ router.get('/', async (req, res) => {
       ORDER BY mese ASC
     `, [userId]);
 
-    // 8. Distribuzione per categoria (ultimi 3 mesi)
-    const categorieEntrate = await queryAll(`
+    // 8. Distribuzione per tipologie (AGGIORNATO - NUOVO)
+    const tipologieEntrate = await queryAll(`
       SELECT 
-        COALESCE(a.categoria, 'Senza categoria') as categoria,
+        COALESCE(ta.nome, 'Senza tipologia') as tipologia,
+        ta.colore,
+        ta.icona,
         COUNT(m.id) as numero_movimenti,
         SUM(m.importo) as totale
       FROM movimenti m
       LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       WHERE m.user_id = $1 
         AND m.tipo = 'Entrata'
         AND m.data >= CURRENT_DATE - INTERVAL '3 months'
-      GROUP BY a.categoria
+      GROUP BY ta.nome, ta.colore, ta.icona
       ORDER BY totale DESC
     `, [userId]);
 
-    const categorieUscite = await queryAll(`
+    const tipologieUscite = await queryAll(`
       SELECT 
-        COALESCE(a.categoria, 'Senza categoria') as categoria,
+        COALESCE(ta.nome, 'Senza tipologia') as tipologia,
+        ta.colore,
+        ta.icona,
         COUNT(m.id) as numero_movimenti,
         SUM(m.importo) as totale
       FROM movimenti m
       LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
+      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       WHERE m.user_id = $1 
         AND m.tipo = 'Uscita'
         AND m.data >= CURRENT_DATE - INTERVAL '3 months'
-      GROUP BY a.categoria
+      GROUP BY ta.nome, ta.colore, ta.icona
+      ORDER BY totale DESC
+    `, [userId]);
+
+    // 9. Distribuzione per categoria movimento (INVARIATO)
+    const categorieMovimentiEntrate = await queryAll(`
+      SELECT 
+        COALESCE(m.categoria, 'Senza categoria') as categoria,
+        COUNT(m.id) as numero_movimenti,
+        SUM(m.importo) as totale
+      FROM movimenti m
+      WHERE m.user_id = $1 
+        AND m.tipo = 'Entrata'
+        AND m.data >= CURRENT_DATE - INTERVAL '3 months'
+      GROUP BY m.categoria
+      ORDER BY totale DESC
+    `, [userId]);
+
+    const categorieMovimentiUscite = await queryAll(`
+      SELECT 
+        COALESCE(m.categoria, 'Senza categoria') as categoria,
+        COUNT(m.id) as numero_movimenti,
+        SUM(m.importo) as totale
+      FROM movimenti m
+      WHERE m.user_id = $1 
+        AND m.tipo = 'Uscita'
+        AND m.data >= CURRENT_DATE - INTERVAL '3 months'
+      GROUP BY m.categoria
       ORDER BY totale DESC
     `, [userId]);
 
@@ -205,12 +248,20 @@ router.get('/', async (req, res) => {
         mese_precedente: mesePrecedente,
         variazioni: variazioni
       },
-      top_clienti: topClienti,
-      top_fornitori: topFornitori,
+      // AGGIORNATO: top_anagrafiche invece di top_clienti/fornitori
+      top_anagrafiche: {
+        entrate: topEntrate,
+        uscite: topUscite
+      },
       andamento_mensile: andamentoMensile,
-      distribuzione_categorie: {
-        entrate: categorieEntrate,
-        uscite: categorieUscite
+      // AGGIORNATO: distribuzione per tipologie + categorie movimento
+      distribuzione_tipologie: {
+        entrate: tipologieEntrate,
+        uscite: tipologieUscite
+      },
+      distribuzione_categorie_movimento: {
+        entrate: categorieMovimentiEntrate,
+        uscite: categorieMovimentiUscite
       },
       last_update: new Date().toISOString()
     };
@@ -222,7 +273,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/dashboard/kpi - KPI principali
+// GET /api/dashboard/kpi - KPI principali (INVARIATO)
 router.get('/kpi', async (req, res) => {
   try {
     const userId = req.user.id;
@@ -243,7 +294,7 @@ router.get('/kpi', async (req, res) => {
         AND data >= CURRENT_DATE - INTERVAL '${parseInt(periodo)} days'
     `, [userId]);
 
-    // Movimento più alto e più basso del periodo
+    // Movimento più alto e più basso del periodo (INVARIATO)
     const movimentiEstremi = await queryAll(`
       (SELECT 'max_entrata' as tipo, descrizione, importo, data, 'Entrata' as movimento_tipo
        FROM movimenti 
@@ -258,7 +309,7 @@ router.get('/kpi', async (req, res) => {
        ORDER BY importo DESC LIMIT 1)
     `, [userId]);
 
-    // Saldo totale corrente
+    // Saldo totale corrente (INVARIATO)
     const saldoTotale = await queryOne(`
       SELECT COALESCE(SUM(calcola_saldo_conto(id)), 0) as saldo_totale
       FROM conti_correnti 
@@ -280,13 +331,13 @@ router.get('/kpi', async (req, res) => {
   }
 });
 
-// GET /api/dashboard/alerts - Alerts e notifiche
+// GET /api/dashboard/alerts - Alerts e notifiche (AGGIORNATO PARZIALMENTE)
 router.get('/alerts', async (req, res) => {
   try {
     const userId = req.user.id;
     const alerts = [];
 
-    // 1. Conti con saldo negativo
+    // 1. Conti con saldo negativo (INVARIATO)
     const contiNegativi = await queryAll(`
       SELECT id, nome_banca, intestatario, calcola_saldo_conto(id) as saldo
       FROM conti_correnti 
@@ -304,7 +355,7 @@ router.get('/alerts', async (req, res) => {
       });
     });
 
-    // 2. Nessun movimento negli ultimi 30 giorni
+    // 2. Nessun movimento negli ultimi 30 giorni (INVARIATO)
     const contiInattivi = await queryAll(`
       SELECT cc.id, cc.nome_banca, cc.intestatario
       FROM conti_correnti cc
@@ -327,7 +378,7 @@ router.get('/alerts', async (req, res) => {
       });
     });
 
-    // 3. Uscite elevate questo mese
+    // 3. Uscite elevate questo mese (INVARIATO)
     const usciteMensili = await queryOne(`
       SELECT SUM(importo) as uscite_mese
       FROM movimenti 
@@ -363,7 +414,7 @@ router.get('/alerts', async (req, res) => {
       }
     }
 
-    // 4. Anagrafiche duplicate (stesso nome)
+    // 4. Anagrafiche duplicate (stesso nome) (INVARIATO)
     const anagraficheDuplicate = await queryAll(`
       SELECT 
         STRING_AGG(DISTINCT nome, ', ') as nome,
@@ -402,7 +453,7 @@ router.get('/alerts', async (req, res) => {
   }
 });
 
-// GET /api/dashboard/quick-stats - Statistiche rapide per widget
+// GET /api/dashboard/quick-stats - Statistiche rapide per widget (INVARIATO)
 router.get('/quick-stats', async (req, res) => {
   try {
     const userId = req.user.id;

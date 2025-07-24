@@ -14,6 +14,8 @@ const reportsRoutes = require('./routes/reports');
 const categorieAnagraficheRoutes = require('./routes/categorieAnagrafiche');
 const categorieMovimentiRoutes = require('./routes/categorieMovimenti');
 
+const alertsRoutes = require('./routes/alerts');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -45,6 +47,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/categorie-anagrafiche', categorieAnagraficheRoutes);
 app.use('/api/categorie-movimenti', categorieMovimentiRoutes);
+app.use('/api/alerts', alertsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
