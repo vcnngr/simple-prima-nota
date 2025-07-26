@@ -109,6 +109,61 @@ router.get('/attivi', async (req, res) => {
   }
 });
 
+// GET /api/conti-bancari/dropdown - Lista ottimizzata per dropdown
+router.get('/dropdown', auth, async (req, res) => {
+  try {
+    const conti = await queryAll(`
+      SELECT 
+        id,
+        nome_banca,
+        intestatario,
+        iban,
+        saldo_iniziale,
+        attivo,
+        created_at,
+        -- Calcola saldo corrente
+        (
+          SELECT COALESCE(
+            saldo_iniziale + 
+            SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE -m.importo END), 
+            saldo_iniziale
+          )
+          FROM movimenti m 
+          WHERE m.conto_id = cc.id
+        ) as saldo_corrente
+      FROM conti_correnti cc
+      WHERE user_id = $1 AND attivo = true
+      ORDER BY 
+        -- Conto Principale sempre primo
+        CASE WHEN nome_banca = 'Conto Principale' THEN 0 ELSE 1 END,
+        -- Poi per data creazione (più recenti prima)
+        created_at DESC,
+        -- Infine alfabetico
+        nome_banca ASC
+    `, [req.user.id]);
+
+    // Formatta per dropdown con label descrittiva
+    const contiFormatted = conti.map(conto => ({
+      ...conto,
+      // Label completa per dropdown
+      label: `${conto.nome_banca}${conto.intestatario ? ` - ${conto.intestatario}` : ''}`,
+      // Saldo formattato per visualizzazione
+      saldo_formattato: `€${parseFloat(conto.saldo_corrente || 0).toLocaleString('it-IT', { 
+        minimumFractionDigits: 2 
+      })}`
+    }));
+
+    res.json(contiFormatted);
+    
+  } catch (error) {
+    console.error('Error fetching conti for dropdown:', error);
+    res.status(500).json({ 
+      error: 'Errore durante il caricamento dei conti',
+      details: error.message 
+    });
+  }
+});
+
 // GET /api/conti-bancari/:id - Dettaglio singolo conto
 router.get('/:id', async (req, res) => {
   try {

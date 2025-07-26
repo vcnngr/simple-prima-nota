@@ -16,6 +16,7 @@ import AnagrafichePage from './pages/Anagrafiche/AnagrafichePage';
 import MovimentiPage from './pages/Movimenti/MovimentiPage';
 import CategoriePage from './pages/Categorie/CategoriePage';
 import ReportsPage from './pages/Reports/ReportsPage';
+import CustomReportsPage from './pages/Reports/CustomReportsPage';
 import ProfilePage from './pages/Profile/ProfilePage';
 import TipologiePage from './pages/Tipologie/TipologiePage';
 
@@ -147,6 +148,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <ReportsPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/reports/custom" 
+                element={
+                  <ProtectedRoute>
+                    <CustomReportsPage />
                   </ProtectedRoute>
                 } 
               />

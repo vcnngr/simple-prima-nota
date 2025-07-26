@@ -150,6 +150,7 @@ export const authAPI = {
 export const contiBancariAPI = {
   getAll: () => api.get('/conti-bancari'),
   getAttivi: () => api.get('/conti-bancari/attivi'),
+  getForDropdown: () => api.get('/conti-bancari/dropdown'),
   getById: (id) => api.get(`/conti-bancari/${id}`),
   create: (data) => api.post('/conti-bancari', data),
   update: (id, data) => api.put(`/conti-bancari/${id}`, data),
@@ -240,7 +241,50 @@ export const dashboardAPI = {
   getQuickStats: () => api.get('/dashboard/quick-stats'),
 };
 
-// Reports API
+// Export API (Nuovo sistema unificato) - CORRETTO
+export const exportAPI = {
+  // Genera export con anteprima
+  generate: (config) => api.post('/export/generate', config),
+  
+  // Anteprima (primi 10 record) - CORRETTO
+  generatePreview: (config) => api.post('/export/preview', config),
+  
+  // Export diretti per download - CORRETTI
+  generateCSV: async (config) => {
+    const response = await api.post('/export/generate', 
+      { ...config, formato: 'csv' },
+      { 
+        responseType: 'blob',
+        headers: { 'Accept': 'text/csv' }
+      }
+    );
+    return response;
+  },
+  
+  generateExcel: async (config) => {
+    const response = await api.post('/export/generate', 
+      { ...config, formato: 'xlsx' },
+      { 
+        responseType: 'blob',
+        headers: { 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+      }
+    );
+    return response;
+  },
+  
+  generatePDF: async (config) => {
+    const response = await api.post('/export/generate', 
+      { ...config, formato: 'pdf' },
+      { 
+        responseType: 'blob',
+        headers: { 'Accept': 'application/pdf' }
+      }
+    );
+    return response;
+  }
+};
+
+// Reports API (Deprecato - mantenuto per compatibilità)
 export const reportsAPI = {
   getEstrattoConto: (params = {}) => api.get('/reports/estratto-conto', { params }),
   getMovimentiAnagrafica: (params = {}) => api.get('/reports/movimenti-anagrafica', { params }),

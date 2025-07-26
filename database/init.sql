@@ -1,6 +1,6 @@
 -- Database Schema per Prima Nota Contabile con Tipologie Anagrafiche Flessibili
 -- PostgreSQL - Script di inizializzazione FLESSIBILE
--- Versione: 3.0 - Tipologie Anagrafiche Personalizzabili
+-- Versione: 3.1 - Tipologie Anagrafiche Personalizzabili (CORRETTA)
 
 -- Connessione al database prima_nota (assicurati che esista)
 \c prima_nota;
@@ -13,10 +13,12 @@ DROP TABLE IF EXISTS categorie_movimenti CASCADE;
 DROP TABLE IF EXISTS categorie_anagrafiche CASCADE;
 DROP TABLE IF EXISTS conti_correnti CASCADE;
 DROP TABLE IF EXISTS utenti CASCADE;
+DROP TABLE IF EXISTS alerts CASCADE;
 
 -- Drop delle funzioni esistenti
 DROP FUNCTION IF EXISTS calcola_saldo_conto(INTEGER);
 DROP FUNCTION IF EXISTS update_updated_at_column();
+DROP FUNCTION IF EXISTS sync_anagrafica_tipo_movimento();
 
 -- Drop delle view esistenti
 DROP VIEW IF EXISTS v_saldi_conti CASCADE;
@@ -62,7 +64,7 @@ CREATE INDEX idx_conti_correnti_user_id ON conti_correnti(user_id);
 CREATE INDEX idx_conti_correnti_attivo ON conti_correnti(user_id, attivo);
 
 -- ==============================================================================
--- 3. TABELLA TIPOLOGIE ANAGRAFICHE (NUOVA - FLESSIBILE)
+-- 3. TABELLA TIPOLOGIE ANAGRAFICHE (FLESSIBILE)
 -- ==============================================================================
 CREATE TABLE tipologie_anagrafiche (
     id SERIAL PRIMARY KEY,
@@ -126,7 +128,7 @@ CREATE INDEX idx_categorie_movimenti_tipo ON categorie_movimenti(user_id, tipo);
 CREATE INDEX idx_categorie_movimenti_attiva ON categorie_movimenti(user_id, attiva);
 
 -- ==============================================================================
--- 6. TABELLA ANAGRAFICHE (AGGIORNATA - FLESSIBILE)
+-- 6. TABELLA ANAGRAFICHE (FLESSIBILE)
 -- ==============================================================================
 CREATE TABLE anagrafiche (
     id SERIAL PRIMARY KEY,
@@ -142,7 +144,8 @@ CREATE TABLE anagrafiche (
     attivo BOOLEAN DEFAULT true,
     user_id INTEGER REFERENCES utenti(id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, nome)
 );
 
 -- Indici anagrafiche
@@ -179,33 +182,34 @@ CREATE INDEX idx_movimenti_tipo ON movimenti(user_id, tipo);
 CREATE INDEX idx_movimenti_categoria ON movimenti(categoria);
 CREATE INDEX idx_movimenti_data_desc ON movimenti(user_id, data DESC);
 
-
--- CORREGGI COSÌ:
-CREATE TABLE IF NOT EXISTS alerts (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,  -- ✅ CORRETTO
-  titolo VARCHAR(255) NOT NULL,
-  messaggio TEXT NOT NULL,
-  tipo VARCHAR(50) DEFAULT 'info', -- info, warning, error, success
-  priorita VARCHAR(20) DEFAULT 'normale', -- alta, normale, bassa
-  letto BOOLEAN DEFAULT false,
-  data_creazione TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  data_lettura TIMESTAMP NULL,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  azione_link VARCHAR(255) NULL, -- Link per azione (opzionale)
-  azione_testo VARCHAR(100) NULL  -- Testo del link azione (opzionale)
+-- ==============================================================================
+-- 8. TABELLA ALERTS
+-- ==============================================================================
+CREATE TABLE alerts (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES utenti(id) ON DELETE CASCADE,
+    titolo VARCHAR(255) NOT NULL,
+    messaggio TEXT NOT NULL,
+    tipo VARCHAR(50) DEFAULT 'info', -- info, warning, error, success
+    priorita VARCHAR(20) DEFAULT 'normale', -- alta, normale, bassa
+    letto BOOLEAN DEFAULT false,
+    data_creazione TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    data_lettura TIMESTAMP NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    azione_link VARCHAR(255) NULL, -- Link per azione (opzionale)
+    azione_testo VARCHAR(100) NULL  -- Testo del link azione (opzionale)
 );
 
--- Indici per performance
-CREATE INDEX IF NOT EXISTS idx_alerts_user_id ON alerts(user_id);
-CREATE INDEX IF NOT EXISTS idx_alerts_letto ON alerts(user_id, letto);
-CREATE INDEX IF NOT EXISTS idx_alerts_data ON alerts(user_id, data_creazione);
+-- Indici per performance alerts
+CREATE INDEX idx_alerts_user_id ON alerts(user_id);
+CREATE INDEX idx_alerts_letto ON alerts(user_id, letto);
+CREATE INDEX idx_alerts_data ON alerts(user_id, data_creazione);
 
 -- ==============================================================================
--- 8. FUNZIONI STORED PROCEDURE
+-- 9. FUNZIONI STORED PROCEDURE
 -- ==============================================================================
 
--- Funzione per calcolare saldo corrente (INVARIATA)
+-- Funzione per calcolare saldo corrente
 CREATE OR REPLACE FUNCTION calcola_saldo_conto(conto_id_param INTEGER)
 RETURNS DECIMAL(15,2) AS $$
 DECLARE
@@ -232,7 +236,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Funzione per aggiornare updated_at automaticamente (INVARIATA)
+-- Funzione per aggiornare updated_at automaticamente
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -241,7 +245,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Funzione per sincronizzare tipo_movimento_preferito con tipologia (NUOVA)
+-- Funzione per sincronizzare tipo_movimento_preferito con tipologia
 CREATE OR REPLACE FUNCTION sync_anagrafica_tipo_movimento()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -255,7 +259,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ==============================================================================
--- 9. TRIGGER PER UPDATED_AT
+-- 10. TRIGGER PER UPDATED_AT
 -- ==============================================================================
 
 -- Trigger per utenti
@@ -291,16 +295,27 @@ CREATE TRIGGER sync_anagrafica_tipo_movimento_trigger
 CREATE TRIGGER update_movimenti_updated_at BEFORE UPDATE ON movimenti
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Trigger per alerts
+CREATE TRIGGER update_alerts_updated_at BEFORE UPDATE ON alerts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ESEGUI questa query nel tuo database PostgreSQL
+-- È l'UNICO constraint che manca per risolvere i problemi di import
+
+ALTER TABLE conti_correnti 
+ADD CONSTRAINT conti_correnti_user_id_nome_banca_key 
+UNIQUE (user_id, nome_banca);
+
 -- ==============================================================================
--- 10. DATI DI ESEMPIO
+-- 11. DATI DI ESEMPIO
 -- ==============================================================================
 
--- Utenti (MANTENUTI come richiesto)
+-- Utenti
 INSERT INTO utenti (username, password_hash, email) VALUES
 ('admin', '$2b$10$yxaU3JOqC8dpeH8fLFtRWOAzzNvqTNQNF44GcPIxWtct6B54HEEuK', 'admin@example.com'),
 ('demo', '$2b$10$7gusA60TTbNH2RMgwdGm0.3ZYMAtgLG2CTsLMuFF8nSuH4kCmtwrO', 'demo@example.com');
 
--- Tipologie Anagrafiche di default per utente admin (NUOVE - FLESSIBILI)
+-- Tipologie Anagrafiche di default per utente admin
 INSERT INTO tipologie_anagrafiche (user_id, nome, descrizione, tipo_movimento_default, colore, icona) VALUES
 (1, 'Cliente Premium', 'Clienti di alto valore e frequenti', 'Entrata', '#10B981', 'star'),
 (1, 'Cliente Standard', 'Clienti regolari', 'Entrata', '#3B82F6', 'user'),
@@ -326,7 +341,7 @@ INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, colore) VALUES
 INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore) VALUES
 (1, 'Vendite Prodotti', 'Entrata', 'Ricavi da vendita prodotti', '#10B981'),
 (1, 'Vendite Servizi', 'Entrata', 'Ricavi da prestazioni di servizi', '#06B6D4'),
-(1, 'Consulenze', 'Entrata', 'Ricavi da attività di consulenza', '#3B82F6'),
+(1, 'Consulenze', 'Entrambi', 'Ricavi da attività di consulenza', '#3B82F6'),
 (1, 'Commissioni', 'Entrata', 'Provvigioni e commissioni', '#8B5CF6'),
 (1, 'Rimborsi', 'Entrata', 'Rimborsi e restituzioni', '#10B981'),
 (1, 'Acquisti Materiali', 'Uscita', 'Acquisto di materiali e forniture', '#F59E0B'),
@@ -343,7 +358,7 @@ INSERT INTO conti_correnti (nome_banca, intestatario, iban, saldo_iniziale, user
 ('UniCredit Business', 'Studio Professionale Admin', 'IT45R0300203280284975791020', 4200.00, 1),
 ('Fineco Conto Cassa', 'Studio Professionale Admin', 'IT76P0760103200000001234567', 1800.00, 1);
 
--- Anagrafiche di esempio (NUOVE - CON TIPOLOGIE FLESSIBILI)
+-- Anagrafiche di esempio
 INSERT INTO anagrafiche (nome, tipologia_id, categoria, email, telefono, piva, user_id) VALUES
 -- Clienti Premium
 ('Azienda Leader SRL', 1, 'VIP', 'amministrazione@aziendaleader.it', '0123456789', '12345678901', 1),
@@ -364,19 +379,19 @@ INSERT INTO anagrafiche (nome, tipologia_id, categoria, email, telefono, piva, u
 ('Banca Nazionale', 8, 'Strategico', 'business@bancanazionale.it', '800123456', '90123456789', 1),
 ('Comune di Roma', 9, NULL, 'tributi@comune.roma.it', '06123456', NULL, 1);
 
--- Movimenti di esempio (DIVERSIFICATI CON NUOVE TIPOLOGIE)
+-- Movimenti di esempio
 INSERT INTO movimenti (data, anagrafica_id, conto_id, descrizione, categoria, importo, tipo, note, user_id) VALUES
 -- Entrate da clienti
 ('2024-12-01', 1, 1, 'Fattura 001/2024 - Consulenza strategica', 'Consulenze', 2500.00, 'Entrata', 'Progetto Q4 2024', 1),
 ('2024-12-02', 2, 1, 'Fattura 002/2024 - Servizi IT', 'Vendite Servizi', 4200.00, 'Entrata', 'Contratto annuale', 1),
 ('2024-12-03', 3, 2, 'Fattura 003/2024 - Vendita software', 'Vendite Prodotti', 800.00, 'Entrata', 'Licenza software', 1),
 ('2024-12-05', 4, 1, 'Fattura 004/2024 - Sviluppo web', 'Vendite Servizi', 1800.00, 'Entrata', 'Sito web aziendale', 1),
--- Entrate da consulenti (fatturano loro)
+-- Entrate da consulenti
 ('2024-12-04', 7, 2, 'Fattura consulente - Progetto ABC', 'Consulenze', 1200.00, 'Entrata', 'Collaborazione esterna', 1),
 -- Uscite fornitori
 ('2024-12-06', 5, 1, 'Fattura FOR-123 - Materiali ufficio', 'Acquisti Materiali', 450.00, 'Uscita', 'Cancelleria e stampanti', 1),
 ('2024-12-07', 6, 1, 'Fattura TECH-456 - Server', 'Acquisti Materiali', 2800.00, 'Uscita', 'Upgrade infrastruttura', 1),
--- Uscite consulenti (paghiamo noi)
+-- Uscite consulenti
 ('2024-12-08', 8, 2, 'Fattura studio legale - Consulenza', 'Consulenza Esterna', 800.00, 'Uscita', 'Contratti commerciali', 1),
 -- Stipendi dipendenti
 ('2024-12-10', 9, 1, 'Stipendio dicembre 2024', 'Stipendi', 2200.00, 'Uscita', 'Stipendio + contributi', 1),
@@ -389,11 +404,16 @@ INSERT INTO movimenti (data, anagrafica_id, conto_id, descrizione, categoria, im
 ('2024-12-18', 1, 3, 'Acconto fattura 005/2025', 'Consulenze', 1500.00, 'Entrata', 'Acconto nuovo progetto', 1),
 ('2024-12-20', 5, 2, 'Acquisto mobili ufficio', 'Acquisti Materiali', 1200.00, 'Uscita', 'Scrivania e sedie', 1);
 
+-- Alerts di esempio
+INSERT INTO alerts (user_id, titolo, messaggio, tipo, priorita) VALUES
+(1, 'Benvenuto!', 'Benvenuto nel sistema Prima Nota. Inizia creando le tue prime anagrafiche.', 'success', 'normale'),
+(1, 'Backup consigliato', 'È consigliabile effettuare un backup periodico dei dati contabili.', 'info', 'bassa');
+
 -- ==============================================================================
--- 11. VISTE PER REPORT (AGGIORNATE)
+-- 12. VISTE PER REPORT
 -- ==============================================================================
 
--- Vista per saldi conti (INVARIATA)
+-- Vista per saldi conti
 CREATE VIEW v_saldi_conti AS
 SELECT 
     cc.id,
@@ -407,7 +427,7 @@ SELECT
 FROM conti_correnti cc
 WHERE cc.attivo = true;
 
--- Vista dettaglio movimenti (AGGIORNATA CON TIPOLOGIE)
+-- Vista dettaglio movimenti
 CREATE VIEW v_movimenti_dettaglio AS
 SELECT 
     m.id,
@@ -431,7 +451,7 @@ LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
 LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
 ORDER BY m.data DESC, m.created_at DESC;
 
--- Vista completa movimenti con colori categorie (AGGIORNATA)
+-- Vista completa movimenti con colori categorie
 CREATE VIEW vista_movimenti_completa AS
 SELECT 
     m.id,
@@ -462,7 +482,7 @@ LEFT JOIN categorie_movimenti cm ON m.categoria = cm.nome AND m.user_id = cm.use
 LEFT JOIN categorie_anagrafiche ca ON a.categoria = ca.nome AND a.user_id = ca.user_id;
 
 -- ==============================================================================
--- 12. COMMENTI DOCUMENTAZIONE
+-- 13. COMMENTI DOCUMENTAZIONE
 -- ==============================================================================
 COMMENT ON TABLE tipologie_anagrafiche IS 'Tipologie personalizzabili per anagrafiche (es: Cliente Premium, Consulente, etc.)';
 COMMENT ON TABLE anagrafiche IS 'Anagrafiche con tipologie flessibili invece di Cliente/Fornitore fissi';
@@ -477,8 +497,8 @@ COMMENT ON COLUMN anagrafiche.tipo_movimento_preferito IS 'Cache del tipo movime
 DO $$ 
 BEGIN
     RAISE NOTICE 'Prima Nota Contabile - Database FLESSIBILE inizializzato con successo!';
-    RAISE NOTICE 'Versione: 3.0 - Tipologie Anagrafiche Personalizzabili';
-    RAISE NOTICE 'Tabelle create: utenti, conti_correnti, tipologie_anagrafiche, categorie_anagrafiche, anagrafiche, categorie_movimenti, movimenti';
+    RAISE NOTICE 'Versione: 3.1 - Tipologie Anagrafiche Personalizzabili (CORRETTA)';
+    RAISE NOTICE 'Tabelle create: utenti, conti_correnti, tipologie_anagrafiche, categorie_anagrafiche, anagrafiche, categorie_movimenti, movimenti, alerts';
     RAISE NOTICE 'Utente di test: admin / password123, demo / password';
     RAISE NOTICE 'Tipologie esempio: Cliente Premium, Fornitore Servizi, Consulente, Dipendente, Banca, Ente Pubblico';
 END $$;

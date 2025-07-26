@@ -1,0 +1,12 @@
+# templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-config
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+data:
+  # Database init script (se necessario)
+  init.sql: |
+    -- Database initialization script
+    -- Add your SQL initialization here if needed

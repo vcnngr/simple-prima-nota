@@ -1,0 +1,25 @@
+# templates/postgresql-pvc.yaml
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-postgresql-pvc
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  accessModes:
+    {{- range .Values.postgresql.persistence.accessModes }}
+    - {{ . | quote }}
+    {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.postgresql.persistence.size | quote }}
+  {{- if .Values.postgresql.persistence.storageClass }}
+  {{- if (eq "-" .Values.postgresql.persistence.storageClass) }}
+  storageClassName: ""
+  {{- else }}
+  storageClassName: {{ .Values.postgresql.persistence.storageClass | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}

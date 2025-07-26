@@ -1,0 +1,86 @@
+# templates/notes.yaml
+{{- if .Values.backend.defaultUser.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-notes
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "2"
+data:
+  NOTES.txt: |
+    🎉 Prima Nota è stato installato con successo!
+    
+    🌐 URL dell'applicazione:
+    {{- if .Values.ingress.enabled }}
+    {{- range .Values.ingress.hosts }}
+    https://{{ .host }}
+    {{- end }}
+    {{- else }}
+    Per accedere all'applicazione, esegui:
+    kubectl port-forward svc/{{ include "prima-nota.fullname" . }}-frontend 3000:80
+    Poi apri: http://localhost:3000
+    {{- end }}
+    
+    👤 Credenziali utente di default:
+    Username: {{ .Values.backend.defaultUser.username }}
+    Email: {{ .Values.backend.defaultUser.email }}
+    Password: Esegui questo comando per ottenere la password:
+    
+    kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.default-user-password}" | base64 --decode && echo
+    
+    🗄️ Accesso PgAdmin:
+    {{- if .Values.ingress.enabled }}
+    {{- range .Values.ingress.hosts }}
+    URL: https://{{ .host }}/pgadmin
+    {{- end }}
+    {{- else }}
+    kubectl port-forward svc/{{ include "prima-nota.fullname" . }}-pgadmin 8080:80
+    URL: http://localhost:8080
+    {{- end }}
+    Email: {{ .Values.pgadmin.auth.email }}
+    Password: Esegui questo comando:
+    
+    kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.pgadmin-password}" | base64 --decode && echo
+    
+    🔧 Comandi utili:
+    
+    # Visualizza tutti i pod
+    kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+    
+    # Visualizza i logs del backend
+    kubectl logs -f deployment/{{ include "prima-nota.fullname" . }}-backend
+    
+    # Visualizza i logs del frontend  
+    kubectl logs -f deployment/{{ include "prima-nota.fullname" . }}-frontend
+    
+    # Accesso diretto al database
+    kubectl exec -it deployment/{{ include "prima-nota.fullname" . }}-postgresql -- psql -U postgres -d prima_nota
+    
+    # Aggiornare l'applicazione
+    helm upgrade {{ .Release.Name }} ./prima-nota-chart
+    
+    🔐 Password generate automaticamente:
+    
+    # Password PostgreSQL
+    kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.postgres-password}" | base64 --decode && echo
+    
+    # JWT Secret
+    kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.jwt-secret}" | base64 --decode && echo
+    
+    ⚠️  IMPORTANTE: Salva queste password in un luogo sicuro!
+{{- end }}
+{{- if .Values.serviceAccount.create -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "prima-nota.serviceAccountName" . }}
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

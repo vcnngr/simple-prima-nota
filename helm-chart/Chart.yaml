@@ -1,0 +1,16 @@
+# Chart.yaml
+apiVersion: v2
+name: prima-nota
+description: A Helm chart for Prima Nota application
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - prima-nota
+  - postgresql
+  - react
+  - nodejs
+home: https://github.com/yourorg/prima-nota
+maintainers:
+  - name: Your Name
+    email: your.email@example.com

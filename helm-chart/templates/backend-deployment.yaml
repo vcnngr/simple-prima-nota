@@ -1,0 +1,71 @@
+# templates/backend-deployment.yaml
+{{- if .Values.backend.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-backend
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "prima-nota.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "prima-nota.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+      - name: backend
+        image: "{{ .Values.backend.image.registry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+        imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+        env:
+        - name: NODE_ENV
+          value: {{ .Values.backend.env.NODE_ENV }}
+        - name: PORT
+          value: {{ .Values.backend.env.PORT | quote }}
+        - name: DB_HOST
+          value: {{ include "prima-nota.fullname" . }}-postgresql
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: {{ .Values.postgresql.auth.database }}
+        - name: DB_USER
+          value: {{ .Values.postgresql.auth.username }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "prima-nota.fullname" . }}-secret
+              key: postgres-password
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "prima-nota.fullname" . }}-secret
+              key: jwt-secret
+        - name: RATE_LIMIT_WINDOW_MS
+          value: {{ .Values.backend.env.RATE_LIMIT_WINDOW_MS | quote }}
+        - name: RATE_LIMIT_MAX_REQUESTS
+          value: {{ .Values.backend.env.RATE_LIMIT_MAX_REQUESTS | quote }}
+        - name: MAX_FILE_SIZE
+          value: {{ .Values.backend.env.MAX_FILE_SIZE | quote }}
+        - name: LOG_LEVEL
+          value: {{ .Values.backend.env.LOG_LEVEL }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.backend.env.PORT }}
+          protocol: TCP
+        {{- if .Values.backend.livenessProbe }}
+        livenessProbe:
+          {{- toYaml .Values.backend.livenessProbe | nindent 10 }}
+        {{- end }}
+        {{- if .Values.backend.readinessProbe }}
+        readinessProbe:
+          {{- toYaml .Values.backend.readinessProbe | nindent 10 }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.backend.resources | nindent 10 }}
+{{- end }}
