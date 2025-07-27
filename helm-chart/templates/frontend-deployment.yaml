@@ -1,4 +1,3 @@
-# templates/frontend-deployment.yaml
 {{- if .Values.frontend.enabled }}
 apiVersion: apps/v1
 kind: Deployment

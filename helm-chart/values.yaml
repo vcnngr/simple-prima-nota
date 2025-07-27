@@ -1,11 +1,7 @@
-# Default values for prima-nota chart
-
+# Default values for simple-prima-nota
 global:
   imageRegistry: "docker.io"
-  imagePullSecrets: []
-  storageClass: ""
 
-# PostgreSQL Database
 postgresql:
   enabled: true
   image:
@@ -13,20 +9,15 @@ postgresql:
     repository: postgres
     tag: "15"
     pullPolicy: IfNotPresent
-  
   auth:
     database: prima_nota
     username: postgres
-    password: ""  # Se vuoto, genera password random
-    existingSecret: ""  # Nome del secret esistente (opzionale)
-    
+    password: ""
   persistence:
     enabled: true
-    storageClass: ""
+    size: 8Gi
     accessModes:
       - ReadWriteOnce
-    size: 8Gi
-    
   resources:
     limits:
       cpu: 500m
@@ -34,38 +25,10 @@ postgresql:
     requests:
       cpu: 250m
       memory: 256Mi
-      
   service:
     type: ClusterIP
     port: 5432
 
-# PgAdmin
-pgadmin:
-  enabled: true
-  image:
-    registry: docker.io
-    repository: dpage/pgadmin4
-    tag: "latest"
-    pullPolicy: IfNotPresent
-    
-  auth:
-    email: admin@prima-nota.com
-    password: ""  # Se vuoto, genera password random
-    existingSecret: ""  # Nome del secret esistente (opzionale)
-    
-  service:
-    type: ClusterIP
-    port: 80
-    
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-
-# Backend API
 backend:
   enabled: true
   image:
@@ -73,31 +36,25 @@ backend:
     repository: vcnngr/pnbackend
     tag: "latest"
     pullPolicy: IfNotPresent
-    
   replicaCount: 1
-  
   service:
     type: ClusterIP
     port: 3001
-    
   env:
     NODE_ENV: production
     PORT: 3001
-    JWT_SECRET: ""  # Se vuoto, genera secret random
+    JWT_SECRET: ""
     RATE_LIMIT_WINDOW_MS: 900000
     RATE_LIMIT_MAX_REQUESTS: 100
     MAX_FILE_SIZE: 10485760
     LOG_LEVEL: info
-    
-  # Configurazione utente di default da creare
   defaultUser:
     enabled: true
     username: admin
     email: admin@prima-nota.com
-    password: ""  # Se vuoto, genera password random
+    password: ""
     firstName: Admin
     lastName: User
-    
   resources:
     limits:
       cpu: 500m
@@ -105,14 +62,12 @@ backend:
     requests:
       cpu: 250m
       memory: 256Mi
-      
   livenessProbe:
     httpGet:
       path: /health
       port: 3001
     initialDelaySeconds: 30
     periodSeconds: 10
-    
   readinessProbe:
     httpGet:
       path: /health
@@ -120,7 +75,6 @@ backend:
     initialDelaySeconds: 5
     periodSeconds: 5
 
-# Frontend React
 frontend:
   enabled: true
   image:
@@ -128,18 +82,14 @@ frontend:
     repository: vcnngr/pnfrontend
     tag: "latest"
     pullPolicy: IfNotPresent
-    
   replicaCount: 1
-  
   service:
     type: ClusterIP
     port: 80
-    
   env:
     REACT_APP_API_URL: /api
     REACT_APP_NAME: Prima Nota
     REACT_APP_VERSION: 1.0.0
-    
   resources:
     limits:
       cpu: 200m
@@ -148,17 +98,36 @@ frontend:
       cpu: 100m
       memory: 128Mi
 
-# Ingress con Traefik
+pgadmin:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: dpage/pgadmin4
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  auth:
+    email: admin@prima-nota.com
+    password: ""
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
 ingress:
   enabled: true
   className: "traefik"
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
-    cert-manager.io/cluster-issuer: letsencrypt-prod  # Se usi cert-manager
-    # traefik.ingress.kubernetes.io/router.middlewares: default-redirect-https@kubernetescrd
+    cert-manager.io/cluster-issuer: le-global-issuer
   hosts:
-    - host: prima-nota.yourdomain.com
+    - host: prima-nota.vcnngr.it
       paths:
         - path: /
           pathType: Prefix
@@ -170,29 +139,15 @@ ingress:
           pathType: Prefix
           service: pgadmin
   tls:
-    - secretName: prima-nota-tls
+    - secretName: vcnngr-tls
       hosts:
-        - prima-nota.yourdomain.com
+        - prima-nota.vcnngr.it
 
-# Certificati TLS
-tls:
-  enabled: false
-  # Se true, usa cert-manager per certificati automatici
-  certManager:
-    enabled: true
-    issuer: letsencrypt-prod
-  # Altrimenti, specifica il certificato manuale
-  manual:
-    cert: ""
-    key: ""
-
-# Service Account
 serviceAccount:
   create: true
   annotations: {}
   name: ""
 
-# Security Context
 podSecurityContext:
   fsGroup: 2000
 
@@ -203,12 +158,3 @@ securityContext:
   readOnlyRootFilesystem: false
   runAsNonRoot: true
   runAsUser: 1000
-
-# Node Selector
-nodeSelector: {}
-
-# Tolerations
-tolerations: []
-
-# Affinity
-affinity: {}

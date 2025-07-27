@@ -1,4 +1,3 @@
-# templates/backend-service.yaml
 {{- if .Values.backend.enabled }}
 apiVersion: v1
 kind: Service

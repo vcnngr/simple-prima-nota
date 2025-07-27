@@ -1,5 +1,4 @@
-# templates/init-user-job.yaml
-{{ if .Values.backend.defaultUser.enabled }}
+{{- if .Values.backend.defaultUser.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -63,4 +62,4 @@ spec:
               \"lastName\": \"${LAST_NAME}\",
               \"password\": \"${PASSWORD}\"
             }" || echo "User creation failed or user already exists"
-{{ end }}
+{{- end }}

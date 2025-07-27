@@ -1,4 +1,3 @@
-# templates/frontend-service.yaml
 {{- if .Values.frontend.enabled }}
 apiVersion: v1
 kind: Service

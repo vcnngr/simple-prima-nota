@@ -1,4 +1,3 @@
-# templates/postgresql-deployment.yaml
 {{- if .Values.postgresql.enabled }}
 apiVersion: apps/v1
 kind: Deployment
@@ -65,17 +64,13 @@ spec:
         - name: data
           mountPath: /var/lib/postgresql/data
           subPath: postgres
-        {{- if .Values.postgresql.initdbScriptsConfigMap }}
         - name: init-scripts
           mountPath: /docker-entrypoint-initdb.d
-        {{- end }}
       volumes:
       - name: data
         persistentVolumeClaim:
           claimName: {{ include "prima-nota.fullname" . }}-postgresql-pvc
-      {{- if .Values.postgresql.initdbScriptsConfigMap }}
       - name: init-scripts
         configMap:
           name: {{ include "prima-nota.fullname" . }}-config
-      {{- end }}
 {{- end }}

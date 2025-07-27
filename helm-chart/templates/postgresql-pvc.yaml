@@ -1,4 +1,3 @@
-# templates/postgresql-pvc.yaml
 {{- if .Values.postgresql.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -15,11 +14,4 @@ spec:
   resources:
     requests:
       storage: {{ .Values.postgresql.persistence.size | quote }}
-  {{- if .Values.postgresql.persistence.storageClass }}
-  {{- if (eq "-" .Values.postgresql.persistence.storageClass) }}
-  storageClassName: ""
-  {{- else }}
-  storageClassName: {{ .Values.postgresql.persistence.storageClass | quote }}
-  {{- end }}
-  {{- end }}
 {{- end }}

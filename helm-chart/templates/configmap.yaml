@@ -5,7 +5,6 @@ metadata:
   labels:
     {{- include "prima-nota.labels" . | nindent 4 }}
 data:
-  # Database init script
   init.sql: |
     -- Database Schema per Prima Nota Contabile con Tipologie Anagrafiche Flessibili
     -- PostgreSQL - Script di inizializzazione FLESSIBILE
