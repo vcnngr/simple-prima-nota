@@ -1,4 +1,3 @@
-# values.yaml
 # Default values for prima-nota chart
 
 global:
@@ -177,7 +176,7 @@ ingress:
 
 # Certificati TLS
 tls:
-  enabled: true
+  enabled: false
   # Se true, usa cert-manager per certificati automatici
   certManager:
     enabled: true

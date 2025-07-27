@@ -1,4 +1,3 @@
-# Chart.yaml
 apiVersion: v2
 name: prima-nota
 description: A Helm chart for Prima Nota application
@@ -10,7 +9,7 @@ keywords:
   - postgresql
   - react
   - nodejs
-home: https://github.com/yourorg/prima-nota
+home: https://github.com/vcnngr/simple-prima-nota
 maintainers:
-  - name: Your Name
-    email: your.email@example.com
+  - name: Vincenzo Ingrosso
+    email: vincenzo@ingrosso.net
