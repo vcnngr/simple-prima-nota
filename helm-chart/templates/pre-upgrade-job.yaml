@@ -1,0 +1,49 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-password-update
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: password-updater
+        image: postgres:15
+        command:
+        - /bin/bash
+        - -c
+        - |
+          # Ottieni la nuova password dal secret
+          NEW_PASSWORD=$(cat /etc/secret-new/postgres-password | base64 -d)
+          
+          # Connettiti al database e aggiorna la password
+          PGPASSWORD="$OLD_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" -c \
+            "ALTER USER $DB_USER WITH PASSWORD '$NEW_PASSWORD';"
+        env:
+        - name: DB_HOST
+          value: {{ include "prima-nota.fullname" . }}-postgresql
+        - name: DB_USER
+          value: {{ .Values.postgresql.auth.username | default "postgres" }}
+        - name: DB_NAME
+          value: {{ .Values.postgresql.auth.database | default "postgres" }}
+        - name: OLD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "prima-nota.fullname" . }}-secret
+              key: postgres-password
+        volumeMounts:
+        - name: new-secret
+          mountPath: /etc/secret-new
+          readOnly: true
+      volumes:
+      - name: new-secret
+        secret:
+          secretName: {{ include "prima-nota.fullname" . }}-secret-new
+{{- end }}
