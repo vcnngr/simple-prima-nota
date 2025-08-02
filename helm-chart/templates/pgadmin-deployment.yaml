@@ -63,20 +63,20 @@ spec:
           readOnly: true
         livenessProbe:
           httpGet:
-            path: /misc/ping
-            port: pgadmin
-          initialDelaySeconds: 60
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
+            path: {{ .Values.pgadmin.livenessProbe.httpGet.path }}
+            port: {{ .Values.pgadmin.livenessProbe.httpGet.port }}
+          initialDelaySeconds: {{ .Values.pgadmin.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.pgadmin.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.pgadmin.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.pgadmin.livenessProbe.failureThreshold }}
         readinessProbe:
           httpGet:
-            path: /misc/ping
-            port: pgadmin
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
+            path: {{ .Values.pgadmin.readinessProbe.httpGet.path }}
+            port: {{ .Values.pgadmin.readinessProbe.httpGet.port }}
+          initialDelaySeconds: {{ .Values.pgadmin.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.pgadmin.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.pgadmin.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.pgadmin.readinessProbe.failureThreshold }}
         resources:
           {{- toYaml .Values.pgadmin.resources | nindent 10 }}
       volumes:

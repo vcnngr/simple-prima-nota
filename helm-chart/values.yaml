@@ -2,42 +2,6 @@
 global:
   imageRegistry: "docker.io"
 
-pgadmin:
-  enabled: true
-  image:
-    registry: docker.io
-    repository: dpage/pgadmin4
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  auth:
-    email: admin@prima-nota.com
-    password: ""
-  env:
-    PGADMIN_DEFAULT_EMAIL: admin@prima-nota.com
-    PGADMIN_DEFAULT_PASSWORD: ""
-    PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
-    PGADMIN_CONFIG_LOGIN_BANNER: "Prima Nota - Database Management"
-    PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "20"
-    PGADMIN_LISTEN_PORT: "5050"
-    PGADMIN_CONFIG_WTF_CSRF_TIME_LIMIT: "None"
-    PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED: "False"
-    PGADMIN_CONFIG_SHOW_GRAVATAR_IMAGE: "False"
-  service:
-    type: ClusterIP
-    port: 5050
-  resources:
-    limits:
-      cpu: 200m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 256Mi
-  persistence:
-    enabled: true
-    size: 1Gi
-    accessModes:
-      - ReadWriteOnce
-
 postgresql:
   enabled: true
   image:
@@ -133,6 +97,58 @@ frontend:
     requests:
       cpu: 100m
       memory: 128Mi
+
+pgadmin:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: dpage/pgadmin4
+    tag: "9.2"
+    pullPolicy: IfNotPresent
+  auth:
+    email: admin@prima-nota.com
+    password: ""
+  env:
+    PGADMIN_DEFAULT_EMAIL: admin@prima-nota.com
+    PGADMIN_DEFAULT_PASSWORD: ""
+    PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
+    PGADMIN_CONFIG_LOGIN_BANNER: "Prima Nota - Database Management"
+    PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "20"
+    PGADMIN_LISTEN_PORT: "5050"
+    PGADMIN_CONFIG_WTF_CSRF_TIME_LIMIT: "None"
+    PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED: "False"
+    PGADMIN_CONFIG_SHOW_GRAVATAR_IMAGE: "False"
+  service:
+    type: ClusterIP
+    port: 5050
+  resources:
+    limits:
+      cpu: 700m
+      memory: 512Mi
+    requests:
+      cpu: 400m
+      memory: 256Mi
+  livenessProbe:
+    httpGet:
+      path: /misc/ping
+      port: pgadmin
+    initialDelaySeconds: 120
+    periodSeconds: 60
+    timeoutSeconds: 30
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /misc/ping
+      port: pgadmin
+    initialDelaySeconds: 90
+    periodSeconds: 45
+    timeoutSeconds: 5
+    failureThreshold: 3
+  persistence:
+    enabled: true
+    size: 1Gi
+    accessModes:
+      - ReadWriteOnce
 
 ingress:
   enabled: true
