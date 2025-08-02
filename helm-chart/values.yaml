@@ -18,13 +18,13 @@ pgadmin:
     PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
     PGADMIN_CONFIG_LOGIN_BANNER: "Prima Nota - Database Management"
     PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "20"
-    PGADMIN_LISTEN_PORT: "80"
+    PGADMIN_LISTEN_PORT: "5050"
     PGADMIN_CONFIG_WTF_CSRF_TIME_LIMIT: "None"
     PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED: "False"
     PGADMIN_CONFIG_SHOW_GRAVATAR_IMAGE: "False"
   service:
     type: ClusterIP
-    port: 80
+    port: 5050
   resources:
     limits:
       cpu: 200m
@@ -98,14 +98,18 @@ backend:
     requests:
       cpu: 250m
       memory: 256Mi
-  # Health check configurabile
-  healthCheck:
-    enabled: false  # Disabilita se non hai endpoint /health
-    path: /health
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: 3001
+    initialDelaySeconds: 50
+    periodSeconds: 30
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: 3001
     initialDelaySeconds: 30
-    periodSeconds: 10
-    timeoutSeconds: 5
-    failureThreshold: 3
+    periodSeconds: 15
 
 frontend:
   enabled: true

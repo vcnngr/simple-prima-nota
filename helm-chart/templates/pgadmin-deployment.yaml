@@ -52,7 +52,7 @@ spec:
           value: "/pgadmin"
         ports:
         - name: pgadmin
-          containerPort: 80
+          containerPort: 5050
           protocol: TCP
         volumeMounts:
         - name: pgadmin-data
