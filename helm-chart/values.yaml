@@ -138,7 +138,7 @@ ingress:
     traefik.ingress.kubernetes.io/router.tls: "true"
     cert-manager.io/cluster-issuer: le-global-issuer
   hosts:
-    - host: prima-nota.vcnngr.it
+    - host: prima-nota.example.com
       paths:
         - path: /
           pathType: Prefix
@@ -147,9 +147,9 @@ ingress:
           pathType: Prefix
           service: pgadmin
   tls:
-    - secretName: vcnngr-tls
+    - secretName: example-tls
       hosts:
-        - prima-nota.vcnngr.it
+        - prima-nota.example.com
 
 serviceAccount:
   create: true

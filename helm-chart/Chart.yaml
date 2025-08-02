@@ -4,3 +4,8 @@ description: Chart Helm per applicazione Prima Nota
 type: application
 version: 0.3.0
 appVersion: "1.0.0"
+dependencies:
+  - name: pgadmin4
+    version: "1.47.0"
+    repository: "https://helm.runix.net/"
+    condition: pgadmin.enabled

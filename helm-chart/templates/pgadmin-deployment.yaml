@@ -37,7 +37,7 @@ spec:
         - name: PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION
           value: {{ .Values.pgadmin.env.PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION | quote }}
         - name: PGADMIN_CONFIG_LOGIN_BANNER
-          value: "\"{{ .Values.pgadmin.env.PGADMIN_CONFIG_LOGIN_BANNER }}\""
+          value: {{ .Values.pgadmin.env.PGADMIN_CONFIG_LOGIN_BANNER | quote }}
         - name: PGADMIN_CONFIG_CONSOLE_LOG_LEVEL
           value: {{ .Values.pgadmin.env.PGADMIN_CONFIG_CONSOLE_LOG_LEVEL | quote }}
         - name: PGADMIN_LISTEN_PORT
