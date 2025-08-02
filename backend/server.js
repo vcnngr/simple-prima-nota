@@ -3,6 +3,9 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const morgan = require('morgan');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
@@ -13,12 +16,44 @@ const dashboardRoutes = require('./routes/dashboard');
 const reportsRoutes = require('./routes/reports');
 const categorieAnagraficheRoutes = require('./routes/categorieAnagrafiche');
 const categorieMovimentiRoutes = require('./routes/categorieMovimenti');
-
 const alertsRoutes = require('./routes/alerts');
 const exportRoutes = require('./routes/export');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Crea la directory logs se non esiste
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir);
+}
+
+// Configurazione logging
+const accessLogStream = fs.createWriteStream(
+  path.join(logsDir, 'access.log'), 
+  { flags: 'a' }
+);
+
+// Formato di log personalizzato simile a nginx
+morgan.token('real-ip', (req) => {
+  return req.headers['x-forwarded-for'] || 
+         req.headers['x-real-ip'] || 
+         req.connection.remoteAddress || 
+         req.socket.remoteAddress ||
+         (req.connection.socket ? req.connection.socket.remoteAddress : null);
+});
+
+const logFormat = ':real-ip - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms';
+
+// Logging middleware
+if (process.env.NODE_ENV === 'production') {
+  // In produzione, logga solo su file
+  app.use(morgan(logFormat, { stream: accessLogStream }));
+} else {
+  // In sviluppo, logga sia su console che su file
+  app.use(morgan('dev')); // Console: formato colorato e conciso
+  app.use(morgan(logFormat, { stream: accessLogStream })); // File: formato completo
+}
 
 // Middleware di sicurezza
 app.use(helmet());
@@ -62,6 +97,10 @@ app.get('/api/health', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
+  // Log degli errori
+  const errorLog = `${new Date().toISOString()} - ERROR: ${err.stack}\n`;
+  fs.appendFileSync(path.join(logsDir, 'error.log'), errorLog);
+  
   console.error(err.stack);
   res.status(500).json({ 
     error: 'Errore interno del server',
@@ -77,6 +116,7 @@ app.use('*', (req, res) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
+  accessLogStream.end(); // Chiudi il stream dei log
   server.close(() => {
     console.log('HTTP server closed');
   });
@@ -86,6 +126,7 @@ const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API URL: http://localhost:${PORT}/api`);
+  console.log(`📝 Logs saved to: ${path.join(logsDir, 'access.log')}`);
 });
 
 module.exports = app;

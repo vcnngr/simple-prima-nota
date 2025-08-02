@@ -18,6 +18,10 @@ spec:
         {{- include "prima-nota.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: pgadmin
     spec:
+      securityContext:
+        runAsUser: 5050
+        runAsGroup: 5050
+        fsGroup: 5050
       containers:
       - name: pgadmin
         image: "{{ .Values.pgadmin.image.registry }}/{{ .Values.pgadmin.image.repository }}:{{ .Values.pgadmin.image.tag }}"
@@ -30,24 +34,56 @@ spec:
             secretKeyRef:
               name: {{ include "prima-nota.fullname" . }}-secret
               key: pgadmin-password
-        - name: PGADMIN_DISABLE_POSTFIX
-          value: "true"
+        - name: PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION
+          value: {{ .Values.pgadmin.env.PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION | quote }}
+        - name: PGADMIN_CONFIG_LOGIN_BANNER
+          value: "\"{{ .Values.pgadmin.env.PGADMIN_CONFIG_LOGIN_BANNER }}\""
+        - name: PGADMIN_CONFIG_CONSOLE_LOG_LEVEL
+          value: {{ .Values.pgadmin.env.PGADMIN_CONFIG_CONSOLE_LOG_LEVEL | quote }}
+        - name: PGADMIN_LISTEN_PORT
+          value: {{ .Values.pgadmin.env.PGADMIN_LISTEN_PORT | quote }}
+        - name: PGADMIN_CONFIG_WTF_CSRF_TIME_LIMIT
+          value: {{ .Values.pgadmin.env.PGADMIN_CONFIG_WTF_CSRF_TIME_LIMIT | quote }}
+        - name: PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED
+          value: {{ .Values.pgadmin.env.PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED | quote }}
+        - name: PGADMIN_CONFIG_SHOW_GRAVATAR_IMAGE
+          value: {{ .Values.pgadmin.env.PGADMIN_CONFIG_SHOW_GRAVATAR_IMAGE | quote }}
+        - name: SCRIPT_NAME
+          value: "/pgadmin"
         ports:
-        - name: http
+        - name: pgadmin
           containerPort: 80
           protocol: TCP
+        volumeMounts:
+        - name: pgadmin-data
+          mountPath: /var/lib/pgadmin
+        - name: pgadmin-config
+          mountPath: /pgadmin4/servers.json
+          subPath: servers.json
+          readOnly: true
         livenessProbe:
           httpGet:
             path: /misc/ping
-            port: http
-          initialDelaySeconds: 30
-          periodSeconds: 10
+            port: pgadmin
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /misc/ping
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 5
+            port: pgadmin
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         resources:
           {{- toYaml .Values.pgadmin.resources | nindent 10 }}
+      volumes:
+      - name: pgadmin-data
+        persistentVolumeClaim:
+          claimName: {{ include "prima-nota.fullname" . }}-pgadmin-pvc
+      - name: pgadmin-config
+        configMap:
+          name: {{ include "prima-nota.fullname" . }}-pgadmin-config
 {{- end }}

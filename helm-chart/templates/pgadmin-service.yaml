@@ -9,9 +9,9 @@ metadata:
 spec:
   type: {{ .Values.pgadmin.service.type }}
   ports:
-  - name: http
+  - name: pgadmin
     port: {{ .Values.pgadmin.service.port }}
-    targetPort: http
+    targetPort: pgadmin
     protocol: TCP
   selector:
     {{- include "prima-nota.selectorLabels" . | nindent 4 }}

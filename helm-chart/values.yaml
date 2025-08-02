@@ -2,6 +2,42 @@
 global:
   imageRegistry: "docker.io"
 
+pgadmin:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: dpage/pgadmin4
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  auth:
+    email: admin@prima-nota.com
+    password: ""
+  env:
+    PGADMIN_DEFAULT_EMAIL: admin@prima-nota.com
+    PGADMIN_DEFAULT_PASSWORD: ""
+    PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
+    PGADMIN_CONFIG_LOGIN_BANNER: "Prima Nota - Database Management"
+    PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "20"
+    PGADMIN_LISTEN_PORT: "80"
+    PGADMIN_CONFIG_WTF_CSRF_TIME_LIMIT: "None"
+    PGADMIN_CONFIG_UPGRADE_CHECK_ENABLED: "False"
+    PGADMIN_CONFIG_SHOW_GRAVATAR_IMAGE: "False"
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    limits:
+      cpu: 200m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  persistence:
+    enabled: true
+    size: 1Gi
+    accessModes:
+      - ReadWriteOnce
+
 postgresql:
   enabled: true
   image:
@@ -62,18 +98,14 @@ backend:
     requests:
       cpu: 250m
       memory: 256Mi
-  livenessProbe:
-    httpGet:
-      path: /health
-      port: 3001
+  # Health check configurabile
+  healthCheck:
+    enabled: false  # Disabilita se non hai endpoint /health
+    path: /health
     initialDelaySeconds: 30
     periodSeconds: 10
-  readinessProbe:
-    httpGet:
-      path: /health
-      port: 3001
-    initialDelaySeconds: 5
-    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 3
 
 frontend:
   enabled: true
@@ -98,27 +130,6 @@ frontend:
       cpu: 100m
       memory: 128Mi
 
-pgadmin:
-  enabled: true
-  image:
-    registry: docker.io
-    repository: dpage/pgadmin4
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  auth:
-    email: admin@prima-nota.com
-    password: ""
-  service:
-    type: ClusterIP
-    port: 80
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-
 ingress:
   enabled: true
   className: "traefik"
@@ -132,9 +143,6 @@ ingress:
         - path: /
           pathType: Prefix
           service: frontend
-        - path: /api
-          pathType: Prefix
-          service: backend
         - path: /pgadmin
           pathType: Prefix
           service: pgadmin

@@ -5,6 +5,98 @@ metadata:
   labels:
     {{- include "prima-nota.labels" . | nindent 4 }}
 data:
+  # Nginx configuration per il frontend (basata sul tuo nginx.conf)
+  default.conf: |
+    # nginx.conf con proxy API funzionante per Kubernetes
+    
+    server {
+        listen 80;
+        server_name localhost;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        # Risoluzione DNS dinamica per Kubernetes con timeout ottimizzato
+        resolver kube-dns.kube-system.svc.cluster.local valid=10s;
+
+        # Gzip compression
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_proxied expired no-cache no-store private auth;
+        gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
+
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "no-referrer-when-downgrade" always;
+        add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+
+        # Handle React Router
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        # Cache static assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+
+        # Cache HTML files for shorter period
+        location ~* \.html$ {
+            expires 1h;
+            add_header Cache-Control "public";
+        }
+
+        # API proxy - usa FQDN completo per risoluzione DNS stabile
+        location /api/ {
+            # Usa il FQDN completo per evitare problemi di risoluzione DNS
+            set $backend "{{ include "prima-nota.fullname" . }}-backend.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.backend.service.port }}";
+            proxy_pass http://$backend;
+            
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_cache_bypass $http_upgrade;
+            
+            # Timeout e retry
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 30s;
+            proxy_read_timeout 30s;
+        }
+
+        # PgAdmin proxy - usa FQDN completo
+        location /pgadmin/ {
+            set $pgadmin "{{ include "prima-nota.fullname" . }}-pgadmin.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.pgadmin.service.port }}";
+            proxy_pass http://$pgadmin/;
+            
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Script-Name /pgadmin;
+            
+            # Timeout
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 60s;
+            proxy_read_timeout 60s;
+        }
+
+        # Health check
+        location /health {
+            access_log off;
+            return 200 "healthy\n";
+            add_header Content-Type text/plain;
+        }
+    }
+
+  # Database init script completo
   init.sql: |
     -- Database Schema per Prima Nota Contabile con Tipologie Anagrafiche Flessibili
     -- PostgreSQL - Script di inizializzazione FLESSIBILE

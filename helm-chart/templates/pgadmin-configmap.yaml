@@ -1,0 +1,26 @@
+{{- if .Values.pgadmin.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-pgadmin-config
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgadmin
+data:
+  servers.json: |
+    {
+      "Servers": {
+        "1": {
+          "Name": "Prima Nota PostgreSQL",
+          "Group": "Servers",
+          "Host": "{{ include "prima-nota.fullname" . }}-postgresql.{{ .Release.Namespace }}.svc.cluster.local",
+          "Port": {{ .Values.postgresql.service.port }},
+          "MaintenanceDB": "{{ .Values.postgresql.auth.database }}",
+          "Username": "{{ .Values.postgresql.auth.username }}",
+          "SSLMode": "prefer",
+          "Timeout": 10,
+          "UseSSHTunnel": 0
+        }
+      }
+    }
+{{- end }}

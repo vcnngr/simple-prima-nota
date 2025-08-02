@@ -1,15 +1,6 @@
 apiVersion: v2
 name: simple-prima-nota
-description: A Helm chart for Prima Nota application
+description: Chart Helm per applicazione Prima Nota
 type: application
-version: 0.1.2
+version: 0.3.0
 appVersion: "1.0.0"
-keywords:
-  - prima-nota
-  - postgresql
-  - react
-  - nodejs
-home: https://github.com/vcnngr/simple-prima-nota
-maintainers:
-  - name: Vincenzo Ingrosso
-    email: vincenzo@ingrosso.net

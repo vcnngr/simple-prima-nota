@@ -1,43 +1,65 @@
-🎉 Prima Nota installato con successo!
+🎉 Prima Nota con PgAdmin installato con successo!
 
 {{- if .Values.ingress.enabled }}
-🌐 URL: https://{{ (index .Values.ingress.hosts 0).host }}
+🌐 URL Applicazione: https://{{ (index .Values.ingress.hosts 0).host }}
 {{- else }}
-🌐 Port-forward: kubectl port-forward svc/{{ include "prima-nota.fullname" . }}-frontend 3000:80
+🌐 Port-forward Frontend: kubectl port-forward svc/{{ include "prima-nota.fullname" . }}-frontend 3000:80
    Poi apri: http://localhost:3000
 {{- end }}
 
-👤 Credenziali Admin:
+👤 Credenziali Admin App:
 Username: {{ .Values.backend.defaultUser.username }}
 Password: kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.default-user-password}" | base64 --decode
 
-🗄️ PgAdmin:
+{{- if .Values.pgadmin.enabled }}
+🗄️ PgAdmin Database Manager:
 {{- if .Values.ingress.enabled }}
 URL: https://{{ (index .Values.ingress.hosts 0).host }}/pgadmin
 {{- else }}
 Port-forward: kubectl port-forward svc/{{ include "prima-nota.fullname" . }}-pgadmin 8080:80
+Poi apri: http://localhost:8080
 {{- end }}
 Email: {{ .Values.pgadmin.auth.email }}
 Password: kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.pgadmin-password}" | base64 --decode
 
+Il server PostgreSQL "Prima Nota PostgreSQL" è già configurato in PgAdmin!
+{{- end }}
+
 🔧 Comandi utili:
-# Visualizza pod
+# Visualizza tutti i pod
 kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }}
 
-# Logs backend
+# Logs dei servizi
 kubectl logs -f deployment/{{ include "prima-nota.fullname" . }}-backend
-
-# Logs frontend
 kubectl logs -f deployment/{{ include "prima-nota.fullname" . }}-frontend
+kubectl logs -f deployment/{{ include "prima-nota.fullname" . }}-postgresql
+{{- if .Values.pgadmin.enabled }}
+kubectl logs -f deployment/{{ include "prima-nota.fullname" . }}-pgadmin
+{{- end }}
 
-# Accesso al database
+# Accesso diretto al database
 kubectl exec -it deployment/{{ include "prima-nota.fullname" . }}-postgresql -- psql -U postgres -d prima_nota
 
-🔐 Password generate:
-# PostgreSQL
+🔐 Password generate automaticamente:
+# PostgreSQL Database
 kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.postgres-password}" | base64 --decode
 
-# JWT Secret
+# JWT Secret per autenticazione
 kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.jwt-secret}" | base64 --decode
 
-⚠️ Salva queste password in un luogo sicuro!
+{{- if .Values.pgadmin.enabled }}
+# PgAdmin Web Interface
+kubectl get secret {{ include "prima-nota.fullname" . }}-secret -o jsonpath="{.data.pgadmin-password}" | base64 --decode
+{{- end }}
+
+⚠️ IMPORTANTE: Salva queste password in un luogo sicuro!
+
+📊 Servizi installati:
+✅ PostgreSQL Database (porta 5432)
+✅ Backend API Node.js (porta 3001)  
+✅ Frontend React (porta 80)
+{{- if .Values.pgadmin.enabled }}
+✅ PgAdmin Database Manager (porta 80)
+{{- end }}
+✅ Nginx reverse proxy per /api e /pgadmin
+✅ Ingress con SSL/TLS automatico

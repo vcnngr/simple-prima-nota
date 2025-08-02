@@ -9,9 +9,9 @@ metadata:
 spec:
   type: {{ .Values.backend.service.type }}
   ports:
-  - name: http
+  - name: backend
     port: {{ .Values.backend.service.port }}
-    targetPort: http
+    targetPort: backend
     protocol: TCP
   selector:
     {{- include "prima-nota.selectorLabels" . | nindent 4 }}

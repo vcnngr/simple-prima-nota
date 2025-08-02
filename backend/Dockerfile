@@ -4,6 +4,8 @@ FROM node:18-alpine
 # Imposta la directory di lavoro
 WORKDIR /app
 
+RUN apk add curl
+
 # Copia package.json e package-lock.json
 COPY package*.json ./
 

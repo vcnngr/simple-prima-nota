@@ -692,7 +692,7 @@ const DashboardPage = () => {
   );
 };
 
-// Componente del grafico ibrido tipologie
+// Componente del grafico ibrido tipologie - VERSIONE CORRETTA
 const TipologieHybridChart = ({ entrateData, usciteData, getIconForTipologia }) => {
   const [activeView, setActiveView] = useState('frequenza');
   const [selectedType, setSelectedType] = useState('entrate');
@@ -707,7 +707,7 @@ const TipologieHybridChart = ({ entrateData, usciteData, getIconForTipologia }) 
         tipologia: item.tipologia,
         colore: item.colore,
         icona: item.icona,
-        numero_movimenti: item.numero_movimenti || 0,
+        numero_movimenti: parseInt(item.numero_movimenti || 0), // ASSICURIAMOCI CHE SIA UN NUMERO
         totale: parseFloat(item.totale || 0)
       };
 
@@ -728,9 +728,9 @@ const TipologieHybridChart = ({ entrateData, usciteData, getIconForTipologia }) 
   const currentData = getCurrentData();
   const maxValue = Math.max(...currentData.map(d => d.valore));
 
-  // Calcola totali per header
+  // Calcola totali per header - FIX CONCATENAZIONE
   const totals = {
-    movimenti: currentData.reduce((sum, item) => sum + item.numero_movimenti, 0),
+    movimenti: currentData.reduce((sum, item) => sum + parseInt(item.numero_movimenti || 0), 0),
     valore: currentData.reduce((sum, item) => sum + item.totale, 0),
     media: currentData.length > 0 ? currentData.reduce((sum, item) => sum + item.totale, 0) / currentData.reduce((sum, item) => sum + item.numero_movimenti, 0) : 0
   };
@@ -742,7 +742,7 @@ const TipologieHybridChart = ({ entrateData, usciteData, getIconForTipologia }) 
         <div className="flex items-center space-x-6">
           <div className="text-center">
             <p className="text-2xl font-bold text-gray-900">
-              {activeView === 'frequenza' ? totals.movimenti : 
+              {activeView === 'frequenza' ? totals.movimenti :
                activeView === 'totale' ? `€${totals.valore.toLocaleString('it-IT', { maximumFractionDigits: 0 })}` :
                `€${totals.media.toLocaleString('it-IT', { maximumFractionDigits: 0 })}`}
             </p>
