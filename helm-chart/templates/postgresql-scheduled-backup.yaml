@@ -1,0 +1,39 @@
+{{- if and .Values.postgresql.cloudnativepg.enabled .Values.postgresql.backup.schedule.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-postgresql-daily
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql-backup
+spec:
+  schedule: {{ .Values.postgresql.backup.schedule.daily | default "0 2 * * *" | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ include "prima-nota.fullname" . }}-postgresql
+  target: {{ .Values.postgresql.backup.target | default "prefer-standby" }}
+  method: {{ .Values.postgresql.backup.method | default "barmanObjectStore" }}
+  immediateCheckpoint: true
+
+---
+{{- if .Values.postgresql.backup.schedule.weekly.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-postgresql-weekly
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql-backup
+spec:
+  schedule: {{ .Values.postgresql.backup.schedule.weekly.cron | default "0 1 * * 0" | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ include "prima-nota.fullname" . }}-postgresql
+  target: {{ .Values.postgresql.backup.target | default "prefer-standby" }}
+  method: {{ .Values.postgresql.backup.method | default "barmanObjectStore" }}
+  immediateCheckpoint: true
+{{- end }}
+
+{{- end }}
