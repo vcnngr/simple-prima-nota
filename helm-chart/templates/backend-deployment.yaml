@@ -59,23 +59,9 @@ spec:
         - name: backend
           containerPort: {{ .Values.backend.env.PORT }}
           protocol: TCP
-        {{- if .Values.backend.healthCheck.enabled }}
+        {{- if .Values.backend.livenessProbe }}
         livenessProbe:
-          httpGet:
-            path: {{ .Values.backend.healthCheck.path }}
-            port: backend
-          initialDelaySeconds: {{ .Values.backend.healthCheck.initialDelaySeconds }}
-          periodSeconds: {{ .Values.backend.healthCheck.periodSeconds }}
-          timeoutSeconds: {{ .Values.backend.healthCheck.timeoutSeconds }}
-          failureThreshold: {{ .Values.backend.healthCheck.failureThreshold }}
-        readinessProbe:
-          httpGet:
-            path: {{ .Values.backend.healthCheck.path }}
-            port: backend
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          timeoutSeconds: {{ .Values.backend.healthCheck.timeoutSeconds }}
-          failureThreshold: {{ .Values.backend.healthCheck.failureThreshold }}
+          {{- toYaml .Values.backend.livenessProbe | nindent 10 }}
         {{- else }}
         livenessProbe:
           tcpSocket:
@@ -84,6 +70,11 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
+        {{- end }}
+        {{- if .Values.backend.readinessProbe }}
+        readinessProbe:
+          {{- toYaml .Values.backend.readinessProbe | nindent 10 }}
+        {{- else }}
         readinessProbe:
           tcpSocket:
             port: backend
