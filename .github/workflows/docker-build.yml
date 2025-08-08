@@ -1,143 +1,48 @@
-name: Auto Version and Build
+name: Build and Push Docker Images
 
 on:
   push:
     branches:
       - main
-  push:
     tags:
       - 'v*'
 
 jobs:
-  version-and-build:
+  build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Necessario per analizzare la cronologia git
-        token: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Configure Git
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-    
-    # Auto-increment version basato sui commit
-    - name: Auto increment version
-      id: version
-      run: |
-        # Leggi versione attuale
-        if [ -f "VERSION" ]; then
-          CURRENT_VERSION=$(cat VERSION)
-        else
-          CURRENT_VERSION="0.0.0"
-          echo "$CURRENT_VERSION" > VERSION
-        fi
-        
-        echo "Current version: $CURRENT_VERSION"
-        
-        # Solo se non è un push di tag
-        if [[ ! $GITHUB_REF =~ refs/tags/v.* ]]; then
-          # Analizza i commit dall'ultimo tag
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          
-          if [ -z "$LAST_TAG" ]; then
-            # Primo tag
-            COMMITS=$(git log --oneline)
-          else
-            # Commit dal last tag
-            COMMITS=$(git log ${LAST_TAG}..HEAD --oneline)
-          fi
-          
-          echo "Analyzing commits:"
-          echo "$COMMITS"
-          
-          # Determina il tipo di bump
-          if echo "$COMMITS" | grep -q "BREAKING CHANGE\|feat!:"; then
-            BUMP_TYPE="major"
-          elif echo "$COMMITS" | grep -q "^feat:"; then
-            BUMP_TYPE="minor"  
-          elif echo "$COMMITS" | grep -q "^fix:\|^perf:\|^refactor:"; then
-            BUMP_TYPE="patch"
-          else
-            echo "No version bump needed"
-            echo "VERSION=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-            echo "SHOULD_BUILD=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          echo "Bump type: $BUMP_TYPE"
-          
-          # Increment version
-          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
-          MAJOR=${VERSION_PARTS[0]}
-          MINOR=${VERSION_PARTS[1]}
-          PATCH=${VERSION_PARTS[2]}
-          
-          case $BUMP_TYPE in
-            "major")
-              MAJOR=$((MAJOR + 1))
-              MINOR=0
-              PATCH=0
-              ;;
-            "minor")
-              MINOR=$((MINOR + 1))
-              PATCH=0
-              ;;
-            "patch")
-              PATCH=$((PATCH + 1))
-              ;;
-          esac
-          
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "New version: $NEW_VERSION"
-          
-          # Update VERSION file
-          echo "$NEW_VERSION" > VERSION
-          git add VERSION
-          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
-          git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
-          git push origin main
-          git push origin "v$NEW_VERSION"
-          
-          echo "VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "SHOULD_BUILD=true" >> $GITHUB_OUTPUT
-        else
-          # È un push di tag, estrai la versione
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "SHOULD_BUILD=true" >> $GITHUB_OUTPUT
-        fi
     
     - name: Set up Docker Buildx
-      if: steps.version.outputs.SHOULD_BUILD == 'true'
       uses: docker/setup-buildx-action@v3
     
     - name: Login to DockerHub
-      if: steps.version.outputs.SHOULD_BUILD == 'true'
       uses: docker/login-action@v3
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
     
+    - name: Get version
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      if: startsWith(github.ref, 'refs/tags/')
+    
     - name: Build and push Backend
-      if: steps.version.outputs.SHOULD_BUILD == 'true'
       uses: docker/build-push-action@v5
       with:
         context: ./backend
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          vcnngr/pnbackend:${{ steps.version.outputs.VERSION }}
+          vcnngr/pnbackend:${{ steps.get_version.outputs.VERSION || 'latest' }}
           vcnngr/pnbackend:latest
     
     - name: Build and push Frontend
-      if: steps.version.outputs.SHOULD_BUILD == 'true'
       uses: docker/build-push-action@v5
       with:
         context: ./frontend
         platforms: linux/amd64,linux/arm64
         push: true
         tags: |
-          vcnngr/pnfrontend:${{ steps.version.outputs.VERSION }}
+          vcnngr/pnfrontend:${{ steps.get_version.outputs.VERSION || 'latest' }}
           vcnngr/pnfrontend:latest
