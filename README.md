@@ -28,7 +28,7 @@ Un sistema semplificato per la gestione della prima nota contabile personale/azi
 
 - **Docker** e **Docker Compose**
 - **Node.js 18+** (per sviluppo locale)
-- **PostgreSQL 15** (incluso nel setup Docker)
+- **PostgreSQL 16** (incluso nel setup Docker)
 
 ## 🏗️ Architettura
 
