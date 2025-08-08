@@ -452,7 +452,6 @@ router.post('/import', auth, async (req, res) => {
     }
     
     console.log('🚀 Avvio nuovo import unificato per utente:', userId);
-    console.log('📊 Dimensione CSV:', csvData.length, 'caratteri');
     
     // Inizializza e avvia processore
     const processor = new UnifiedImportProcessor(userId);

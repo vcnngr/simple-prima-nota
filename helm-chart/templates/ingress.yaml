@@ -1,14 +1,33 @@
 {{- if .Values.ingress.enabled -}}
+{{- if .Values.pgadmin.enabled }}
+# Middleware Traefik per pgAdmin
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-pgadmin-stripprefix
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - "/pgadmin"
+---
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "prima-nota.fullname" . }}-ingress
   labels:
     {{- include "prima-nota.labels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
   annotations:
+    {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- end }}
+    {{- if .Values.pgadmin.enabled }}
+    # Middleware applicato solo al path /pgadmin
+    traefik.ingress.kubernetes.io/router.middlewares: {{ .Release.Namespace }}-{{ include "prima-nota.fullname" . }}-pgadmin-stripprefix@kubernetescrd
+    {{- end }}
 spec:
   {{- if .Values.ingress.className }}
   ingressClassName: {{ .Values.ingress.className }}
@@ -28,21 +47,23 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
+          {{- if $.Values.pgladmin.enabled }}
+          # pgAdmin PRIMA (path più specifico)
+          - path: /pgladmin
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "prima-nota.fullname" $ }}-pgadmin
+                port:
+                  number: {{ $.Values.pgladmin.service.port }}
+          {{- end }}
+          # Frontend DOPO (path generico)
           - path: /
             pathType: Prefix
             backend:
               service:
                 name: {{ include "prima-nota.fullname" $ }}-frontend
                 port:
-                  number: 80
-          {{- if $.Values.pgadmin.enabled }}
-          - path: /pgadmin
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ include "prima-nota.fullname" $ }}-pgadmin
-                port:
-                  number: 80
-          {{- end }}
+                  number: {{ $.Values.frontend.service.port }}
     {{- end }}
 {{- end }}

@@ -2,39 +2,23 @@
 global:
   imageRegistry: "docker.io"
 
+# PostgreSQL Standalone (modalità attuale)
 postgresql:
-  # COMPATIBILITÀ: Mantieni enabled per retrocompatibilità
-  enabled: false  # Disabilita deployment tradizionale
-  
-  # NUOVO: Abilita CloudNativePG
-  cloudnativepg:
-    enabled: true
-    instances: 3  # 1 primary + 2 standby per HA
-    
-    # WAL storage separato per performance
-    walStorage:
-      enabled: true
-      size: "2Gi"  # Dimensione WAL storage
-  
-  # COMPATIBILITÀ: Mantieni configurazione esistente
+  enabled: false  # Disabilitato di default per favorire CloudNativePG
   image:
     registry: docker.io
     repository: postgres
     tag: "15"
     pullPolicy: IfNotPresent
-    
   auth:
     database: prima_nota
     username: postgres
-    password: ""  # Sarà generata automaticamente se vuota
-    
+    password: ""
   persistence:
     enabled: true
     size: 8Gi
-    storageClass: "ceph-block"  # Aggiungi la tua storage class
     accessModes:
       - ReadWriteOnce
-      
   resources:
     limits:
       cpu: 500m
@@ -42,65 +26,102 @@ postgresql:
     requests:
       cpu: 250m
       memory: 256Mi
-      
   service:
     type: ClusterIP
     port: 5432
-  
-  # NUOVO: Configurazione parametri PostgreSQL
-  parameters:
-    # Tuning performance
-    max_connections: "200"
-    shared_buffers: "128MB"
-    effective_cache_size: "384MB"
-    maintenance_work_mem: "64MB"
-    random_page_cost: "1.1"
-    # Log configuration
-    log_statement: "none"
-    log_min_duration_statement: "1000"
-  
-  # NUOVO: Monitoring
-  monitoring:
-    enabled: true
-    podMonitor: true
-  
-  # NUOVO: Backup configuration
-  backup:
-    enabled: true
-    target: "prefer-standby"
-    retentionPolicy: "30d"
-    method: "barmanObjectStore"
+
+# CloudNativePG Cluster (modalità enterprise)
+cloudnativepg:
+  enabled: true  # Abilitato di default
+  cluster:
+    name: "prima-nota-postgres"  # Nome del cluster
+    instances: 3
+    primaryUpdateStrategy: unsupervised
     
-    # Schedule backup automatici
-    schedule:
-      enabled: true
-      daily: "0 2 * * *"    # Ogni giorno alle 2:00
-      weekly:
+    # Immagine PostgreSQL
+    imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+
+    # === SUPERUSER ACCESS ===
+    enableSuperuserAccess: true  # Abilitato per permettere accesso diretto al superuser
+
+    # === SUPERUSER SECRET CONFIGURATION ===
+    superuserSecret:
+      name: ""  # Se vuoto, usa il pattern: {{release-name}}-superuser-credentials
+      username: "postgres"  # Username del superuser
+      password: ""  # Se vuoto, genera una password casuale
+
+    # Bootstrap configuration
+    bootstrap:
+      database: prima_nota
+      owner: postgres
+      secret:
+        name: ""  # Se vuoto, usa lo stesso del superuserSecret
+      initSql:
         enabled: true
-        cron: "0 1 * * 0"   # Domenica alle 1:00
+ 
+    # PostgreSQL parameters
+    postgresql:
+      parameters:
+        max_connections: "200"
+        shared_buffers: "256MB"
+        effective_cache_size: "1GB"
+        work_mem: "4MB"
+        maintenance_work_mem: "64MB"
+      pg_hba:
+        - "local all all trust"
+        - "host all all 127.0.0.1/32 md5"
+        - "host all all ::1/128 md5"
+        - "host all all 0.0.0.0/0 md5"
     
-    # Configurazione S3/MinIO per backup
-    barmanObjectStore:
-      destinationPath: "s3://postgresql-backups/prima-nota"
-      endpointURL: "http://minio.velero-system.svc.cluster.local:9000"
-      s3Credentials:
-        # Credenziali dirette (per semplicità)
-        accessKey: "minioadmin"
-        secretKey: "minioadmin"
-        # O referenza a secret esistente
-        accessKeyId:
-          name: "prima-nota-backup-credentials"
-          key: "ACCESS_KEY_ID"
-        secretAccessKey:
-          name: "prima-nota-backup-credentials"
-          key: "SECRET_ACCESS_KEY"
-      wal:
-        compression: "gzip"
-        retention: "7d"
-      data:
-        compression: "gzip"
-        immediateCheckpoint: true
-        jobs: 2
+    # Storage configuration
+    storage:
+      size: 20Gi
+      storageClass: ""  # Usa default o specifica (es. ceph-block)
+    
+    # Resources
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+    
+    # Monitoring
+    monitoring:
+      enabled: true
+      customQueriesConfigMap:
+        name: ""  # Se vuoto, non usa custom queries
+    
+    # Backup configuration (opzionale)
+    backup:
+      enabled: false  # Disabilitato di default
+      retentionPolicy: "30d"
+      barmanObjectStore:
+        destinationPath: ""
+        endpointURL: ""
+        s3Credentials:
+          accessKeyId:
+            name: ""
+            key: ""
+          secretAccessKey:
+            name: ""
+            key: ""
+
+  # Scheduled Backup (opzionale)
+  scheduledBackup:
+    enabled: false
+    schedule: "0 2 * * *"  # Ogni giorno alle 2:00
+
+# Database Esterno (per casi avanzati)
+externalDatabase:
+  enabled: false
+  host: ""
+  port: "5432"
+  database: "prima_nota"
+  username: "postgres"
+  existingSecret: ""
+  secretPasswordKey: "password"
 
 backend:
   enabled: true
@@ -121,13 +142,6 @@ backend:
     RATE_LIMIT_MAX_REQUESTS: 100
     MAX_FILE_SIZE: 10485760
     LOG_LEVEL: info
-  defaultUser:
-    enabled: true
-    username: admin
-    email: admin@prima-nota.com
-    password: ""
-    firstName: Admin
-    lastName: User
   resources:
     limits:
       cpu: 500m

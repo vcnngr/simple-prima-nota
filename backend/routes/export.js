@@ -131,8 +131,6 @@ router.post('/generate', validateBody(exportConfigSchema), async (req, res) => {
     // Genera la query SQL
     const { query, params } = buildExportQuery(exportConfig, config, userId);
     
-    console.log('📊 Query generata:', query);
-    console.log('📋 Parametri:', params);
 
     // Esegui la query
     const data = await queryAll(query, params);
@@ -348,7 +346,6 @@ function getOrderField(orderBy, table) {
 }
 
 function buildCustomConfig(config) {
-  console.log('🔧 Building custom config:', config);
   
   // Determina tabella dal table_type o dai campi
   let table = config.table_type || 'movimenti';
@@ -367,7 +364,6 @@ function buildCustomConfig(config) {
     ? config.campi_personalizzati 
     : ['data', 'descrizione', 'importo', 'tipo']; // Default sicuro
     
-  console.log('📋 Custom config risultato:', {
     table,
     fields,
     required_joins: determineRequiredJoins(fields)
@@ -598,7 +594,6 @@ router.post('/preview', validateBody(exportConfigSchema), async (req, res) => {
     // Limita a 10 record per anteprima
     const limitedQuery = query + ' LIMIT 10';
     
-    console.log('📊 Query anteprima:', limitedQuery);
     
     // Esegui la query
     const data = await queryAll(limitedQuery, params);

@@ -1,0 +1,125 @@
+{{- if and .Values.cloudnativepg.enabled .Values.cloudnativepg.cluster.bootstrap.initSql.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-db-init
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-init
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "prima-nota.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: db-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: db-init
+        image: postgres:16-alpine
+        env:
+        - name: PGHOST
+          value: {{ .Values.cloudnativepg.cluster.name | default (printf "%s-postgres" (include "prima-nota.fullname" .)) }}-rw.{{ .Release.Namespace }}.svc.cluster.local
+        - name: PGPORT
+          value: "5432"
+        - name: PGDATABASE
+          value: {{ .Values.cloudnativepg.cluster.bootstrap.database | default "prima_nota" }}
+        - name: PGUSER
+          value: "postgres"
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "prima-nota.fullname" . }}-secret
+              key: postgres-password
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "Waiting for PostgreSQL to be ready..."
+          
+          # Wait for PostgreSQL to be ready
+          until pg_isready -h $PGHOST -p $PGPORT -U $PGUSER; do
+            echo "PostgreSQL is not ready yet, waiting 5 seconds..."
+            sleep 5
+          done
+          
+          echo "PostgreSQL is ready, checking if Prima Nota database is already initialized..."
+          
+          # Check if the main tables of Prima Nota exist
+          # We check for 'utenti' table as it's one of the first created
+          TABLE_EXISTS=$(psql -d $PGDATABASE -tAc "SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name = 'utenti'
+          );")
+          
+          if [ "$TABLE_EXISTS" = "t" ]; then
+            echo "Table 'utenti' exists, checking if database is fully initialized..."
+            
+            # Check if we have all the main Prima Nota tables
+            MAIN_TABLES_COUNT=$(psql -d $PGDATABASE -tAc "
+              SELECT COUNT(*) FROM information_schema.tables 
+              WHERE table_schema = 'public' 
+              AND table_name IN (
+                'utenti', 'conti_correnti', 'tipologie_anagrafiche', 
+                'categorie_anagrafiche', 'anagrafiche', 'categorie_movimenti', 
+                'movimenti', 'alerts'
+              );
+            ")
+            
+            if [ "$MAIN_TABLES_COUNT" -ge "8" ]; then
+              echo "Prima Nota database appears to be fully initialized ($MAIN_TABLES_COUNT/8 main tables found)."
+              echo "Skipping initialization to avoid data conflicts."
+              echo "If you need to reinitialize, please manually drop the database first."
+              exit 0
+            else
+              echo "Only $MAIN_TABLES_COUNT/8 main tables found. Database seems incomplete."
+              echo "Proceeding with initialization..."
+            fi
+          else
+            echo "Prima Nota tables not found. Proceeding with database initialization..."
+          fi
+          
+          # Execute the SQL script only if database is not initialized
+          echo "Executing Prima Nota initialization script..."
+          psql -v ON_ERROR_STOP=1 -f /init-scripts/init.sql
+          
+          # Verify successful initialization
+          FINAL_TABLES_COUNT=$(psql -d $PGDATABASE -tAc "
+            SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name IN (
+              'utenti', 'conti_correnti', 'tipologie_anagrafiche', 
+              'categorie_anagrafiche', 'anagrafiche', 'categorie_movimenti', 
+              'movimenti', 'alerts'
+            );
+          ")
+          
+          if [ "$FINAL_TABLES_COUNT" -ge "8" ]; then
+            echo "Prima Nota database initialization completed successfully!"
+            echo "Created $FINAL_TABLES_COUNT main tables."
+          else
+            echo "WARNING: Initialization may have failed. Only $FINAL_TABLES_COUNT/8 tables found."
+            exit 1
+          fi
+          
+        volumeMounts:
+        - name: init-sql-scripts
+          mountPath: /init-scripts
+          readOnly: true
+      volumes:
+      - name: init-sql-scripts
+        configMap:
+          name: {{ include "prima-nota.fullname" . }}-config
+          items:
+          - key: init.sql
+            path: init.sql
+            mode: 0644
+{{- end }}

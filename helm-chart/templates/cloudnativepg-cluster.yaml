@@ -1,0 +1,196 @@
+{{- if .Values.cloudnativepg.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.cloudnativepg.cluster.name | default (printf "%s-postgres" (include "prima-nota.fullname" .)) }}
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloudnativepg
+  namespace: {{ .Release.Namespace }}
+spec:
+  instances: {{ .Values.cloudnativepg.cluster.instances }}
+  primaryUpdateStrategy: {{ .Values.cloudnativepg.cluster.primaryUpdateStrategy }}
+  
+  imageName: {{ .Values.cloudnativepg.cluster.imageName }}
+  
+  # === SUPERUSER ACCESS ===
+  enableSuperuserAccess: {{ .Values.cloudnativepg.cluster.enableSuperuserAccess | default false }}
+  
+  # === CLUSTER TIMING CONFIGURATION ===
+  {{- if .Values.cloudnativepg.cluster.failoverDelay }}
+  failoverDelay: {{ .Values.cloudnativepg.cluster.failoverDelay | int }}
+  {{- end }}
+  {{- if .Values.cloudnativepg.cluster.startDelay }}
+  startDelay: {{ .Values.cloudnativepg.cluster.startDelay | int }}
+  {{- end }}
+  {{- if .Values.cloudnativepg.cluster.stopDelay }}
+  stopDelay: {{ .Values.cloudnativepg.cluster.stopDelay | int }}
+  {{- end }}
+  {{- if .Values.cloudnativepg.cluster.switchoverDelay }}
+  switchoverDelay: {{ .Values.cloudnativepg.cluster.switchoverDelay | int }}
+  {{- end }}
+  
+  # === SYNCHRONOUS REPLICATION ===
+  {{- if .Values.cloudnativepg.cluster.maxSyncReplicas }}
+  maxSyncReplicas: {{ .Values.cloudnativepg.cluster.maxSyncReplicas | int }}
+  {{- end }}
+  {{- if .Values.cloudnativepg.cluster.minSyncReplicas }}
+  minSyncReplicas: {{ .Values.cloudnativepg.cluster.minSyncReplicas | int }}
+  {{- end }}
+  
+  # === SUPERUSER SECRET ===
+  # Usa il secret dedicato per superuser
+  superuserSecret:
+    name: {{ .Values.cloudnativepg.cluster.superuserSecret.name | default (printf "%s-superuser-credentials" (include "prima-nota.fullname" .)) }}
+  
+  bootstrap:
+    initdb:
+      database: {{ .Values.cloudnativepg.cluster.bootstrap.database }}
+      owner: {{ .Values.cloudnativepg.cluster.bootstrap.owner }}
+      secret:
+        # Per bootstrap può usare lo stesso secret del superuser o uno diverso
+        name: {{ .Values.cloudnativepg.cluster.bootstrap.secret.name | default (printf "%s-superuser-credentials" (include "prima-nota.fullname" .)) }}
+  
+  # === POSTGRESQL CONFIGURATION ===
+  {{- if .Values.cloudnativepg.cluster.postgresql }}
+  postgresql:
+    {{- if .Values.cloudnativepg.cluster.postgresql.parameters }}
+    parameters:
+      {{- toYaml .Values.cloudnativepg.cluster.postgresql.parameters | nindent 6 }}
+    {{- end }}
+    {{- if .Values.cloudnativepg.cluster.postgresql.pg_hba }}
+    pg_hba:
+      {{- toYaml .Values.cloudnativepg.cluster.postgresql.pg_hba | nindent 6 }}
+    {{- end }}
+    {{- if .Values.cloudnativepg.cluster.postgresql.shared_preload_libraries }}
+    shared_preload_libraries:
+      {{- toYaml .Values.cloudnativepg.cluster.postgresql.shared_preload_libraries | nindent 6 }}
+    {{- end }}
+  {{- end }}
+
+  {{- if .Values.cloudnativepg.cluster.bootstrap.initSql.enabled }}
+  # === VOLUME PER SCRIPT SQL INIT ===
+  # Monta il ConfigMap contenente init.sql
+  additionalVolumes:
+    - name: init-sql-scripts
+      configMap:
+        name: {{ include "prima-nota.fullname" . }}-config
+        items:
+        - key: init.sql
+          path: init.sql
+          mode: 0644
+  
+  # === MOUNT DEL VOLUME ===
+  additionalVolumeMounts:
+    - name: init-sql-scripts
+      mountPath: /docker-entrypoint-initdb.d
+      readOnly: true
+  {{- end }}
+  
+  # === STORAGE CONFIGURATION ===
+  storage:
+    size: {{ .Values.cloudnativepg.cluster.storage.size }}
+    {{- if .Values.cloudnativepg.cluster.storage.storageClass }}
+    storageClass: {{ .Values.cloudnativepg.cluster.storage.storageClass }}
+    {{- end }}
+    {{- if .Values.cloudnativepg.cluster.storage.resizeInUseVolumes }}
+    resizeInUseVolumes: {{ .Values.cloudnativepg.cluster.storage.resizeInUseVolumes }}
+    {{- end }}
+  
+  # === RESOURCES ===
+  {{- if .Values.cloudnativepg.cluster.resources }}
+  resources:
+    {{- toYaml .Values.cloudnativepg.cluster.resources | nindent 4 }}
+  {{- end }}
+  
+  # === AFFINITY AND TOPOLOGY ===
+  {{- if .Values.cloudnativepg.cluster.affinity }}
+  affinity:
+    {{- toYaml .Values.cloudnativepg.cluster.affinity | nindent 4 }}
+  {{- end }}
+  {{- if .Values.cloudnativepg.cluster.nodeSelector }}
+  nodeSelector:
+    {{- toYaml .Values.cloudnativepg.cluster.nodeSelector | nindent 4 }}
+  {{- end }}
+  {{- if .Values.cloudnativepg.cluster.tolerations }}
+  tolerations:
+    {{- toYaml .Values.cloudnativepg.cluster.tolerations | nindent 4 }}
+  {{- end }}
+  
+  # === MONITORING (Deprecated fields removed) ===
+  # Note: monitoring.enabled and podMonitorEnabled are not supported in v1.26.1
+  # Monitoring is automatically enabled by CloudNativePG
+  
+  # === BACKUP CONFIGURATION ===
+  {{- if .Values.cloudnativepg.cluster.backup.enabled }}
+  backup:
+    retentionPolicy: {{ .Values.cloudnativepg.cluster.backup.retentionPolicy }}
+    {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore }}
+    barmanObjectStore:
+      destinationPath: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.destinationPath }}
+      {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.endpointURL }}
+      endpointURL: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.endpointURL }}
+      {{- end }}
+      {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.s3Credentials }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.s3Credentials.accessKeyId.name }}
+          key: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.s3Credentials.accessKeyId.key }}
+        secretAccessKey:
+          name: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.s3Credentials.secretAccessKey.name }}
+          key: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.s3Credentials.secretAccessKey.key }}
+      {{- end }}
+      {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.wal }}
+      wal:
+        {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.wal.maxParallel }}
+        maxParallel: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.wal.maxParallel }}
+        {{- end }}
+        {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.wal.archiveTimeout }}
+        archiveTimeout: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.wal.archiveTimeout }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.data }}
+      data:
+        {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.data.compression }}
+        compression: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.data.compression }}
+        {{- end }}
+        {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.data.jobs }}
+        jobs: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.data.jobs }}
+        {{- end }}
+        {{- if .Values.cloudnativepg.cluster.backup.barmanObjectStore.data.immediateCheckpoint }}
+        immediateCheckpoint: {{ .Values.cloudnativepg.cluster.backup.barmanObjectStore.data.immediateCheckpoint }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  
+  # === CERTIFICATES (if needed) ===
+  {{- if .Values.cloudnativepg.cluster.certificates }}
+  certificates:
+    {{- if .Values.cloudnativepg.cluster.certificates.serverTLSSecret }}
+    serverTLSSecret: {{ .Values.cloudnativepg.cluster.certificates.serverTLSSecret }}
+    {{- end }}
+    {{- if .Values.cloudnativepg.cluster.certificates.serverCASecret }}
+    serverCASecret: {{ .Values.cloudnativepg.cluster.certificates.serverCASecret }}
+    {{- end }}
+    {{- if .Values.cloudnativepg.cluster.certificates.clientCASecret }}
+    clientCASecret: {{ .Values.cloudnativepg.cluster.certificates.clientCASecret }}
+    {{- end }}
+    {{- if .Values.cloudnativepg.cluster.certificates.replicationTLSSecret }}
+    replicationTLSSecret: {{ .Values.cloudnativepg.cluster.certificates.replicationTLSSecret }}
+    {{- end }}
+  {{- end }}
+  
+  # === ENVIRONMENT VARIABLES ===
+  {{- if .Values.cloudnativepg.cluster.env }}
+  env:
+    {{- toYaml .Values.cloudnativepg.cluster.env | nindent 4 }}
+  {{- end }}
+  
+  # === SERVICE ACCOUNT ===
+  {{- if .Values.cloudnativepg.cluster.serviceAccountTemplate }}
+  serviceAccountTemplate:
+    {{- toYaml .Values.cloudnativepg.cluster.serviceAccountTemplate | nindent 4 }}
+  {{- end }}
+  
+{{- end }}

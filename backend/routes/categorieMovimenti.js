@@ -66,7 +66,6 @@ router.get('/suggestions', async (req, res) => {
       return res.json([]);
     }
 
-    console.log(`🔍 Ricerca suggerimenti movimenti: "${q}" tipo: ${tipo || 'tutti'} per utente ${userId}`);
 
     let tipoCondition = '';
     let params = [userId, `%${q}%`];
@@ -101,7 +100,6 @@ router.get('/suggestions', async (req, res) => {
       LIMIT 10
     `, params);
 
-    console.log(`💡 Suggerimenti movimenti trovati: ${suggestions.length}`);
     res.json(suggestions);
   } catch (error) {
     console.error('❌ Error getting movimento suggestions:', error);
@@ -172,7 +170,6 @@ router.put('/:id', validate(schemas.categoriaMovimentoUpdate), async (req, res) 
     const userId = req.user.id;
     const updateData = req.body;
 
-    console.log(`📝 Aggiornamento categoria movimento ID: ${categoriaId} per utente ${userId}`);
 
     // Costruisci query dinamica
     const fields = [];
@@ -206,7 +203,6 @@ router.put('/:id', validate(schemas.categoriaMovimentoUpdate), async (req, res) 
       return res.status(404).json({ error: 'Categoria movimento non trovata' });
     }
 
-    console.log(`✅ Categoria movimento aggiornata: ${categoria.nome}`);
 
     res.json({
       success: true,
@@ -284,7 +280,6 @@ router.patch('/:id/toggle', async (req, res) => {
       return res.status(404).json({ error: 'Categoria movimento non trovata' });
     }
 
-    console.log(`🔄 Categoria movimento ${categoria.attiva ? 'attivata' : 'disattivata'}: ${categoria.nome}`);
 
     res.json({
       success: true,

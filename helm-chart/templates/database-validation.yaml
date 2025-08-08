@@ -1,0 +1,26 @@
+{{- $dbCount := 0 }}
+{{- if .Values.postgresql.enabled }}
+  {{- $dbCount = add $dbCount 1 }}
+{{- end }}
+{{- if .Values.cloudnativepg.enabled }}
+  {{- $dbCount = add $dbCount 1 }}
+{{- end }}
+{{- if .Values.externalDatabase.enabled }}
+  {{- $dbCount = add $dbCount 1 }}
+{{- end }}
+
+{{- if gt $dbCount 1 }}
+  {{- fail "ERRORE: Puoi abilitare solo una delle seguenti opzioni: postgresql.enabled, cloudnativepg.enabled, o externalDatabase.enabled" }}
+{{- end }}
+
+{{- if eq $dbCount 0 }}
+  {{- fail "ERRORE: Devi abilitare almeno una opzione database: postgresql.enabled, cloudnativepg.enabled, o externalDatabase.enabled" }}
+{{- end }}
+
+# Questo template non genera risorse, è solo per validazione
+{{- if false }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: validation-placeholder
+{{- end }}

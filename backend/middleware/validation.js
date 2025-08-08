@@ -214,12 +214,6 @@ const schemas = {
 // Middleware per validazione con debug dettagliato (INVARIATO)
 const validate = (schema) => {
   return (req, res, next) => {
-    console.log('🔍 VALIDATION DEBUG:', {
-      url: req.url,
-      method: req.method,
-      body: req.body,
-      bodySize: JSON.stringify(req.body).length,
-      timestamp: new Date().toISOString()
     });
 
     const { error, value } = schema.validate(req.body, { 
@@ -247,7 +241,6 @@ const validate = (schema) => {
       });
     }
     
-    console.log('✅ Validation passed:', {
       validatedFields: Object.keys(value),
       cleanedData: value
     });
@@ -260,7 +253,6 @@ const validate = (schema) => {
 // Middleware per validazione parametri query (INVARIATO)
 const validateQuery = (schema) => {
   return (req, res, next) => {
-    console.log('🔍 QUERY VALIDATION:', {
       url: req.url,
       query: req.query
     });
@@ -284,7 +276,6 @@ const validateQuery = (schema) => {
       });
     }
     
-    console.log('✅ Query validation passed:', value);
     req.query = value;
     next();
   };

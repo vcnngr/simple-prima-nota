@@ -91,7 +91,6 @@ router.put('/tipologie/:id', validate(schemas.tipologiaAnagraficaUpdate), async 
     const userId = req.user.id;
     const updateData = req.body;
 
-    console.log('📝 Update tipologia:', { tipologiaId, userId, updateData });
 
     // Verifica che la tipologia esista e appartenga all'utente
     const existingTipologia = await queryOne(
@@ -144,7 +143,6 @@ router.put('/tipologie/:id', validate(schemas.tipologiaAnagraficaUpdate), async 
       RETURNING *
     `;
 
-    console.log('🔄 Update query:', updateQuery);
     
     const result = await queryOne(updateQuery, values);
 
@@ -538,7 +536,6 @@ router.put('/:id', validate(schemas.anagraficaUpdate), async (req, res) => {
     const userId = req.user.id;
     const updateData = req.body;
 
-    console.log('📝 Update anagrafica:', { anagraficaId, userId, updateData });
 
     // Verifica che l'anagrafica esista e appartenga all'utente
     const existingAnagrafica = await queryOne(
@@ -577,7 +574,6 @@ router.put('/:id', validate(schemas.anagraficaUpdate), async (req, res) => {
       RETURNING *
     `;
 
-    console.log('🔄 Update query:', updateQuery);
     
     const result = await queryOne(updateQuery, values);
 

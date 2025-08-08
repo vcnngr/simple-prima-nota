@@ -1,0 +1,15 @@
+{{- if and .Values.cloudnativepg.enabled .Values.cloudnativepg.scheduledBackup.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-backup
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloudnativepg-backup
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.cloudnativepg.scheduledBackup.schedule | quote }}
+  backupOwnerReference: self
+  cluster:
+    name: {{ .Values.cloudnativepg.cluster.name | default (printf "%s-postgres" (include "prima-nota.fullname" .)) }}
+{{- end }}

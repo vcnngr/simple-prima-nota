@@ -27,6 +27,9 @@ spec:
           value: {{ .Values.backend.env.NODE_ENV }}
         - name: PORT
           value: {{ .Values.backend.env.PORT | quote }}
+        
+        {{- if .Values.postgresql.enabled }}
+        # PostgreSQL Standalone
         - name: DB_HOST
           value: {{ include "prima-nota.fullname" . }}-postgresql
         - name: DB_PORT
@@ -40,6 +43,38 @@ spec:
             secretKeyRef:
               name: {{ include "prima-nota.fullname" . }}-secret
               key: postgres-password
+        {{- else if .Values.cloudnativepg.enabled }}
+        # CloudNativePG Cluster
+        - name: DB_HOST
+          value: {{ .Values.cloudnativepg.cluster.name | default (printf "%s-postgres" (include "prima-nota.fullname" .)) }}-rw
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: {{ .Values.cloudnativepg.cluster.bootstrap.database }}
+        - name: DB_USER
+          value: {{ .Values.cloudnativepg.cluster.bootstrap.owner }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "prima-nota.fullname" . }}-secret
+              key: postgres-password
+        {{- else if .Values.externalDatabase.enabled }}
+        # Database Esterno
+        - name: DB_HOST
+          value: {{ .Values.externalDatabase.host }}
+        - name: DB_PORT
+          value: {{ .Values.externalDatabase.port | quote }}
+        - name: DB_NAME
+          value: {{ .Values.externalDatabase.database }}
+        - name: DB_USER
+          value: {{ .Values.externalDatabase.username }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.externalDatabase.existingSecret | default (printf "%s-secret" (include "prima-nota.fullname" .)) }}
+              key: {{ .Values.externalDatabase.secretPasswordKey | default "postgres-password" }}
+        {{- end }}
+        
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:

@@ -227,7 +227,6 @@ router.post('/backup/import', auth, async (req, res) => {
         try {
           await query('DELETE FROM alerts WHERE user_id = $1', [userId]);
         } catch (e) {
-          console.log('📝 Tabella alerts non presente, saltata');
         }
         console.log('✅ Dati esistenti eliminati');
       } catch (error) {
@@ -454,7 +453,6 @@ router.get('/backup/export', auth, async (req, res) => {
     };
 
     // 1. Dati utente (senza password)
-    console.log(`👤 Backup dati utente...`);
     const userResult = await query(`
       SELECT id, username, email, created_at, updated_at
       FROM utenti WHERE id = $1
@@ -462,7 +460,6 @@ router.get('/backup/export', auth, async (req, res) => {
     backup.user = userResult.rows[0];
 
     // 2. Conti correnti
-    console.log(`💳 Backup conti correnti...`);
     const contiResult = await query(`
       SELECT id, nome_banca, intestatario, iban, saldo_iniziale, attivo, created_at, updated_at
       FROM conti_correnti WHERE user_id = $1
@@ -471,7 +468,6 @@ router.get('/backup/export', auth, async (req, res) => {
     backup.conti_correnti = contiResult.rows;
 
     // 3. Tipologie anagrafiche
-    console.log(`🏷️ Backup tipologie anagrafiche...`);
     const tipologieResult = await query(`
       SELECT id, nome, descrizione, tipo_movimento_default, colore, icona, attiva, created_at, updated_at
       FROM tipologie_anagrafiche WHERE user_id = $1
@@ -480,7 +476,6 @@ router.get('/backup/export', auth, async (req, res) => {
     backup.tipologie_anagrafiche = tipologieResult.rows;
 
     // 4. Categorie anagrafiche
-    console.log(`📂 Backup categorie anagrafiche...`);
     const catAnagraficheResult = await query(`
       SELECT id, nome, descrizione, colore, attiva, created_at, updated_at
       FROM categorie_anagrafiche WHERE user_id = $1
@@ -489,7 +484,6 @@ router.get('/backup/export', auth, async (req, res) => {
     backup.categorie_anagrafiche = catAnagraficheResult.rows;
 
     // 5. Categorie movimenti
-    console.log(`📂 Backup categorie movimenti...`);
     const catMovimentiResult = await query(`
       SELECT id, nome, tipo, descrizione, colore, attiva, created_at, updated_at
       FROM categorie_movimenti WHERE user_id = $1
@@ -498,7 +492,6 @@ router.get('/backup/export', auth, async (req, res) => {
     backup.categorie_movimenti = catMovimentiResult.rows;
 
     // 6. Anagrafiche
-    console.log(`👥 Backup anagrafiche...`);
     const anagraficheResult = await query(`
       SELECT id, nome, tipologia_id, tipo_movimento_preferito, categoria, 
              email, telefono, piva, indirizzo, attivo, created_at, updated_at
@@ -508,7 +501,6 @@ router.get('/backup/export', auth, async (req, res) => {
     backup.anagrafiche = anagraficheResult.rows;
 
     // 7. Movimenti
-    console.log(`📊 Backup movimenti...`);
     const movimentiResult = await query(`
       SELECT id, data, anagrafica_id, conto_id, descrizione, categoria, 
              importo, tipo, note, created_at, updated_at
@@ -518,7 +510,6 @@ router.get('/backup/export', auth, async (req, res) => {
     backup.movimenti = movimentiResult.rows;
 
     // 8. Alerts (opzionali)
-    console.log(`🔔 Backup alerts...`);
     try {
       const alertsResult = await query(`
         SELECT id, titolo, messaggio, tipo, priorita, letto, 
@@ -528,7 +519,6 @@ router.get('/backup/export', auth, async (req, res) => {
       `, [userId]);
       backup.alerts = alertsResult.rows;
     } catch (error) {
-      console.log('📝 Tabella alerts non presente, saltata');
       backup.alerts = [];
     }
 
@@ -594,12 +584,10 @@ router.delete('/account', auth, async (req, res) => {
       return res.status(404).json({ error: 'Utente non trovato' });
     }
 
-    console.log(`🔐 Verifica password per utente: ${user.username}`);
 
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     
     if (!isValidPassword) {
-      console.log(`❌ Password non corretta per utente ${userId}`);
       return res.status(400).json({ error: 'Password non corretta' });
     }
 
@@ -617,7 +605,6 @@ router.delete('/account', auth, async (req, res) => {
       console.log('⚠️ Errore nel conteggio dati (continuo comunque):', error.message);
     }
 
-    console.log(`📊 Dati da eliminare (via CASCADE):`, conteggi);
 
     // 3. Elimina SOLO l'utente - il DB eliminerà tutto il resto via CASCADE
     console.log(`🗑️ Eliminazione utente ${userId} - CASCADE eliminerà tutti i dati collegati...`);

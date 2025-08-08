@@ -234,7 +234,6 @@ router.put('/:id', validate(schemas.contoBancarioUpdate), async (req, res) => {
     const userId = req.user.id;
     const updateData = req.body;
 
-    console.log('📝 Update conto:', { contoId, userId, updateData });
 
     // Verifica che il conto esista e appartenga all'utente
     const existingConto = await queryOne(
@@ -274,8 +273,6 @@ router.put('/:id', validate(schemas.contoBancarioUpdate), async (req, res) => {
       RETURNING *
     `;
 
-    console.log('🔄 Update query:', updateQuery);
-    console.log('🔄 Update values:', values);
 
     const result = await queryOne(updateQuery, values);
 
