@@ -4,7 +4,7 @@
 ![Docker](https://img.shields.io/badge/Docker-Ready-green)
 ![React](https://img.shields.io/badge/React-18.2.0-blue)
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-blue)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
 
 Un sistema semplificato per la gestione della prima nota contabile personale/aziendale, progettato per essere **SEMPLICE** e **PRATICO**.
 
