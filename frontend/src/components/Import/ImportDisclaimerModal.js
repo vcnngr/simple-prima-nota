@@ -12,13 +12,8 @@ import {
   CheckCircle,
   Download,
   Info,
-  X,
   ChevronRight,
-  Database,
-  Users,
-  CreditCard,
-  Tag,
-  Building
+  Database
 } from 'lucide-react';
 import Modal from '../UI/Modal';
 import Button from '../UI/Button';

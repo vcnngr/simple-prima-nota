@@ -259,10 +259,12 @@ const RegisterPage = () => {
               <div className="ml-3 text-sm">
                 <label htmlFor="terms" className="text-gray-700">
                   Accetto i{' '}
+                  {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
                   <a href="#" className="text-success-600 hover:text-success-500 font-medium">
                     termini e le condizioni
                   </a>{' '}
                   e la{' '}
+                  {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
                   <a href="#" className="text-success-600 hover:text-success-500 font-medium">
                     privacy policy
                   </a>

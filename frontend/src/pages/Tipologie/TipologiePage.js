@@ -2,12 +2,11 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion';
 import {
   Plus,
   Edit,
   Trash2,
-  Eye,
   ToggleLeft,
   ToggleRight,
   Tag,

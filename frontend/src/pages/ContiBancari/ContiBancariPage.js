@@ -7,13 +7,10 @@ import {
   Plus,
   Edit,
   Trash2,
-  Eye,
   ToggleLeft,
   ToggleRight,
   CreditCard,
   TrendingUp,
-  TrendingDown,
-  MoreVertical,
   Filter,
   Search,
   Download

@@ -4,7 +4,7 @@ import { useQuery } from 'react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Settings, Download, Calendar, Eye, ChevronLeft, ChevronRight, 
-  Check, AlertCircle, DragDropContext, Droppable, Draggable, 
+  Check, AlertCircle, 
   GripVertical, Plus, X, FileText, FileSpreadsheet, FileType
 } from 'lucide-react';
 import { exportAPI, contiBancariAPI, anagraficheAPI } from '../../services/api';
@@ -382,12 +382,12 @@ const Step1FieldSelection = ({ config, onUpdate, availableFields }) => {
     });
   };
 
-  const moveField = (fromIndex, toIndex) => {
-    const newFields = [...config.campi_personalizzati];
-    const [removed] = newFields.splice(fromIndex, 1);
-    newFields.splice(toIndex, 0, removed);
-    onUpdate({ campi_personalizzati: newFields });
-  };
+  // const moveField = (fromIndex, toIndex) => {
+  //   const newFields = [...config.campi_personalizzati];
+  //   const [removed] = newFields.splice(fromIndex, 1);
+  //   newFields.splice(toIndex, 0, removed);
+  //   onUpdate({ campi_personalizzati: newFields });
+  // };
 
   const getFieldName = (fieldId) => {
     const field = availableFields.find(f => f.id === fieldId);

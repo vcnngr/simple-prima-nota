@@ -91,7 +91,7 @@ const AutocompleteInput = ({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [inputValue, queryParams, showSuggestions]);
+  }, [inputValue, queryParams, showSuggestions, debounceMs, fetchSuggestions]);
 
   // Cleanup
   useEffect(() => {
@@ -177,6 +177,9 @@ const AutocompleteInput = ({
         } else {
           setShowSuggestions(false);
         }
+        break;
+      default:
+        // Non facciamo nulla per gli altri tasti - comportamento normale del browser
         break;
     }
   };

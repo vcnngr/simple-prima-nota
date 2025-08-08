@@ -18,7 +18,6 @@ import {
 import Modal from '../UI/Modal';
 import Button from '../UI/Button';
 import Card from '../UI/Card';
-import Badge from '../UI/Badge';
 
 const ImportModal = ({ isOpen, onClose, onImport, isLoading }) => {
   const [selectedFile, setSelectedFile] = useState(null);

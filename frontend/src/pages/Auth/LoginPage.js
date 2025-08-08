@@ -152,6 +152,7 @@ const LoginPage = () => {
                 </label>
               </div>
               <div className="text-sm">
+                {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
                 <a href="#" className="text-primary-600 hover:text-primary-500 font-medium">
                   Password dimenticata?
                 </a>

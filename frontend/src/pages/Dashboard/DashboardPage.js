@@ -28,7 +28,7 @@ import Button from '../../components/UI/Button';
 import Badge from '../../components/UI/Badge';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import Alert from '../../components/UI/Alert';
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -92,10 +92,10 @@ const DashboardPage = () => {
   const andamentoData = dashboard.andamento_mensile || [];
   const tipologieEntrate = dashboard.distribuzione_tipologie?.entrate || [];
   const tipologieUscite = dashboard.distribuzione_tipologie?.uscite || [];
-  const categorieMovimentiEntrate = dashboard.distribuzione_categorie_movimento?.entrate || [];
+  //const categorieMovimentiEntrate = dashboard.distribuzione_categorie_movimento?.entrate || [];
   
   // Colori per i grafici
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+  // const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
   
   // Helper per ottenere icona tipologia
   const getIconForTipologia = (iconName) => {

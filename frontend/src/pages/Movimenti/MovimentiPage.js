@@ -13,13 +13,11 @@ import {
   ArrowUpDown,
   TrendingUp,
   TrendingDown,
-  Calendar,
   Euro,
   FileText,
   Upload,
   ChevronLeft,
-  ChevronRight,
-  Tag
+  ChevronRight
 } from 'lucide-react';
 import { movimentiAPI, contiBancariAPI, anagraficheAPI } from '../../services/api';
 import Card from '../../components/UI/Card';
@@ -32,7 +30,7 @@ import Table from '../../components/UI/Table';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import AutocompleteInput from '../../components/UI/AutocompleteInput';
-import { categorieMovimentiAPI } from '../../services/api';
+// import { categorieMovimentiAPI } from '../../services/api';
 import ImportDisclaimerModal from '../../components/Import/ImportDisclaimerModal';
 import ImportModal from '../../components/Import/ImportModal';
 import ImportResultModal from '../../components/Import/ImportResultModal';
@@ -922,7 +920,7 @@ const MovimentoModal = ({ isOpen, onClose, movimento, onSave, isLoading, conti, 
   const watchAnagraficaId = watch('anagrafica_id');
   
   // Trova anagrafica selezionata per mostrare tipologia
-  const anagraficaSelezionata = anagrafiche?.find(a => a.id == watchAnagraficaId);
+  const anagraficaSelezionata = anagrafiche?.find(a => a.id === watchAnagraficaId);
   
   React.useEffect(() => {
     if (movimento) {

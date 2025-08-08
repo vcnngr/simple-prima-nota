@@ -7,7 +7,6 @@ import {
   Plus,
   Edit,
   Trash2,
-  Eye,
   ToggleLeft,
   ToggleRight,
   Users,
@@ -15,7 +14,6 @@ import {
   Building,
   Mail,
   Phone,
-  MapPin,
   Filter,
   Search,
   Download,
@@ -33,7 +31,7 @@ import Table from '../../components/UI/Table';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import AutocompleteInput from '../../components/UI/AutocompleteInput';
-import { categorieAnagraficheAPI } from '../../services/api';
+// import { categorieAnagraficheAPI } from '../../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const AnagrafichePage = () => {
@@ -634,7 +632,7 @@ const AnagraficaModal = ({ isOpen, onClose, anagrafica, onSave, isLoading, tipol
   const watchCategoria = watch('categoria');
 
   // Trova tipologia selezionata per mostrare info
-  const tipologiaSelezionata = tipologie?.find(t => t.id == watchTipologiaId);
+  const tipologiaSelezionata = tipologie?.find(t => t.id === watchTipologiaId);
 
   React.useEffect(() => {
     if (anagrafica) {
