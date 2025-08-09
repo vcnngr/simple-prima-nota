@@ -214,7 +214,6 @@ const schemas = {
 // Middleware per validazione con debug dettagliato (INVARIATO)
 const validate = (schema) => {
   return (req, res, next) => {
-    });
 
     const { error, value } = schema.validate(req.body, { 
       stripUnknown: true,
@@ -241,10 +240,6 @@ const validate = (schema) => {
       });
     }
     
-      validatedFields: Object.keys(value),
-      cleanedData: value
-    });
-    
     req.body = value;
     next();
   };
@@ -253,9 +248,6 @@ const validate = (schema) => {
 // Middleware per validazione parametri query (INVARIATO)
 const validateQuery = (schema) => {
   return (req, res, next) => {
-      url: req.url,
-      query: req.query
-    });
 
     const { error, value } = schema.validate(req.query, {
       stripUnknown: true,

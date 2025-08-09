@@ -364,11 +364,6 @@ function buildCustomConfig(config) {
     ? config.campi_personalizzati 
     : ['data', 'descrizione', 'importo', 'tipo']; // Default sicuro
     
-    table,
-    fields,
-    required_joins: determineRequiredJoins(fields)
-  });
-
   return {
     name: 'Export Personalizzato',
     table: table,
