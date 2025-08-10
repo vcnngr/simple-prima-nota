@@ -22,6 +22,8 @@ const exportRoutes = require('./routes/export');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.set('trust proxy', 1); // Trust first proxy
+
 // Crea la directory logs se non esiste
 const logsDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logsDir)) {
