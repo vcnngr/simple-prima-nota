@@ -3,4 +3,4 @@ appVersion: 1.0.0
 description: Chart Helm per applicazione Prima Nota
 name: simple-prima-nota
 type: application
-version: 0.5.2
+version: 0.5.3
