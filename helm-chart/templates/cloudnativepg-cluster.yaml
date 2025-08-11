@@ -128,20 +128,67 @@ spec:
     barmanObjectStore:
       destinationPath: {{ .Values.cloudnativepg.cluster.backup.destinationPath }}
       
-      {{- /* DERIVAZIONE AUTOMATICA CONFIGURAZIONE PROVIDER-SPECIFIC */ -}}
+      {{- /* CONFIGURAZIONE CREDENZIALI BASATA SUL PROVIDER */ -}}
       {{- if .Values.cloudnativepg.cluster.env.cloudStorage.enabled }}
         {{- $provider := .Values.cloudnativepg.cluster.env.cloudStorage.provider }}
         
         {{- if eq $provider "aws-s3" }}
-          {{- /* AWS S3 / MinIO: endpointURL e credenziali da environment variables */ -}}
-          {{- /* barman leggerà automaticamente da AWS_ENDPOINT_URL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY */ -}}
-          {{- /* Non specifichiamo s3Credentials qui - sono gestite dalle env vars */ -}}
+          {{- /* AWS S3 / MinIO: usa s3Credentials */ -}}
+          {{- $awsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.awsS3 }}
+          {{- if $awsConfig.credentialsSecret.name }}
+          s3Credentials:
+            accessKeyId:
+              name: {{ $awsConfig.credentialsSecret.name }}
+              key: {{ $awsConfig.credentialsSecret.accessKeyIdKey }}
+            secretAccessKey:
+              name: {{ $awsConfig.credentialsSecret.name }}
+              key: {{ $awsConfig.credentialsSecret.secretAccessKeyKey }}
+            {{- if $awsConfig.credentialsSecret.regionKey }}
+            region:
+              name: {{ $awsConfig.credentialsSecret.name }}
+              key: {{ $awsConfig.credentialsSecret.regionKey }}
+            {{- end }}
+          {{- if $awsConfig.credentialsSecret.endpointUrlKey }}
+          endpointURL:
+            name: {{ $awsConfig.credentialsSecret.name }}
+            key: {{ $awsConfig.credentialsSecret.endpointUrlKey }}
+          {{- end }}
+          {{- end }}
+          
         {{- else if eq $provider "azure-blob-storage" }}
-          {{- /* Azure Blob Storage: credenziali da environment variables */ -}}
-          {{- /* barman leggerà automaticamente da AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_KEY/SAS_TOKEN */ -}}
+          {{- /* Azure Blob Storage: usa azureCredentials */ -}}
+          {{- $azureConfig := .Values.cloudnativepg.cluster.env.cloudStorage.azureBlob }}
+          {{- if $azureConfig.credentialsSecret.name }}
+          azureCredentials:
+            storageAccount:
+              name: {{ $azureConfig.credentialsSecret.name }}
+              key: {{ $azureConfig.credentialsSecret.accountNameKey }}
+            {{- if $azureConfig.credentialsSecret.accountKeyKey }}
+            storageKey:
+              name: {{ $azureConfig.credentialsSecret.name }}
+              key: {{ $azureConfig.credentialsSecret.accountKeyKey }}
+            {{- end }}
+            {{- if $azureConfig.credentialsSecret.sasTokenKey }}
+            storageSasToken:
+              name: {{ $azureConfig.credentialsSecret.name }}
+              key: {{ $azureConfig.credentialsSecret.sasTokenKey }}
+            {{- end }}
+          {{- end }}
+          
         {{- else if eq $provider "google-cloud-storage" }}
-          {{- /* Google Cloud Storage: credenziali da environment variables */ -}}
-          {{- /* barman leggerà automaticamente da GOOGLE_APPLICATION_CREDENTIALS */ -}}
+          {{- /* Google Cloud Storage: usa googleCredentials */ -}}
+          {{- $gcsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.googleCloud }}
+          {{- if $gcsConfig.credentialsSecret.name }}
+          googleCredentials:
+            {{- if $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
+            applicationCredentials:
+              name: {{ $gcsConfig.credentialsSecret.name }}
+              key: {{ $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
+            {{- end }}
+            {{- if $gcsConfig.credentialsSecret.projectIdKey }}
+            gkeEnvironment: true
+            {{- end }}
+          {{- end }}
         {{- end }}
       {{- end }}
       
@@ -150,9 +197,6 @@ spec:
       wal:
         {{- if .Values.cloudnativepg.cluster.backup.wal.maxParallel }}
         maxParallel: {{ .Values.cloudnativepg.cluster.backup.wal.maxParallel }}
-        {{- end }}
-        {{- if .Values.cloudnativepg.cluster.backup.wal.archiveTimeout }}
-        archiveTimeout: {{ .Values.cloudnativepg.cluster.backup.wal.archiveTimeout }}
         {{- end }}
         {{- if .Values.cloudnativepg.cluster.backup.wal.compression }}
         compression: {{ .Values.cloudnativepg.cluster.backup.wal.compression }}

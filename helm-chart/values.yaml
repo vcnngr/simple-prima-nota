@@ -164,7 +164,6 @@ cloudnativepg:
       # Configurazione avanzata WAL
       wal:
         maxParallel: 8  # Parallelismo per WAL upload
-        archiveTimeout: "5min"  # Timeout per archiviazione WAL
         compression: "gzip"  # Compressione WAL
       
       # Configurazione avanzata Data
