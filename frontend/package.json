@@ -11,8 +11,8 @@
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
     "file-saver": "^2.0.5",
-    "framer-motion": "^10.16.1",
-    "lucide-react": "^0.263.1",
+    "framer-motion": "^12.23.12",
+    "lucide-react": "^0.539.0",
     "papaparse": "^5.4.1",
     "react": "^18.2.0",
     "react-csv": "^2.2.2",
@@ -26,7 +26,7 @@
     "react-select": "^5.7.4",
     "react-table": "^7.8.0",
     "recharts": "^2.8.0",
-    "tailwind-merge": "^1.14.0"
+    "tailwind-merge": "^3.3.1"
   },
   "scripts": {
     "start": "REACT_APP_API_URL=/api react-scripts start",
