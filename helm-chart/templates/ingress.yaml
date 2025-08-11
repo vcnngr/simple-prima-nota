@@ -47,15 +47,15 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-          {{- if $.Values.pgladmin.enabled }}
+          {{- if $.Values.pgadmin.enabled }}
           # pgAdmin PRIMA (path più specifico)
-          - path: /pgladmin
+          - path: /pgadmin
             pathType: Prefix
             backend:
               service:
                 name: {{ include "prima-nota.fullname" $ }}-pgadmin
                 port:
-                  number: {{ $.Values.pgladmin.service.port }}
+                  number: {{ $.Values.pgadmin.service.port }}
           {{- end }}
           # Frontend DOPO (path generico)
           - path: /
