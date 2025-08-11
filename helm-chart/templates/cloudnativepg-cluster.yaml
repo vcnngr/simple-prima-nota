@@ -128,14 +128,14 @@ spec:
     barmanObjectStore:
       destinationPath: {{ .Values.cloudnativepg.cluster.backup.destinationPath }}
       
-      {{- /* CONFIGURAZIONE CREDENZIALI BASATA SUL PROVIDER */ -}}
+      {{- /* CONFIGURAZIONE CREDENZIALI BASATA SUL PROVIDER ATTIVO */ -}}
       {{- if .Values.cloudnativepg.cluster.env.cloudStorage.enabled }}
         {{- $provider := .Values.cloudnativepg.cluster.env.cloudStorage.provider }}
         
         {{- if eq $provider "aws-s3" }}
-          {{- /* AWS S3 / MinIO: usa s3Credentials */ -}}
+          {{- /* SOLO AWS S3 / MinIO credentials */ -}}
           {{- $awsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.awsS3 }}
-          {{- if $awsConfig.credentialsSecret.name }}
+          {{- if and $awsConfig.credentialsSecret.name $awsConfig.credentialsSecret.accessKeyIdKey $awsConfig.credentialsSecret.secretAccessKeyKey }}
           s3Credentials:
             accessKeyId:
               name: {{ $awsConfig.credentialsSecret.name }}
@@ -156,9 +156,9 @@ spec:
           {{- end }}
           
         {{- else if eq $provider "azure-blob-storage" }}
-          {{- /* Azure Blob Storage: usa azureCredentials */ -}}
+          {{- /* SOLO Azure Blob Storage credentials */ -}}
           {{- $azureConfig := .Values.cloudnativepg.cluster.env.cloudStorage.azureBlob }}
-          {{- if $azureConfig.credentialsSecret.name }}
+          {{- if and $azureConfig.credentialsSecret.name $azureConfig.credentialsSecret.accountNameKey }}
           azureCredentials:
             storageAccount:
               name: {{ $azureConfig.credentialsSecret.name }}
@@ -167,8 +167,7 @@ spec:
             storageKey:
               name: {{ $azureConfig.credentialsSecret.name }}
               key: {{ $azureConfig.credentialsSecret.accountKeyKey }}
-            {{- end }}
-            {{- if $azureConfig.credentialsSecret.sasTokenKey }}
+            {{- else if $azureConfig.credentialsSecret.sasTokenKey }}
             storageSasToken:
               name: {{ $azureConfig.credentialsSecret.name }}
               key: {{ $azureConfig.credentialsSecret.sasTokenKey }}
@@ -176,15 +175,13 @@ spec:
           {{- end }}
           
         {{- else if eq $provider "google-cloud-storage" }}
-          {{- /* Google Cloud Storage: usa googleCredentials */ -}}
+          {{- /* SOLO Google Cloud Storage credentials */ -}}
           {{- $gcsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.googleCloud }}
-          {{- if $gcsConfig.credentialsSecret.name }}
+          {{- if and $gcsConfig.credentialsSecret.name $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
           googleCredentials:
-            {{- if $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
             applicationCredentials:
               name: {{ $gcsConfig.credentialsSecret.name }}
               key: {{ $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
-            {{- end }}
             {{- if $gcsConfig.credentialsSecret.projectIdKey }}
             gkeEnvironment: true
             {{- end }}
