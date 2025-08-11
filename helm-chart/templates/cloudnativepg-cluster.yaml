@@ -136,22 +136,22 @@ spec:
           {{- /* SOLO AWS S3 / MinIO credentials */ -}}
           {{- $awsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.awsS3 }}
           {{- if and $awsConfig.credentialsSecret.name $awsConfig.credentialsSecret.accessKeyIdKey $awsConfig.credentialsSecret.secretAccessKeyKey }}
-          s3Credentials:
-            accessKeyId:
-              name: {{ $awsConfig.credentialsSecret.name }}
-              key: {{ $awsConfig.credentialsSecret.accessKeyIdKey }}
-            secretAccessKey:
-              name: {{ $awsConfig.credentialsSecret.name }}
-              key: {{ $awsConfig.credentialsSecret.secretAccessKeyKey }}
+      s3Credentials:
+        accessKeyId:
+          name: {{ $awsConfig.credentialsSecret.name }}
+          key: {{ $awsConfig.credentialsSecret.accessKeyIdKey }}
+        secretAccessKey:
+          name: {{ $awsConfig.credentialsSecret.name }}
+          key: {{ $awsConfig.credentialsSecret.secretAccessKeyKey }}
             {{- if $awsConfig.credentialsSecret.regionKey }}
-            region:
-              name: {{ $awsConfig.credentialsSecret.name }}
-              key: {{ $awsConfig.credentialsSecret.regionKey }}
+        region:
+          name: {{ $awsConfig.credentialsSecret.name }}
+          key: {{ $awsConfig.credentialsSecret.regionKey }}
             {{- end }}
           {{- if $awsConfig.credentialsSecret.endpointUrlKey }}
-          endpointURL:
-            name: {{ $awsConfig.credentialsSecret.name }}
-            key: {{ $awsConfig.credentialsSecret.endpointUrlKey }}
+      endpointURL:
+        name: {{ $awsConfig.credentialsSecret.name }}
+        key: {{ $awsConfig.credentialsSecret.endpointUrlKey }}
           {{- end }}
           {{- end }}
           
@@ -159,18 +159,18 @@ spec:
           {{- /* SOLO Azure Blob Storage credentials */ -}}
           {{- $azureConfig := .Values.cloudnativepg.cluster.env.cloudStorage.azureBlob }}
           {{- if and $azureConfig.credentialsSecret.name $azureConfig.credentialsSecret.accountNameKey }}
-          azureCredentials:
-            storageAccount:
-              name: {{ $azureConfig.credentialsSecret.name }}
-              key: {{ $azureConfig.credentialsSecret.accountNameKey }}
+      azureCredentials:
+        storageAccount:
+          name: {{ $azureConfig.credentialsSecret.name }}
+          key: {{ $azureConfig.credentialsSecret.accountNameKey }}
             {{- if $azureConfig.credentialsSecret.accountKeyKey }}
-            storageKey:
-              name: {{ $azureConfig.credentialsSecret.name }}
-              key: {{ $azureConfig.credentialsSecret.accountKeyKey }}
+        storageKey:
+          name: {{ $azureConfig.credentialsSecret.name }}
+          key: {{ $azureConfig.credentialsSecret.accountKeyKey }}
             {{- else if $azureConfig.credentialsSecret.sasTokenKey }}
-            storageSasToken:
-              name: {{ $azureConfig.credentialsSecret.name }}
-              key: {{ $azureConfig.credentialsSecret.sasTokenKey }}
+        storageSasToken:
+          name: {{ $azureConfig.credentialsSecret.name }}
+          key: {{ $azureConfig.credentialsSecret.sasTokenKey }}
             {{- end }}
           {{- end }}
           
@@ -178,12 +178,12 @@ spec:
           {{- /* SOLO Google Cloud Storage credentials */ -}}
           {{- $gcsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.googleCloud }}
           {{- if and $gcsConfig.credentialsSecret.name $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
-          googleCredentials:
-            applicationCredentials:
-              name: {{ $gcsConfig.credentialsSecret.name }}
-              key: {{ $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
+      googleCredentials:
+        applicationCredentials:
+          name: {{ $gcsConfig.credentialsSecret.name }}
+          key: {{ $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
             {{- if $gcsConfig.credentialsSecret.projectIdKey }}
-            gkeEnvironment: true
+        gkeEnvironment: true
             {{- end }}
           {{- end }}
         {{- end }}
