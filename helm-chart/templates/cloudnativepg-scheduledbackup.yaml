@@ -1,4 +1,105 @@
-{{- if and .Values.cloudnativepg.enabled .Values.cloudnativepg.scheduledBackup.enabled }}
+{{- if .Values.cloudnativepg.enabled }}
+{{- $clusterName := .Values.cloudnativepg.cluster.name | default (printf "%s-postgres" (include "prima-nota.fullname" .)) }}
+
+{{- /* Daily Backup */ -}}
+{{- if .Values.cloudnativepg.scheduledBackups.daily.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ .Values.cloudnativepg.scheduledBackups.daily.name | default (printf "%s-daily-backup" (include "prima-nota.fullname" .)) }}
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloudnativepg-backup
+    backup.postgresql.cnpg.io/schedule-type: daily
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.cloudnativepg.scheduledBackups.daily.schedule | quote }}
+  suspend: {{ .Values.cloudnativepg.scheduledBackups.daily.suspend | default false }}
+  immediateCheckpoint: {{ .Values.cloudnativepg.scheduledBackups.daily.immediateCheckpoint | default false }}
+  backupOwnerReference: {{ .Values.cloudnativepg.scheduledBackups.daily.backupOwnerReference | default "self" }}
+  cluster:
+    name: {{ $clusterName }}
+{{- end }}
+
+{{- /* Weekly Backup */ -}}
+{{- if .Values.cloudnativepg.scheduledBackups.weekly.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ .Values.cloudnativepg.scheduledBackups.weekly.name | default (printf "%s-weekly-backup" (include "prima-nota.fullname" .)) }}
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloudnativepg-backup
+    backup.postgresql.cnpg.io/schedule-type: weekly
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.cloudnativepg.scheduledBackups.weekly.schedule | quote }}
+  suspend: {{ .Values.cloudnativepg.scheduledBackups.weekly.suspend | default false }}
+  immediateCheckpoint: {{ .Values.cloudnativepg.scheduledBackups.weekly.immediateCheckpoint | default true }}
+  backupOwnerReference: {{ .Values.cloudnativepg.scheduledBackups.weekly.backupOwnerReference | default "self" }}
+  cluster:
+    name: {{ $clusterName }}
+{{- end }}
+
+{{- /* Monthly Backup */ -}}
+{{- if .Values.cloudnativepg.scheduledBackups.monthly.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ .Values.cloudnativepg.scheduledBackups.monthly.name | default (printf "%s-monthly-backup" (include "prima-nota.fullname" .)) }}
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloudnativepg-backup
+    backup.postgresql.cnpg.io/schedule-type: monthly
+  namespace: {{ .Release.Namespace }}
+spec:
+  schedule: {{ .Values.cloudnativepg.scheduledBackups.monthly.schedule | quote }}
+  suspend: {{ .Values.cloudnativepg.scheduledBackups.monthly.suspend | default false }}
+  immediateCheckpoint: {{ .Values.cloudnativepg.scheduledBackups.monthly.immediateCheckpoint | default true }}
+  backupOwnerReference: {{ .Values.cloudnativepg.scheduledBackups.monthly.backupOwnerReference | default "self" }}
+  cluster:
+    name: {{ $clusterName }}
+{{- end }}
+
+{{- /* Custom Scheduled Backups */ -}}
+{{- range .Values.cloudnativepg.scheduledBackups.custom }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- include "prima-nota.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: cloudnativepg-backup
+    backup.postgresql.cnpg.io/schedule-type: custom
+  namespace: {{ $.Release.Namespace }}
+spec:
+  schedule: {{ .schedule | quote }}
+  suspend: {{ .suspend | default false }}
+  immediateCheckpoint: {{ .immediateCheckpoint | default false }}
+  backupOwnerReference: {{ .backupOwnerReference | default "self" }}
+  {{- if .method }}
+  method: {{ .method }}
+  {{- end }}
+  {{- if .online }}
+  online: {{ .online }}
+  {{- end }}
+  {{- if .target }}
+  target: {{ .target }}
+  {{- end }}
+  cluster:
+    name: {{ $clusterName }}
+{{- end }}
+
+{{- /* Legacy Single Backup Support (for backwards compatibility) */ -}}
+{{- if and .Values.cloudnativepg.scheduledBackup .Values.cloudnativepg.scheduledBackup.enabled }}
+{{- /* Show deprecation warning in comments */ -}}
+# WARNING: scheduledBackup (singular) is deprecated. Use scheduledBackups (plural) instead.
+# This legacy backup will still be created for backwards compatibility.
+---
 apiVersion: postgresql.cnpg.io/v1
 kind: ScheduledBackup
 metadata:
@@ -6,10 +107,13 @@ metadata:
   labels:
     {{- include "prima-nota.labels" . | nindent 4 }}
     app.kubernetes.io/component: cloudnativepg-backup
+    backup.postgresql.cnpg.io/schedule-type: legacy
   namespace: {{ .Release.Namespace }}
 spec:
   schedule: {{ .Values.cloudnativepg.scheduledBackup.schedule | quote }}
   backupOwnerReference: self
   cluster:
-    name: {{ .Values.cloudnativepg.cluster.name | default (printf "%s-postgres" (include "prima-nota.fullname" .)) }}
+    name: {{ $clusterName }}
+{{- end }}
+
 {{- end }}

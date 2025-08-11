@@ -93,25 +93,122 @@ cloudnativepg:
       customQueriesConfigMap:
         name: ""  # Se vuoto, non usa custom queries
     
+    # === ENVIRONMENT VARIABLES CONFIGURATION ===
+    env:
+      # Cloud Storage Provider Configuration
+      # Supported providers: aws-s3, azure-blob-storage, google-cloud-storage
+      cloudStorage:
+        enabled: false  # Abilita per configurare backup su cloud storage
+        provider: "aws-s3"  # aws-s3 | azure-blob-storage | google-cloud-storage
+        
+        # === AWS S3 / MinIO Configuration ===
+        awsS3:
+          credentialsSecret:
+            name: "aws-s3-credentials"  # Nome del secret
+            accessKeyIdKey: "AWS_ACCESS_KEY_ID"
+            secretAccessKeyKey: "AWS_SECRET_ACCESS_KEY"
+            regionKey: "AWS_DEFAULT_REGION"  # Opzionale
+            endpointUrlKey: "AWS_ENDPOINT_URL"  # Per MinIO/S3-compatible
+          # Configurazione diretta (sconsigliata per production)
+          direct:
+            accessKeyId: ""
+            secretAccessKey: ""
+            region: ""
+            endpointUrl: ""  # Per MinIO
+        
+        # === Azure Blob Storage Configuration ===
+        azureBlob:
+          credentialsSecret:
+            name: "azure-blob-credentials"
+            accountNameKey: "AZURE_STORAGE_ACCOUNT"
+            accountKeyKey: "AZURE_STORAGE_KEY"
+            # Oppure usa SAS token
+            sasTokenKey: "AZURE_STORAGE_SAS_TOKEN"
+          direct:
+            accountName: ""
+            accountKey: ""
+            sasToken: ""
+        
+        # === Google Cloud Storage Configuration ===
+        googleCloud:
+          credentialsSecret:
+            name: "gcs-credentials"
+            # Per Service Account JSON
+            serviceAccountJsonKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON"
+            # Oppure percorso al file
+            serviceAccountFileKey: "GOOGLE_APPLICATION_CREDENTIALS"
+            projectIdKey: "GOOGLE_CLOUD_PROJECT"  # Opzionale
+          direct:
+            projectId: ""
+            serviceAccountJson: ""  # JSON as string
+      
+      # Custom environment variables (for any additional needs)
+      custom: []
+      # Esempio:
+      # - name: "CUSTOM_VAR"
+      #   value: "custom-value"
+      # - name: "SECRET_VAR"
+      #   valueFrom:
+      #     secretKeyRef:
+      #       name: "my-secret"
+      #       key: "my-key"
+    
     # Backup configuration (opzionale)
     backup:
       enabled: false  # Disabilitato di default
-      retentionPolicy: "30d"
-      barmanObjectStore:
-        destinationPath: ""
-        endpointURL: ""
-        s3Credentials:
-          accessKeyId:
-            name: ""
-            key: ""
-          secretAccessKey:
-            name: ""
-            key: ""
+      retentionPolicy: "30d"  # Ritenzione backup: 30d, 7w, 12m, etc.
+      destinationPath: ""  # es: "s3://my-bucket/postgres-backups" per S3, "gs://bucket/path" per GCS, etc.
+      # NOTA: endpointURL, credenziali e configurazioni provider-specific 
+      # sono derivate automaticamente dalle environment variables (env.cloudStorage)
+      
+      # Configurazione avanzata WAL
+      wal:
+        maxParallel: 8  # Parallelismo per WAL upload
+        archiveTimeout: "5min"  # Timeout per archiviazione WAL
+        compression: "gzip"  # Compressione WAL
+      
+      # Configurazione avanzata Data
+      data:
+        compression: "gzip"  # Compressione backup: gzip, lz4, snappy
+        jobs: 2  # Jobs paralleli per backup
+        immediateCheckpoint: false  # Checkpoint immediato
 
-  # Scheduled Backup (opzionale)
-  scheduledBackup:
-    enabled: false
-    schedule: "0 2 * * *"  # Ogni giorno alle 2:00
+  # Scheduled Backups (opzionali)
+  scheduledBackups:
+    # Daily backup (full backup ogni giorno)
+    daily:
+      enabled: false
+      name: ""  # Se vuoto, usa il pattern: {{release-name}}-daily-backup
+      schedule: "0 0 2 * * *"  # Ogni giorno alle 2:00 (formato: sec min hour day month weekday)
+      suspend: false
+      immediateCheckpoint: false
+      backupOwnerReference: "self"  # self | cluster | none
+    
+    # Weekly backup (full backup settimanale)
+    weekly:
+      enabled: false
+      name: ""  # Se vuoto, usa il pattern: {{release-name}}-weekly-backup
+      schedule: "0 0 3 * * 0"  # Ogni domenica alle 3:00 (formato: sec min hour day month weekday)
+      suspend: false
+      immediateCheckpoint: true  # Forza checkpoint immediato per backup settimanale
+      backupOwnerReference: "self"
+    
+    # Monthly backup (full backup mensile)
+    monthly:
+      enabled: false
+      name: ""  # Se vuoto, usa il pattern: {{release-name}}-monthly-backup
+      schedule: "0 0 4 1 * *"  # Il primo giorno di ogni mese alle 4:00
+      suspend: false
+      immediateCheckpoint: true
+      backupOwnerReference: "self"
+    
+    # Custom backup schedules (per esigenze specifiche)
+    custom: []
+    # Esempio:
+    # - name: "business-hours-backup"
+    #   schedule: "0 0 */4 * * 1-5"  # Ogni 4 ore nei giorni lavorativi
+    #   suspend: false
+    #   immediateCheckpoint: false
 
 # Database Esterno (per casi avanzati)
 externalDatabase:
