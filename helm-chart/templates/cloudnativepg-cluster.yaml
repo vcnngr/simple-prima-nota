@@ -127,6 +127,9 @@ spec:
     retentionPolicy: {{ .Values.cloudnativepg.cluster.backup.retentionPolicy }}
     barmanObjectStore:
       destinationPath: {{ .Values.cloudnativepg.cluster.backup.destinationPath }}
+      {{- if .Values.cloudnativepg.cluster.backup.endpointURL }}
+      endpointURL: {{ .Values.cloudnativepg.cluster.backup.endpointURL }}
+      {{- end }}
       
       {{- if .Values.cloudnativepg.cluster.env.cloudStorage.enabled }}
       {{- $provider := .Values.cloudnativepg.cluster.env.cloudStorage.provider }}

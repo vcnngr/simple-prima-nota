@@ -108,13 +108,11 @@ cloudnativepg:
             accessKeyIdKey: "AWS_ACCESS_KEY_ID"
             secretAccessKeyKey: "AWS_SECRET_ACCESS_KEY"
             regionKey: "AWS_DEFAULT_REGION"  # Opzionale
-            endpointUrlKey: "AWS_ENDPOINT_URL"  # Per MinIO/S3-compatible
           # Configurazione diretta (sconsigliata per production)
           direct:
             accessKeyId: ""
             secretAccessKey: ""
             region: ""
-            endpointUrl: ""  # Per MinIO
         
         # === Azure Blob Storage Configuration ===
         azureBlob:
@@ -158,8 +156,8 @@ cloudnativepg:
       enabled: false  # Disabilitato di default
       retentionPolicy: "30d"  # Ritenzione backup: 30d, 7w, 12m, etc.
       destinationPath: ""  # es: "s3://my-bucket/postgres-backups" per S3, "gs://bucket/path" per GCS, etc.
-      # NOTA: endpointURL, credenziali e configurazioni provider-specific 
-      # sono derivate automaticamente dalle environment variables (env.cloudStorage)
+      endpointURL: ""  # Per MinIO/S3-compatible: "https://minio.example.com" (solo per S3/MinIO)
+      # NOTA: credenziali sono derivate automaticamente dalle environment variables (env.cloudStorage)
       
       # Configurazione avanzata WAL
       wal:
