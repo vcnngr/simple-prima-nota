@@ -33,6 +33,7 @@ postgresql:
 # CloudNativePG Cluster (modalità enterprise)
 cloudnativepg:
   enabled: true  # Abilitato di default
+  
   cluster:
     name: "prima-nota-postgres"  # Nome del cluster
     instances: 3
@@ -54,6 +55,8 @@ cloudnativepg:
     bootstrap:
       database: prima_nota
       owner: postgres
+      localeCollate: ""  # es: 'it_IT.utf8'
+      localeCType: ""    # es: 'it_IT.utf8'
       secret:
         name: ""  # Se vuoto, usa lo stesso del superuserSecret
       initSql:
@@ -62,6 +65,7 @@ cloudnativepg:
     # PostgreSQL parameters
     postgresql:
       parameters:
+        # Performance base
         max_connections: "200"
         shared_buffers: "256MB"
         effective_cache_size: "1GB"
@@ -87,77 +91,30 @@ cloudnativepg:
         memory: "1Gi"
         cpu: "1000m"
     
-    # Monitoring
-    monitoring:
-      enabled: true
-      customQueriesConfigMap:
-        name: ""  # Se vuoto, non usa custom queries
-    
-    # === ENVIRONMENT VARIABLES CONFIGURATION ===
-    env:
-      # Cloud Storage Provider Configuration
-      # Supported providers: aws-s3, azure-blob-storage, google-cloud-storage
-      cloudStorage:
-        enabled: false  # Abilita per configurare backup su cloud storage
-        provider: "aws-s3"  # aws-s3 | azure-blob-storage | google-cloud-storage
-        
-        # === AWS S3 / MinIO Configuration ===
-        awsS3:
-          credentialsSecret:
-            name: "aws-s3-credentials"  # Nome del secret
-            accessKeyIdKey: "AWS_ACCESS_KEY_ID"
-            secretAccessKeyKey: "AWS_SECRET_ACCESS_KEY"
-            regionKey: "AWS_DEFAULT_REGION"  # Opzionale
-          # Configurazione diretta (sconsigliata per production)
-          direct:
-            accessKeyId: ""
-            secretAccessKey: ""
-            region: ""
-        
-        # === Azure Blob Storage Configuration ===
-        azureBlob:
-          credentialsSecret:
-            name: "azure-blob-credentials"
-            accountNameKey: "AZURE_STORAGE_ACCOUNT"
-            accountKeyKey: "AZURE_STORAGE_KEY"
-            # Oppure usa SAS token
-            sasTokenKey: "AZURE_STORAGE_SAS_TOKEN"
-          direct:
-            accountName: ""
-            accountKey: ""
-            sasToken: ""
-        
-        # === Google Cloud Storage Configuration ===
-        googleCloud:
-          credentialsSecret:
-            name: "gcs-credentials"
-            # Per Service Account JSON
-            serviceAccountJsonKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON"
-            # Oppure percorso al file
-            serviceAccountFileKey: "GOOGLE_APPLICATION_CREDENTIALS"
-            projectIdKey: "GOOGLE_CLOUD_PROJECT"  # Opzionale
-          direct:
-            projectId: ""
-            serviceAccountJson: ""  # JSON as string
-      
-      # Custom environment variables (for any additional needs)
-      custom: []
-      # Esempio:
-      # - name: "CUSTOM_VAR"
-      #   value: "custom-value"
-      # - name: "SECRET_VAR"
-      #   valueFrom:
-      #     secretKeyRef:
-      #       name: "my-secret"
-      #       key: "my-key"
-    
-    # Backup configuration (opzionale)
+    # === BACKUP CONFIGURATION ===
     backup:
       enabled: false  # Disabilitato di default
       retentionPolicy: "30d"  # Ritenzione backup: 30d, 7w, 12m, etc.
-      destinationPath: ""  # es: "s3://my-bucket/postgres-backups" per S3, "gs://bucket/path" per GCS, etc.
-      endpointURL: ""  # Per MinIO/S3-compatible: "https://minio.example.com" (solo per S3/MinIO)
-      # NOTA: credenziali sono derivate automaticamente dalle environment variables (env.cloudStorage)
+      destinationPath: ""  # es: "s3://bucket/backups", "gs://bucket/backups", "https://account.blob.core.windows.net/container/backups"
+      endpointURL: ""  # Solo per S3/MinIO: "https://minio.example.com" (diventa anche env var AWS_ENDPOINT_URL)
+      
+      # === PROVIDER E CREDENZIALI ===
+      provider: ""  # "aws-s3" | "azure-blob-storage" | "google-cloud-storage"
+      credentials:
+        secretName: ""  # Nome del secret contenente le credenziali
+        
+        # Per AWS S3 / MinIO:
+        accessKeyIdKey: "ACCESS_KEY_ID"      # Chiave nel secret per Access Key
+        secretAccessKeyKey: "SECRET_ACCESS_KEY"  # Chiave nel secret per Secret Key
+        regionKey: ""  # Opzionale: chiave nel secret per region
+        
+        # Per Azure Blob Storage:
+        accountNameKey: "AZURE_STORAGE_ACCOUNT"  # Chiave nel secret per account name
+        accountKeyKey: "AZURE_STORAGE_KEY"       # Chiave nel secret per account key
+        sasTokenKey: ""  # Alternativa: chiave nel secret per SAS token
+        
+        # Per Google Cloud Storage:
+        serviceAccountKey: "service-account.json"  # Chiave nel secret per service account JSON
       
       # Configurazione avanzata WAL
       wal:
@@ -170,7 +127,7 @@ cloudnativepg:
         jobs: 2  # Jobs paralleli per backup
         immediateCheckpoint: false  # Checkpoint immediato
 
-  # Scheduled Backups (opzionali)
+  # === SCHEDULED BACKUPS ===
   scheduledBackups:
     # Daily backup (full backup ogni giorno)
     daily:
@@ -293,7 +250,7 @@ pgadmin:
     PGADMIN_DEFAULT_EMAIL: admin@prima-nota.com
     PGADMIN_DEFAULT_PASSWORD: ""
     PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: "True"
-    PGADMIN_CONFIG_LOGIN_BANNER: "Prima Nota - Database Management"
+    PGADMIN_CONFIG_LOGIN_BANNER: "'Prima Nota - Database Management'"
     PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: "20"
     PGADMIN_LISTEN_PORT: "5050"
     PGADMIN_CONFIG_WTF_CSRF_TIME_LIMIT: "None"

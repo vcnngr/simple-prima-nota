@@ -39,7 +39,6 @@ spec:
   {{- end }}
   
   # === SUPERUSER SECRET ===
-  # Usa il secret dedicato per superuser
   superuserSecret:
     name: {{ .Values.cloudnativepg.cluster.superuserSecret.name | default (printf "%s-superuser-credentials" (include "prima-nota.fullname" .)) }}
   
@@ -47,8 +46,13 @@ spec:
     initdb:
       database: {{ .Values.cloudnativepg.cluster.bootstrap.database }}
       owner: {{ .Values.cloudnativepg.cluster.bootstrap.owner }}
+      {{- if .Values.cloudnativepg.cluster.bootstrap.localeCollate }}
+      localeCollate: {{ .Values.cloudnativepg.cluster.bootstrap.localeCollate }}
+      {{- end }}
+      {{- if .Values.cloudnativepg.cluster.bootstrap.localeCType }}
+      localeCType: {{ .Values.cloudnativepg.cluster.bootstrap.localeCType }}
+      {{- end }}
       secret:
-        # Per bootstrap può usare lo stesso secret del superuser o uno diverso
         name: {{ .Values.cloudnativepg.cluster.bootstrap.secret.name | default (printf "%s-superuser-credentials" (include "prima-nota.fullname" .)) }}
   
   # === POSTGRESQL CONFIGURATION ===
@@ -62,15 +66,10 @@ spec:
     pg_hba:
       {{- toYaml .Values.cloudnativepg.cluster.postgresql.pg_hba | nindent 6 }}
     {{- end }}
-    {{- if .Values.cloudnativepg.cluster.postgresql.shared_preload_libraries }}
-    shared_preload_libraries:
-      {{- toYaml .Values.cloudnativepg.cluster.postgresql.shared_preload_libraries | nindent 6 }}
-    {{- end }}
   {{- end }}
 
   {{- if .Values.cloudnativepg.cluster.bootstrap.initSql.enabled }}
   # === VOLUME PER SCRIPT SQL INIT ===
-  # Monta il ConfigMap contenente init.sql
   additionalVolumes:
     - name: init-sql-scripts
       configMap:
@@ -80,7 +79,6 @@ spec:
           path: init.sql
           mode: 0644
   
-  # === MOUNT DEL VOLUME ===
   additionalVolumeMounts:
     - name: init-sql-scripts
       mountPath: /docker-entrypoint-initdb.d
@@ -92,9 +90,6 @@ spec:
     size: {{ .Values.cloudnativepg.cluster.storage.size }}
     {{- if .Values.cloudnativepg.cluster.storage.storageClass }}
     storageClass: {{ .Values.cloudnativepg.cluster.storage.storageClass }}
-    {{- end }}
-    {{- if .Values.cloudnativepg.cluster.storage.resizeInUseVolumes }}
-    resizeInUseVolumes: {{ .Values.cloudnativepg.cluster.storage.resizeInUseVolumes }}
     {{- end }}
   
   # === RESOURCES ===
@@ -117,77 +112,65 @@ spec:
     {{- toYaml .Values.cloudnativepg.cluster.tolerations | nindent 4 }}
   {{- end }}
   
-  # === MONITORING (Deprecated fields removed) ===
-  # Note: monitoring.enabled and podMonitorEnabled are not supported in v1.26.1
-  # Monitoring is automatically enabled by CloudNativePG
-  
   # === BACKUP CONFIGURATION ===
   {{- if .Values.cloudnativepg.cluster.backup.enabled }}
   backup:
     retentionPolicy: {{ .Values.cloudnativepg.cluster.backup.retentionPolicy }}
     barmanObjectStore:
       destinationPath: {{ .Values.cloudnativepg.cluster.backup.destinationPath }}
+      
       {{- if .Values.cloudnativepg.cluster.backup.endpointURL }}
       endpointURL: {{ .Values.cloudnativepg.cluster.backup.endpointURL }}
       {{- end }}
       
-      {{- if .Values.cloudnativepg.cluster.env.cloudStorage.enabled }}
-      {{- $provider := .Values.cloudnativepg.cluster.env.cloudStorage.provider }}
+      {{- /* CREDENZIALI BASATE SUL PROVIDER */ -}}
+      {{- if .Values.cloudnativepg.cluster.backup.provider }}
+      {{- $provider := .Values.cloudnativepg.cluster.backup.provider }}
       
       {{- if eq $provider "aws-s3" }}
-      {{- $awsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.awsS3 }}
-      {{- if and $awsConfig.credentialsSecret.name $awsConfig.credentialsSecret.accessKeyIdKey $awsConfig.credentialsSecret.secretAccessKeyKey }}
+      {{- if .Values.cloudnativepg.cluster.backup.credentials.secretName }}
       s3Credentials:
         accessKeyId:
-          name: {{ $awsConfig.credentialsSecret.name }}
-          key: {{ $awsConfig.credentialsSecret.accessKeyIdKey }}
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.accessKeyIdKey | default "ACCESS_KEY_ID" }}
         secretAccessKey:
-          name: {{ $awsConfig.credentialsSecret.name }}
-          key: {{ $awsConfig.credentialsSecret.secretAccessKeyKey }}
-        {{- if $awsConfig.credentialsSecret.regionKey }}
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.secretAccessKeyKey | default "SECRET_ACCESS_KEY" }}
+        {{- if .Values.cloudnativepg.cluster.backup.credentials.regionKey }}
         region:
-          name: {{ $awsConfig.credentialsSecret.name }}
-          key: {{ $awsConfig.credentialsSecret.regionKey }}
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.regionKey }}
         {{- end }}
-      {{- if $awsConfig.credentialsSecret.endpointUrlKey }}
-      endpointURL:
-        name: {{ $awsConfig.credentialsSecret.name }}
-        key: {{ $awsConfig.credentialsSecret.endpointUrlKey }}
-      {{- end }}
       {{- end }}
       
       {{- else if eq $provider "azure-blob-storage" }}
-      {{- $azureConfig := .Values.cloudnativepg.cluster.env.cloudStorage.azureBlob }}
-      {{- if and $azureConfig.credentialsSecret.name $azureConfig.credentialsSecret.accountNameKey }}
+      {{- if .Values.cloudnativepg.cluster.backup.credentials.secretName }}
       azureCredentials:
         storageAccount:
-          name: {{ $azureConfig.credentialsSecret.name }}
-          key: {{ $azureConfig.credentialsSecret.accountNameKey }}
-        {{- if $azureConfig.credentialsSecret.accountKeyKey }}
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.accountNameKey | default "AZURE_STORAGE_ACCOUNT" }}
+        {{- if .Values.cloudnativepg.cluster.backup.credentials.accountKeyKey }}
         storageKey:
-          name: {{ $azureConfig.credentialsSecret.name }}
-          key: {{ $azureConfig.credentialsSecret.accountKeyKey }}
-        {{- else if $azureConfig.credentialsSecret.sasTokenKey }}
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.accountKeyKey }}
+        {{- else if .Values.cloudnativepg.cluster.backup.credentials.sasTokenKey }}
         storageSasToken:
-          name: {{ $azureConfig.credentialsSecret.name }}
-          key: {{ $azureConfig.credentialsSecret.sasTokenKey }}
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.sasTokenKey }}
         {{- end }}
       {{- end }}
       
       {{- else if eq $provider "google-cloud-storage" }}
-      {{- $gcsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.googleCloud }}
-      {{- if and $gcsConfig.credentialsSecret.name $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
+      {{- if .Values.cloudnativepg.cluster.backup.credentials.secretName }}
       googleCredentials:
         applicationCredentials:
-          name: {{ $gcsConfig.credentialsSecret.name }}
-          key: {{ $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
-        {{- if $gcsConfig.credentialsSecret.projectIdKey }}
-        gkeEnvironment: true
-        {{- end }}
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.serviceAccountKey | default "service-account.json" }}
       {{- end }}
       {{- end }}
       {{- end }}
       
+      {{- /* Configurazioni WAL */ -}}
       {{- if .Values.cloudnativepg.cluster.backup.wal }}
       wal:
         {{- if .Values.cloudnativepg.cluster.backup.wal.maxParallel }}
@@ -198,6 +181,7 @@ spec:
         {{- end }}
       {{- end }}
       
+      {{- /* Configurazioni Data */ -}}
       {{- if .Values.cloudnativepg.cluster.backup.data }}
       data:
         {{- if .Values.cloudnativepg.cluster.backup.data.compression }}
@@ -210,179 +194,71 @@ spec:
         immediateCheckpoint: {{ .Values.cloudnativepg.cluster.backup.data.immediateCheckpoint }}
         {{- end }}
       {{- end }}
-  {{- end }}
-  
-  # === CERTIFICATES (if needed) ===
-  {{- if .Values.cloudnativepg.cluster.certificates }}
-  certificates:
-    {{- if .Values.cloudnativepg.cluster.certificates.serverTLSSecret }}
-    serverTLSSecret: {{ .Values.cloudnativepg.cluster.certificates.serverTLSSecret }}
-    {{- end }}
-    {{- if .Values.cloudnativepg.cluster.certificates.serverCASecret }}
-    serverCASecret: {{ .Values.cloudnativepg.cluster.certificates.serverCASecret }}
-    {{- end }}
-    {{- if .Values.cloudnativepg.cluster.certificates.clientCASecret }}
-    clientCASecret: {{ .Values.cloudnativepg.cluster.certificates.clientCASecret }}
-    {{- end }}
-    {{- if .Values.cloudnativepg.cluster.certificates.replicationTLSSecret }}
-    replicationTLSSecret: {{ .Values.cloudnativepg.cluster.certificates.replicationTLSSecret }}
-    {{- end }}
-  {{- end }}
+        {{- end }}
   
   # === ENVIRONMENT VARIABLES ===
-  {{- $envVars := list }}
+  {{- if .Values.cloudnativepg.cluster.backup.enabled }}
+  {{- $provider := .Values.cloudnativepg.cluster.backup.provider }}
   
-  {{- /* Cloud Storage Provider Configuration */ -}}
-  {{- if .Values.cloudnativepg.cluster.env.cloudStorage.enabled }}
-    {{- $provider := .Values.cloudnativepg.cluster.env.cloudStorage.provider }}
-    
-    {{- if eq $provider "aws-s3" }}
-      {{- /* AWS S3 / MinIO Configuration */ -}}
-      {{- $awsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.awsS3 }}
-      {{- if $awsConfig.credentialsSecret.name }}
-        {{- /* Secret-based configuration */ -}}
-        {{- $envVars = append $envVars (dict 
-            "name" "AWS_ACCESS_KEY_ID" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $awsConfig.credentialsSecret.name 
-              "key" $awsConfig.credentialsSecret.accessKeyIdKey
-            ))
-          ) }}
-        {{- $envVars = append $envVars (dict 
-            "name" "AWS_SECRET_ACCESS_KEY" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $awsConfig.credentialsSecret.name 
-              "key" $awsConfig.credentialsSecret.secretAccessKeyKey
-            ))
-          ) }}
-        {{- if $awsConfig.credentialsSecret.regionKey }}
-        {{- $envVars = append $envVars (dict 
-            "name" "AWS_DEFAULT_REGION" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $awsConfig.credentialsSecret.name 
-              "key" $awsConfig.credentialsSecret.regionKey
-            ))
-          ) }}
-        {{- end }}
-        {{- if $awsConfig.credentialsSecret.endpointUrlKey }}
-        {{- $envVars = append $envVars (dict 
-            "name" "AWS_ENDPOINT_URL" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $awsConfig.credentialsSecret.name 
-              "key" $awsConfig.credentialsSecret.endpointUrlKey
-            ))
-          ) }}
-        {{- end }}
-      {{- else if $awsConfig.direct.accessKeyId }}
-        {{- /* Direct configuration */ -}}
-        {{- $envVars = append $envVars (dict "name" "AWS_ACCESS_KEY_ID" "value" $awsConfig.direct.accessKeyId) }}
-        {{- $envVars = append $envVars (dict "name" "AWS_SECRET_ACCESS_KEY" "value" $awsConfig.direct.secretAccessKey) }}
-        {{- if $awsConfig.direct.region }}
-        {{- $envVars = append $envVars (dict "name" "AWS_DEFAULT_REGION" "value" $awsConfig.direct.region) }}
-        {{- end }}
-        {{- if $awsConfig.direct.endpointUrl }}
-        {{- $envVars = append $envVars (dict "name" "AWS_ENDPOINT_URL" "value" $awsConfig.direct.endpointUrl) }}
-        {{- end }}
-      {{- end }}
-      
-    {{- else if eq $provider "azure-blob-storage" }}
-      {{- /* Azure Blob Storage Configuration */ -}}
-      {{- $azureConfig := .Values.cloudnativepg.cluster.env.cloudStorage.azureBlob }}
-      {{- if $azureConfig.credentialsSecret.name }}
-        {{- /* Secret-based configuration */ -}}
-        {{- $envVars = append $envVars (dict 
-            "name" "AZURE_STORAGE_ACCOUNT" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $azureConfig.credentialsSecret.name 
-              "key" $azureConfig.credentialsSecret.accountNameKey
-            ))
-          ) }}
-        {{- if $azureConfig.credentialsSecret.accountKeyKey }}
-        {{- $envVars = append $envVars (dict 
-            "name" "AZURE_STORAGE_KEY" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $azureConfig.credentialsSecret.name 
-              "key" $azureConfig.credentialsSecret.accountKeyKey
-            ))
-          ) }}
-        {{- end }}
-        {{- if $azureConfig.credentialsSecret.sasTokenKey }}
-        {{- $envVars = append $envVars (dict 
-            "name" "AZURE_STORAGE_SAS_TOKEN" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $azureConfig.credentialsSecret.name 
-              "key" $azureConfig.credentialsSecret.sasTokenKey
-            ))
-          ) }}
-        {{- end }}
-      {{- else if $azureConfig.direct.accountName }}
-        {{- /* Direct configuration */ -}}
-        {{- $envVars = append $envVars (dict "name" "AZURE_STORAGE_ACCOUNT" "value" $azureConfig.direct.accountName) }}
-        {{- if $azureConfig.direct.accountKey }}
-        {{- $envVars = append $envVars (dict "name" "AZURE_STORAGE_KEY" "value" $azureConfig.direct.accountKey) }}
-        {{- end }}
-        {{- if $azureConfig.direct.sasToken }}
-        {{- $envVars = append $envVars (dict "name" "AZURE_STORAGE_SAS_TOKEN" "value" $azureConfig.direct.sasToken) }}
-        {{- end }}
-      {{- end }}
-      
-    {{- else if eq $provider "google-cloud-storage" }}
-      {{- /* Google Cloud Storage Configuration */ -}}
-      {{- $gcsConfig := .Values.cloudnativepg.cluster.env.cloudStorage.googleCloud }}
-      {{- if $gcsConfig.credentialsSecret.name }}
-        {{- /* Secret-based configuration */ -}}
-        {{- if $gcsConfig.credentialsSecret.serviceAccountJsonKey }}
-        {{- $envVars = append $envVars (dict 
-            "name" "GOOGLE_APPLICATION_CREDENTIALS_JSON" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $gcsConfig.credentialsSecret.name 
-              "key" $gcsConfig.credentialsSecret.serviceAccountJsonKey
-            ))
-          ) }}
-        {{- end }}
-        {{- if $gcsConfig.credentialsSecret.serviceAccountFileKey }}
-        {{- $envVars = append $envVars (dict 
-            "name" "GOOGLE_APPLICATION_CREDENTIALS" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $gcsConfig.credentialsSecret.name 
-              "key" $gcsConfig.credentialsSecret.serviceAccountFileKey
-            ))
-          ) }}
-        {{- end }}
-        {{- if $gcsConfig.credentialsSecret.projectIdKey }}
-        {{- $envVars = append $envVars (dict 
-            "name" "GOOGLE_CLOUD_PROJECT" 
-            "valueFrom" (dict "secretKeyRef" (dict 
-              "name" $gcsConfig.credentialsSecret.name 
-              "key" $gcsConfig.credentialsSecret.projectIdKey
-            ))
-          ) }}
-        {{- end }}
-      {{- else if $gcsConfig.direct.serviceAccountJson }}
-        {{- /* Direct configuration */ -}}
-        {{- $envVars = append $envVars (dict "name" "GOOGLE_APPLICATION_CREDENTIALS_JSON" "value" $gcsConfig.direct.serviceAccountJson) }}
-        {{- if $gcsConfig.direct.projectId }}
-        {{- $envVars = append $envVars (dict "name" "GOOGLE_CLOUD_PROJECT" "value" $gcsConfig.direct.projectId) }}
-        {{- end }}
-      {{- end }}
+  {{- if eq $provider "aws-s3" }}
+  {{- if .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+  env:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.accessKeyIdKey | default "ACCESS_KEY_ID" }}
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.secretAccessKeyKey | default "SECRET_ACCESS_KEY" }}
+    {{- if .Values.cloudnativepg.cluster.backup.endpointURL }}
+    - name: AWS_ENDPOINT_URL
+      value: {{ .Values.cloudnativepg.cluster.backup.endpointURL }}
+    {{- end }}
+    {{- if .Values.cloudnativepg.cluster.backup.credentials.regionKey }}
+    - name: AWS_DEFAULT_REGION
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.regionKey }}
     {{- end }}
   {{- end }}
   
-  {{- /* Add any additional custom environment variables */ -}}
-  {{- if .Values.cloudnativepg.cluster.env.custom }}
-    {{- $envVars = concat $envVars .Values.cloudnativepg.cluster.env.custom }}
-  {{- end }}
-  
-  {{- /* Output environment variables if any */ -}}
-  {{- if $envVars }}
+  {{- else if eq $provider "azure-blob-storage" }}
+  {{- if .Values.cloudnativepg.cluster.backup.credentials.secretName }}
   env:
-    {{- toYaml $envVars | nindent 4 }}
+    - name: AZURE_STORAGE_ACCOUNT
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.accountNameKey | default "AZURE_STORAGE_ACCOUNT" }}
+    {{- if .Values.cloudnativepg.cluster.backup.credentials.accountKeyKey }}
+    - name: AZURE_STORAGE_KEY
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.accountKeyKey }}
+    {{- else if .Values.cloudnativepg.cluster.backup.credentials.sasTokenKey }}
+    - name: AZURE_STORAGE_SAS_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.sasTokenKey }}
+    {{- end }}
   {{- end }}
   
-  # === SERVICE ACCOUNT ===
-  {{- if .Values.cloudnativepg.cluster.serviceAccountTemplate }}
-  serviceAccountTemplate:
-    {{- toYaml .Values.cloudnativepg.cluster.serviceAccountTemplate | nindent 4 }}
+  {{- else if eq $provider "google-cloud-storage" }}
+  {{- if .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+  env:
+    - name: GOOGLE_APPLICATION_CREDENTIALS_JSON
+      valueFrom:
+        secretKeyRef:
+          name: {{ .Values.cloudnativepg.cluster.backup.credentials.secretName }}
+          key: {{ .Values.cloudnativepg.cluster.backup.credentials.serviceAccountKey | default "service-account.json" }}
+  {{- end }}
+  {{- end }}
   {{- end }}
   
 {{- end }}
