@@ -24,6 +24,7 @@ import CustomReportsPage from './pages/Reports/CustomReportsPage';
 import ProfilePage from './pages/Profile/ProfilePage';
 import CommercialistaManagementPage from './pages/Profile/CommercialistaManagementPage';
 import TipologiePage from './pages/Tipologie/TipologiePage';
+import ChatPage from './pages/Messaggi/ChatPage';
 
 // Configurazione React Query
 const queryClient = new QueryClient({
@@ -144,6 +145,14 @@ function App() {
                   </ProtectedCommercialistaRoute>
                 }
               />
+              <Route
+                path="/commercialista/chat/:userId"
+                element={
+                  <ProtectedCommercialistaRoute>
+                    <ChatPage />
+                  </ProtectedCommercialistaRoute>
+                }
+              />
 
               {/* Route protette utenti */}
               <Route
@@ -223,6 +232,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <CommercialistaManagementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/chat"
+                element={
+                  <ProtectedRoute>
+                    <ChatPage />
                   </ProtectedRoute>
                 }
               />

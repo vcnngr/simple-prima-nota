@@ -8,6 +8,7 @@ import {
   ArrowUpDown,
   Tag,
   FileText,
+  MessageCircle,
   User,
   Briefcase,
   LogOut,
@@ -52,6 +53,12 @@ const navigation = [
     href: '/reports',
     icon: FileText,
     description: 'Estratti e analisi'
+  },
+  {
+    name: 'Chat',
+    href: '/chat',
+    icon: MessageCircle,
+    description: 'Messaggi commercialista'
   },
 ];
 
