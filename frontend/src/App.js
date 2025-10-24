@@ -22,6 +22,7 @@ import CategoriePage from './pages/Categorie/CategoriePage';
 import ReportsPage from './pages/Reports/ReportsPage';
 import CustomReportsPage from './pages/Reports/CustomReportsPage';
 import ProfilePage from './pages/Profile/ProfilePage';
+import CommercialistaManagementPage from './pages/Profile/CommercialistaManagementPage';
 import TipologiePage from './pages/Tipologie/TipologiePage';
 
 // Configurazione React Query
@@ -209,13 +210,21 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
-              <Route 
-                path="/profile" 
+              <Route
+                path="/profile"
                 element={
                   <ProtectedRoute>
                     <ProfilePage />
                   </ProtectedRoute>
-                } 
+                }
+              />
+              <Route
+                path="/commercialista-management"
+                element={
+                  <ProtectedRoute>
+                    <CommercialistaManagementPage />
+                  </ProtectedRoute>
+                }
               />
 
               {/* Redirect root alla dashboard */}

@@ -1,14 +1,15 @@
 // src/components/Layout/Sidebar.js
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  CreditCard, 
-  Users, 
+import {
+  LayoutDashboard,
+  CreditCard,
+  Users,
   ArrowUpDown,
-  Tag, 
-  FileText, 
+  Tag,
+  FileText,
   User,
+  Briefcase,
   LogOut,
   X,
   TrendingUp
@@ -173,6 +174,25 @@ const SidebarContent = ({ navigation, currentPath, user, onLogout, onClose }) =>
             <span className="text-sm font-medium truncate">Profilo</span>
             <p className="text-xs text-gray-500 truncate">
               {user?.username || 'Utente'}
+            </p>
+          </div>
+        </NavLink>
+
+        {/* Commercialista management link */}
+        <NavLink
+          to="/commercialista-management"
+          onClick={onClose}
+          className={`nav-link group mb-2 ${
+            currentPath === '/commercialista-management' ? 'nav-link-active' : 'nav-link-inactive'
+          }`}
+        >
+          <Briefcase className={`flex-shrink-0 w-5 h-5 mr-3 ${
+            currentPath === '/commercialista-management' ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-600'
+          }`} />
+          <div className="flex-1 min-w-0">
+            <span className="text-sm font-medium truncate">Commercialista</span>
+            <p className="text-xs text-gray-500 truncate">
+              Gestione commercialista
             </p>
           </div>
         </NavLink>
