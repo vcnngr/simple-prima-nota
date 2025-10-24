@@ -1,17 +1,19 @@
-// src/pages/Auth/LoginPage.js
+// src/pages/Commercialista/CommercialistaLoginPage.js
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, TrendingUp, Lock, User } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
+import { Eye, EyeOff, Briefcase, Lock, User } from 'lucide-react';
+import { commercialistiAPI } from '../../services/api';
 import Button from '../../components/UI/Button';
 import Alert from '../../components/UI/Alert';
+import toast from 'react-hot-toast';
 
-const LoginPage = () => {
+const CommercialistaLoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const { login, isLoading } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
   const {
     register,
@@ -21,15 +23,33 @@ const LoginPage = () => {
 
   const onSubmit = async (data) => {
     setError('');
-    const result = await login(data);
-    
-    if (!result.success) {
-      setError(result.error);
+    setIsLoading(true);
+
+    try {
+      const response = await commercialistiAPI.login(data);
+
+      if (response.success && response.token) {
+        // Store token
+        localStorage.setItem('commercialista_token', response.token);
+        localStorage.setItem('commercialista', JSON.stringify(response.commercialista));
+        localStorage.setItem('user_type', 'commercialista');
+
+        toast.success(`Benvenuto, ${response.commercialista.ragione_sociale || response.commercialista.username}!`);
+        navigate('/commercialista/dashboard');
+      } else {
+        setError('Errore durante il login');
+      }
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Errore durante il login';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-success-50 to-success-100 py-12 px-4 sm:px-6 lg:px-8">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -42,15 +62,15 @@ const LoginPage = () => {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-            className="mx-auto h-16 w-16 bg-primary-600 rounded-xl flex items-center justify-center shadow-lg"
+            className="mx-auto h-16 w-16 bg-success-600 rounded-xl flex items-center justify-center shadow-lg"
           >
-            <TrendingUp className="h-8 w-8 text-white" />
+            <Briefcase className="h-8 w-8 text-white" />
           </motion.div>
           <h2 className="mt-6 text-3xl font-bold text-gray-900">
-            Accedi a Prima Nota
+            Accedi come Commercialista
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            Gestisci la tua contabilità in modo semplice e veloce
+            Area professionale per la gestione dei clienti
           </p>
         </div>
 
@@ -138,31 +158,23 @@ const LoginPage = () => {
               )}
             </div>
 
-            {/* Remember me & Forgot password */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                  Ricordami
-                </label>
-              </div>
-              <div className="text-sm">
-                {/* eslint-disable-next-line jsx-a11y/anchor-is-valid */}
-                <a href="#" className="text-primary-600 hover:text-primary-500 font-medium">
-                  Password dimenticata?
-                </a>
-              </div>
+            {/* Remember me */}
+            <div className="flex items-center">
+              <input
+                id="remember-me"
+                name="remember-me"
+                type="checkbox"
+                className="h-4 w-4 text-success-600 focus:ring-success-500 border-gray-300 rounded"
+              />
+              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                Ricordami
+              </label>
             </div>
 
             {/* Submit Button */}
             <Button
               type="submit"
-              variant="primary"
+              variant="success"
               size="lg"
               loading={isLoading}
               className="w-full"
@@ -171,24 +183,15 @@ const LoginPage = () => {
             </Button>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 mb-2 font-medium">Credenziali demo:</p>
-            <div className="text-xs text-gray-500 space-y-1">
-              <p><strong>Username:</strong> demo</p>
-              <p><strong>Password:</strong> password</p>
-            </div>
-          </div>
-
           {/* Register Link */}
           <div className="text-center">
             <p className="text-sm text-gray-600">
               Non hai un account?{' '}
               <Link
-                to="/register"
-                className="text-primary-600 hover:text-primary-500 font-medium transition-colors"
+                to="/commercialista/register"
+                className="text-success-600 hover:text-success-500 font-medium transition-colors"
               >
-                Registrati qui
+                Registrati come Commercialista
               </Link>
             </p>
           </div>
@@ -220,4 +223,4 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+export default CommercialistaLoginPage;

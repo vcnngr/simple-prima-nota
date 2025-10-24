@@ -241,6 +241,52 @@ export const dashboardAPI = {
   getQuickStats: () => api.get('/dashboard/quick-stats'),
 };
 
+// Commercialisti API
+export const commercialistiAPI = {
+  // Authentication
+  login: (credentials) => api.post('/commercialisti/login', credentials),
+  register: (userData) => api.post('/commercialisti/register', userData),
+  getProfile: () => api.get('/commercialisti/profile'),
+
+  // Dashboard
+  getDashboard: () => api.get('/commercialisti/dashboard'),
+
+  // Client management
+  collegaCliente: (token) => api.post('/commercialisti/collega-cliente', { token }),
+  getClientDetails: (userId) => api.get(`/commercialisti/clienti/${userId}`),
+};
+
+// User-Commercialista relationship API
+export const utentiCommercialistaAPI = {
+  // Generate invitation token
+  generaTokenInvito: (giorni_validita = 30) =>
+    api.post('/utenti/genera-token-invito', { giorni_validita }),
+
+  // Get user's tokens
+  getTokenInviti: () => api.get('/utenti/token-inviti'),
+
+  // Get connected commercialista
+  getCommercialista: () => api.get('/utenti/commercialista'),
+
+  // Disconnect from commercialista
+  disconnectCommercialista: () => api.delete('/utenti/commercialista'),
+};
+
+// Messages API (async chat)
+export const messaggiAPI = {
+  // Get messages for current connection
+  getAll: (params = {}) => api.get('/messaggi', { params }),
+
+  // Send message
+  send: (messaggio) => api.post('/messaggi', { messaggio }),
+
+  // Mark message as read
+  markAsRead: (id) => api.put(`/messaggi/${id}/letto`),
+
+  // Mark all messages as read
+  markAllAsRead: () => api.put('/messaggi/leggi-tutti'),
+};
+
 // Export API (Nuovo sistema unificato) - CORRETTO
 export const exportAPI = {
   // Genera export con anteprima

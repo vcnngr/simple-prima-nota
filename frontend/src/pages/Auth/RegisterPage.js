@@ -292,12 +292,22 @@ const RegisterPage = () => {
             <p className="text-sm text-gray-600">
               Hai già un account?{' '}
               <Link
-                to="/login"
+                to="/login/utente"
                 className="text-success-600 hover:text-success-500 font-medium transition-colors"
               >
                 Accedi qui
               </Link>
             </p>
+          </div>
+
+          {/* Back to choice */}
+          <div className="text-center">
+            <Link
+              to="/login"
+              className="text-sm text-gray-500 hover:text-gray-700 font-medium transition-colors"
+            >
+              ← Torna alla scelta
+            </Link>
           </div>
         </motion.div>
 

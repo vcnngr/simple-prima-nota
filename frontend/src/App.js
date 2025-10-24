@@ -8,8 +8,11 @@ import Layout from './components/Layout/Layout';
 import LoadingSpinner from './components/UI/LoadingSpinner';
 
 // Pages
+import LoginChoicePage from './pages/Auth/LoginChoicePage';
 import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
+import CommercialistaLoginPage from './pages/Commercialista/CommercialistaLoginPage';
+import CommercialistaRegisterPage from './pages/Commercialista/CommercialistaRegisterPage';
 import DashboardPage from './pages/Dashboard/DashboardPage';
 import ContiBancariPage from './pages/ContiBancari/ContiBancariPage';
 import AnagrafichePage from './pages/Anagrafiche/AnagrafichePage';
@@ -77,21 +80,45 @@ function App() {
           <div className="App">
             <Routes>
               {/* Route pubbliche */}
-              <Route 
-                path="/login" 
+              <Route
+                path="/login"
+                element={
+                  <PublicRoute>
+                    <LoginChoicePage />
+                  </PublicRoute>
+                }
+              />
+              <Route
+                path="/login/utente"
                 element={
                   <PublicRoute>
                     <LoginPage />
                   </PublicRoute>
-                } 
+                }
               />
-              <Route 
-                path="/register" 
+              <Route
+                path="/login/commercialista"
+                element={
+                  <PublicRoute>
+                    <CommercialistaLoginPage />
+                  </PublicRoute>
+                }
+              />
+              <Route
+                path="/register"
                 element={
                   <PublicRoute>
                     <RegisterPage />
                   </PublicRoute>
-                } 
+                }
+              />
+              <Route
+                path="/commercialista/register"
+                element={
+                  <PublicRoute>
+                    <CommercialistaRegisterPage />
+                  </PublicRoute>
+                }
               />
 
               {/* Route protette */}
