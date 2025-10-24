@@ -500,15 +500,15 @@ const MovimentiPage = () => {
       </motion.div>
     )}
     
-    {/* Tabella movimenti (AGGIORNATA) */}
+    {/* Tabella movimenti - RESPONSIVE (AGGIORNATA) */}
     <Card>
     <Card.Header className="flex items-center justify-between">
     <h3 className="text-lg font-semibold text-gray-900">
     Lista Movimenti
     </h3>
     <div className="flex space-x-2">
-    <Button 
-    variant="outline" 
+    <Button
+    variant="outline"
     size="sm"
     onClick={() => handleExport('csv')}
     disabled={!movimenti || movimenti.length === 0}
@@ -516,8 +516,8 @@ const MovimentiPage = () => {
     <Download className="w-4 h-4 mr-1" />
     CSV
     </Button>
-    <Button 
-    variant="outline" 
+    <Button
+    variant="outline"
     size="sm"
     onClick={() => handleExport('xlsx')}
     disabled={!movimenti || movimenti.length === 0}
@@ -527,7 +527,9 @@ const MovimentiPage = () => {
     </Button>
     </div>
     </Card.Header>
-    <Card.Body className="p-0">
+
+    {/* Desktop Table (lg and up) */}
+    <Card.Body className="p-0 hidden lg:block">
     <Table>
     <Table.Header>
     <Table.Row>
@@ -540,8 +542,8 @@ const MovimentiPage = () => {
     <Table.HeaderCell className="text-right">Azioni</Table.HeaderCell>
     </Table.Row>
     </Table.Header>
-    <Table.Body 
-    loading={isLoading} 
+    <Table.Body
+    loading={isLoading}
     emptyMessage="Nessun movimento trovato"
     >
     {movimenti.map((movimento) => {
@@ -689,8 +691,162 @@ const MovimentiPage = () => {
       </div>
     )}
     </Card.Body>
+
+    {/* Mobile/Tablet Card View (below lg) */}
+    <Card.Body className="block lg:hidden p-4">
+    {isLoading ? (
+      <div className="flex items-center justify-center py-8">
+      <LoadingSpinner size="md" />
+      </div>
+    ) : movimenti.length === 0 ? (
+      <div className="text-center py-8 text-gray-500">
+      Nessun movimento trovato
+      </div>
+    ) : (
+      <div className="space-y-3">
+      {movimenti.map((movimento) => {
+        const IconTipologia = getIconForTipologia(movimento.tipologia_icona);
+        return (
+          <motion.div
+          key={movimento.id}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
+          >
+          {/* Header Row */}
+          <div className="flex items-start justify-between mb-3">
+          <div className="flex-1">
+          <div className="flex items-center space-x-2 mb-1">
+          <Badge
+          variant={movimento.tipo === 'Entrata' ? 'success' : 'danger'}
+          size="sm"
+          className="flex items-center"
+          >
+          {movimento.tipo === 'Entrata' ? (
+            <TrendingUp className="w-3 h-3 mr-1" />
+          ) : (
+            <TrendingDown className="w-3 h-3 mr-1" />
+          )}
+          {movimento.tipo}
+          </Badge>
+          <span className="text-xs text-gray-500">
+          {new Date(movimento.data).toLocaleDateString('it-IT')}
+          </span>
+          </div>
+          <h4 className="text-sm font-semibold text-gray-900">
+          {movimento.descrizione}
+          </h4>
+          {movimento.note && (
+            <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+            {movimento.note}
+            </p>
+          )}
+          </div>
+          <div className="text-right ml-3">
+          <p className={`text-lg font-bold ${
+            movimento.tipo === 'Entrata' ? 'text-success-600' : 'text-danger-600'
+          }`}>
+          {movimento.tipo === 'Entrata' ? '+' : '-'}€{parseFloat(movimento.importo).toLocaleString('it-IT', {
+            minimumFractionDigits: 2
+          })}
+          </p>
+          </div>
+          </div>
+
+          {/* Details Grid */}
+          <div className="space-y-2 mb-3">
+          {/* Anagrafica */}
+          {movimento.anagrafica_nome && (
+            <div className="flex items-center text-sm">
+            <div className="flex-shrink-0 w-6 h-6 rounded flex items-center justify-center mr-2"
+            style={{backgroundColor: (movimento.tipologia_colore || '#6B7280') + '20'}}>
+            <IconTipologia className="w-3 h-3"
+            style={{color: movimento.tipologia_colore || '#6B7280'}} />
+            </div>
+            <div className="flex-1 min-w-0">
+            <span className="text-gray-900">{movimento.anagrafica_nome}</span>
+            {movimento.tipologia_nome && (
+              <Badge
+              variant="custom"
+              size="sm"
+              className="ml-2"
+              style={{
+                backgroundColor: (movimento.tipologia_colore || '#6B7280') + '20',
+                color: movimento.tipologia_colore || '#6B7280'
+              }}
+              >
+              {movimento.tipologia_nome}
+              </Badge>
+            )}
+            </div>
+            </div>
+          )}
+
+          {/* Conto */}
+          <div className="flex items-center text-sm text-gray-600">
+          <Euro className="w-4 h-4 mr-2 text-gray-400" />
+          <div>
+          <span className="font-medium">{movimento.nome_banca}</span>
+          <span className="text-xs text-gray-500 ml-1">({movimento.intestatario})</span>
+          </div>
+          </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center justify-end space-x-2 pt-3 border-t border-gray-100">
+          <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleEdit(movimento)}
+          >
+          <Edit className="w-4 h-4 mr-1" />
+          Modifica
+          </Button>
+          <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleDelete(movimento)}
+          className="text-danger-600 hover:text-danger-700"
+          >
+          <Trash2 className="w-4 h-4 mr-1" />
+          Elimina
+          </Button>
+          </div>
+          </motion.div>
+        );
+      })}
+      </div>
+    )}
+
+    {/* Mobile Pagination */}
+    {pagination.total > paginazione.limit && (
+      <div className="mt-4 flex items-center justify-between">
+      <div className="text-xs text-gray-700">
+      {pagination.offset + 1}-{Math.min(pagination.offset + paginazione.limit, pagination.total)} di {pagination.total}
+      </div>
+      <div className="flex space-x-2">
+      <Button
+      variant="outline"
+      size="sm"
+      onClick={() => handlePageChange(Math.max(0, pagination.offset - paginazione.limit))}
+      disabled={pagination.offset === 0}
+      >
+      <ChevronLeft className="w-4 h-4" />
+      </Button>
+      <Button
+      variant="outline"
+      size="sm"
+      onClick={() => handlePageChange(pagination.offset + paginazione.limit)}
+      disabled={!pagination.hasMore}
+      >
+      <ChevronRight className="w-4 h-4" />
+      </Button>
+      </div>
+      </div>
+    )}
+    </Card.Body>
     </Card>
-    
+
     {/* Modal Form (AGGIORNATO) */}
     <MovimentoModal
     isOpen={showModal}
