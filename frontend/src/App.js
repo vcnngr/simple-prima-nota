@@ -13,6 +13,7 @@ import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
 import CommercialistaLoginPage from './pages/Commercialista/CommercialistaLoginPage';
 import CommercialistaRegisterPage from './pages/Commercialista/CommercialistaRegisterPage';
+import CommercialistaDashboardPage from './pages/Commercialista/CommercialistaDashboardPage';
 import DashboardPage from './pages/Dashboard/DashboardPage';
 import ContiBancariPage from './pages/ContiBancari/ContiBancariPage';
 import AnagrafichePage from './pages/Anagrafiche/AnagrafichePage';
@@ -34,7 +35,7 @@ const queryClient = new QueryClient({
   },
 });
 
-// Componente per route protette
+// Componente per route protette (utenti)
 function ProtectedRoute({ children }) {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -51,6 +52,18 @@ function ProtectedRoute({ children }) {
   }
 
   return <Layout>{children}</Layout>;
+}
+
+// Componente per route protette commercialista
+function ProtectedCommercialistaRoute({ children }) {
+  const commercialistaToken = localStorage.getItem('commercialista_token');
+  const userType = localStorage.getItem('user_type');
+
+  if (!commercialistaToken || userType !== 'commercialista') {
+    return <Navigate to="/login/commercialista" replace />;
+  }
+
+  return children;
 }
 
 // Componente per route pubbliche (redirect se autenticato)
@@ -121,8 +134,18 @@ function App() {
                 }
               />
 
-              {/* Route protette */}
-              <Route 
+              {/* Route protette commercialista */}
+              <Route
+                path="/commercialista/dashboard"
+                element={
+                  <ProtectedCommercialistaRoute>
+                    <CommercialistaDashboardPage />
+                  </ProtectedCommercialistaRoute>
+                }
+              />
+
+              {/* Route protette utenti */}
+              <Route
                 path="/dashboard" 
                 element={
                   <ProtectedRoute>

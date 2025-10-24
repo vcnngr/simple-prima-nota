@@ -15,7 +15,16 @@ const api = axios.create({
 // Interceptor per aggiungere token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const userType = localStorage.getItem('user_type');
+    let token;
+
+    // Determine which token to use based on user type
+    if (userType === 'commercialista') {
+      token = localStorage.getItem('commercialista_token');
+    } else {
+      token = localStorage.getItem('token');
+    }
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -31,8 +40,18 @@ api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+      const userType = localStorage.getItem('user_type');
+
+      // Clear appropriate tokens
+      if (userType === 'commercialista') {
+        localStorage.removeItem('commercialista_token');
+        localStorage.removeItem('commercialista');
+        localStorage.removeItem('user_type');
+        window.location.href = '/login/commercialista';
+      } else {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
