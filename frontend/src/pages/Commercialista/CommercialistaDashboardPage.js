@@ -15,14 +15,12 @@ import {
 } from 'lucide-react';
 import { commercialistiAPI } from '../../services/api';
 import Button from '../../components/UI/Button';
-import Alert from '../../components/UI/Alert';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import toast from 'react-hot-toast';
 
 const CommercialistaDashboardPage = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [clientToken, setClientToken] = useState('');
   const [isConnectingClient, setIsConnectingClient] = useState(false);
@@ -38,10 +36,8 @@ const CommercialistaDashboardPage = () => {
       setIsLoading(true);
       const response = await commercialistiAPI.getDashboard();
       setDashboardData(response);
-      setError('');
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'Errore nel caricamento della dashboard';
-      setError(errorMessage);
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -99,58 +95,29 @@ const CommercialistaDashboardPage = () => {
   const { clienti = [], totale_clienti = 0 } = dashboardData || {};
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-success-50 to-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="h-12 w-12 bg-success-600 rounded-xl flex items-center justify-center">
-                <Briefcase className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Dashboard Commercialista
-                </h1>
-                <p className="text-sm text-gray-600">
-                  Benvenuto, {commercialista.ragione_sociale || commercialista.username}
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 md:mt-0 flex space-x-3">
-              <Button
-                variant="success"
-                size="md"
-                onClick={() => setShowTokenModal(true)}
-              >
-                Aggiungi Cliente
-              </Button>
-              <Button
-                variant="outline"
-                size="md"
-                onClick={() => {
-                  localStorage.removeItem('commercialista_token');
-                  localStorage.removeItem('commercialista');
-                  localStorage.removeItem('user_type');
-                  window.location.href = '/login';
-                }}
-              >
-                Logout
-              </Button>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Welcome Section */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">
+            Benvenuto, {commercialista.ragione_sociale || commercialista.username}
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Gestisci i tuoi clienti e monitora la loro attività
+          </p>
+        </div>
+        <div className="mt-4 md:mt-0">
+          <Button
+            variant="success"
+            size="md"
+            onClick={() => setShowTokenModal(true)}
+          >
+            Aggiungi Cliente
+          </Button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {error && (
-          <Alert type="danger" dismissible onDismiss={() => setError('')}>
-            {error}
-          </Alert>
-        )}
-
-        {/* Stats Cards */}
+      {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -325,7 +292,6 @@ const CommercialistaDashboardPage = () => {
             </div>
           )}
         </motion.div>
-      </div>
 
       {/* Token Modal */}
       {showTokenModal && (

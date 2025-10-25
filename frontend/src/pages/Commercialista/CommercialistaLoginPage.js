@@ -6,12 +6,10 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Briefcase, Lock, User } from 'lucide-react';
 import { commercialistiAPI } from '../../services/api';
 import Button from '../../components/UI/Button';
-import Alert from '../../components/UI/Alert';
 import toast from 'react-hot-toast';
 
 const CommercialistaLoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -22,7 +20,6 @@ const CommercialistaLoginPage = () => {
   } = useForm();
 
   const onSubmit = async (data) => {
-    setError('');
     setIsLoading(true);
 
     try {
@@ -37,11 +34,10 @@ const CommercialistaLoginPage = () => {
         toast.success(`Benvenuto, ${response.commercialista.ragione_sociale || response.commercialista.username}!`);
         navigate('/commercialista/dashboard');
       } else {
-        setError('Errore durante il login');
+        toast.error('Errore durante il login');
       }
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'Errore durante il login';
-      setError(errorMessage);
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -81,13 +77,6 @@ const CommercialistaLoginPage = () => {
           transition={{ delay: 0.3, duration: 0.5 }}
           className="bg-white rounded-2xl shadow-xl p-8 space-y-6"
         >
-          {/* Error Alert */}
-          {error && (
-            <Alert type="danger" dismissible onDismiss={() => setError('')}>
-              {error}
-            </Alert>
-          )}
-
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* Username Field */}
             <div>

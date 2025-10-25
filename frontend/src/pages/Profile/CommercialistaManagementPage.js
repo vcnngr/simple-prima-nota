@@ -27,10 +27,10 @@ const CommercialistaManagementPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isRevokingToken, setIsRevokingToken] = useState(null);
   const [copiedToken, setCopiedToken] = useState(null);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
-  const [giorni_validita, setGiorniValidita] = useState(30);
 
   useEffect(() => {
     loadData();
@@ -60,10 +60,10 @@ const CommercialistaManagementPage = () => {
     setIsGeneratingToken(true);
 
     try {
-      const response = await utentiCommercialistaAPI.generaTokenInvito(giorni_validita);
+      // Validità indeterminata (36500 giorni = ~100 anni)
+      const response = await utentiCommercialistaAPI.generaTokenInvito(36500);
       toast.success('Token generato con successo!');
       setShowGenerateModal(false);
-      setGiorniValidita(30);
       loadData(); // Reload tokens
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'Errore nella generazione del token';
@@ -93,6 +93,21 @@ const CommercialistaManagementPage = () => {
       toast.error(errorMessage);
     } finally {
       setIsDisconnecting(false);
+    }
+  };
+
+  const handleRevokeToken = async (tokenId) => {
+    setIsRevokingToken(tokenId);
+
+    try {
+      await utentiCommercialistaAPI.revokeTokenInvito(tokenId);
+      toast.success('Token revocato con successo');
+      loadData(); // Reload tokens
+    } catch (err) {
+      const errorMessage = err.response?.data?.error || 'Errore nella revoca del token';
+      toast.error(errorMessage);
+    } finally {
+      setIsRevokingToken(null);
     }
   };
 
@@ -203,18 +218,11 @@ const CommercialistaManagementPage = () => {
         ) : (
           <div className="text-center py-8">
             <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 mb-6">
+            <p className="text-gray-600">
               Non hai ancora collegato un commercialista al tuo account.
               <br />
-              Genera un token di invito e comunicalo al tuo commercialista.
+              Genera un token di invito nella sezione sottostante e comunicalo al tuo commercialista.
             </p>
-            <Button
-              variant="primary"
-              onClick={() => setShowGenerateModal(true)}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Genera Token di Invito
-            </Button>
           </div>
         )}
       </motion.div>
@@ -302,6 +310,22 @@ const CommercialistaManagementPage = () => {
                         )}
                       </div>
                     </div>
+
+                    {/* Revoke button - only for unused and non-expired tokens */}
+                    {!token.usato && !isTokenExpired(token.scadenza) && (
+                      <div className="mt-3 md:mt-0 md:ml-4">
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleRevokeToken(token.id)}
+                          loading={isRevokingToken === token.id}
+                          disabled={isRevokingToken !== null}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Revoca
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               );
@@ -322,26 +346,16 @@ const CommercialistaManagementPage = () => {
               Genera Token di Invito
             </h3>
             <p className="text-sm text-gray-600 mb-6">
-              Genera un token per invitare il tuo commercialista. Comunica questo token al commercialista per permettergli di collegarsi al tuo account.
+              Genera un token per invitare il tuo commercialista. Il token ha validità indeterminata fino a quando non viene utilizzato o revocato.
             </p>
 
             <form onSubmit={handleGenerateToken} className="space-y-4">
-              <div>
-                <label htmlFor="giorni" className="form-label">
-                  Validità Token (giorni)
-                </label>
-                <input
-                  id="giorni"
-                  type="number"
-                  min="1"
-                  max="365"
-                  className="form-input"
-                  value={giorni_validita}
-                  onChange={(e) => setGiorniValidita(parseInt(e.target.value))}
-                  disabled={isGeneratingToken}
-                />
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <p className="text-sm text-gray-700">
+                  <strong>Validità:</strong> Indeterminata
+                </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Il token scadrà dopo {giorni_validita} giorni dalla creazione
+                  Il token rimarrà attivo fino al primo utilizzo o fino alla revoca manuale
                 </p>
               </div>
 
@@ -357,10 +371,7 @@ const CommercialistaManagementPage = () => {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => {
-                    setShowGenerateModal(false);
-                    setGiorniValidita(30);
-                  }}
+                  onClick={() => setShowGenerateModal(false)}
                   disabled={isGeneratingToken}
                 >
                   Annulla

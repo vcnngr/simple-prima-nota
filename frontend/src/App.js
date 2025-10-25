@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from 'react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout/Layout';
+import CommercialistaLayout from './components/Layout/CommercialistaLayout';
 import LoadingSpinner from './components/UI/LoadingSpinner';
 
 // Pages
@@ -14,6 +15,7 @@ import RegisterPage from './pages/Auth/RegisterPage';
 import CommercialistaLoginPage from './pages/Commercialista/CommercialistaLoginPage';
 import CommercialistaRegisterPage from './pages/Commercialista/CommercialistaRegisterPage';
 import CommercialistaDashboardPage from './pages/Commercialista/CommercialistaDashboardPage';
+import CommercialistaProfilePage from './pages/Commercialista/CommercialistaProfilePage';
 import DashboardPage from './pages/Dashboard/DashboardPage';
 import ContiBancariPage from './pages/ContiBancari/ContiBancariPage';
 import AnagrafichePage from './pages/Anagrafiche/AnagrafichePage';
@@ -65,7 +67,7 @@ function ProtectedCommercialistaRoute({ children }) {
     return <Navigate to="/login/commercialista" replace />;
   }
 
-  return children;
+  return <CommercialistaLayout>{children}</CommercialistaLayout>;
 }
 
 // Componente per route pubbliche (redirect se autenticato)
@@ -142,6 +144,14 @@ function App() {
                 element={
                   <ProtectedCommercialistaRoute>
                     <CommercialistaDashboardPage />
+                  </ProtectedCommercialistaRoute>
+                }
+              />
+              <Route
+                path="/commercialista/profile"
+                element={
+                  <ProtectedCommercialistaRoute>
+                    <CommercialistaProfilePage />
                   </ProtectedCommercialistaRoute>
                 }
               />

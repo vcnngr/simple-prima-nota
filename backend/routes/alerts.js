@@ -1,7 +1,7 @@
 // routes/alerts.js - GESTIONE ALERTS
 const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
-const auth = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 

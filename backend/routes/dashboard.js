@@ -1,7 +1,7 @@
 // routes/dashboard.js - VERSIONE FLESSIBILE CON TIPOLOGIE
 const express = require('express');
 const { queryOne, queryAll } = require('../config/database');
-const auth = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const moment = require('moment');
 
 const router = express.Router();

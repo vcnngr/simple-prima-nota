@@ -5,7 +5,7 @@
 
 const express = require('express');
 const { queryAll, queryOne, execute } = require('../config/database');
-const auth = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 
 const router = express.Router();

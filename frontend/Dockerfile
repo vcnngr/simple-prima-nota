@@ -1,5 +1,5 @@
 # Frontend Dockerfile per produzione
-FROM node:18-alpine AS build
+FROM docker.io/library/node:18-alpine AS build
 
 # Imposta la directory di lavoro
 WORKDIR /app
@@ -13,11 +13,12 @@ RUN npm install
 # Copia il codice sorgente
 COPY . .
 
-# Build dell'applicazione
+# Build dell'applicazione con più memoria
+ENV NODE_OPTIONS="--max-old-space-size=8192"
 RUN npm run build
 
 # Stage di produzione con Nginx
-FROM nginx:alpine
+FROM docker.io/library/nginx:alpine
 
 # Rimuovi la configurazione di default
 RUN rm /etc/nginx/conf.d/default.conf

@@ -99,6 +99,11 @@ router.post('/register', async (req, res) => {
 // ==============================================================================
 router.post('/login', async (req, res) => {
   try {
+    console.log('🔍 COMMERCIALISTA LOGIN REQUEST:', {
+      body: req.body,
+      contentType: req.get('Content-Type'),
+      origin: req.get('Origin')
+    });
     const { username, password } = req.body;
 
     if (!username || !password) {

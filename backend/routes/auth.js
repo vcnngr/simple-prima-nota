@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, queryOne } = require('../config/database');
 const { validate, schemas } = require('../middleware/validation');
-const auth = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -61,6 +61,11 @@ router.post('/register', validate(schemas.user), async (req, res) => {
 // Login utente
 router.post('/login', validate(schemas.login), async (req, res) => {
   try {
+    console.log('🔍 LOGIN REQUEST:', {
+      body: req.body,
+      contentType: req.get('Content-Type'),
+      origin: req.get('Origin')
+    });
     const { username, password } = req.body;
     
     // Trova l'utente

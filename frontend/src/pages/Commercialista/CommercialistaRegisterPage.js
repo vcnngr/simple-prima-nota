@@ -6,13 +6,11 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Briefcase, Lock, User, Mail, Building, Phone, FileText } from 'lucide-react';
 import { commercialistiAPI } from '../../services/api';
 import Button from '../../components/UI/Button';
-import Alert from '../../components/UI/Alert';
 import toast from 'react-hot-toast';
 
 const CommercialistaRegisterPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -26,10 +24,8 @@ const CommercialistaRegisterPage = () => {
   const watchPassword = watch('password');
 
   const onSubmit = async (data) => {
-    setError('');
-
     if (data.password !== data.confirmPassword) {
-      setError('Le password non coincidono');
+      toast.error('Le password non coincidono');
       return;
     }
 
@@ -48,11 +44,10 @@ const CommercialistaRegisterPage = () => {
         toast.success('Registrazione completata con successo!');
         navigate('/commercialista/dashboard');
       } else {
-        setError('Errore durante la registrazione');
+        toast.error('Errore durante la registrazione');
       }
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'Errore durante la registrazione';
-      setError(errorMessage);
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -92,13 +87,6 @@ const CommercialistaRegisterPage = () => {
           transition={{ delay: 0.3, duration: 0.5 }}
           className="bg-white rounded-2xl shadow-xl p-8 space-y-6"
         >
-          {/* Error Alert */}
-          {error && (
-            <Alert type="danger" dismissible onDismiss={() => setError('')}>
-              {error}
-            </Alert>
-          )}
-
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* Grid for 2 columns */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

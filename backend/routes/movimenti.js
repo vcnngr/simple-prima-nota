@@ -1,7 +1,7 @@
 // routes/movimenti.js - VERSIONE FLESSIBILE CON TIPOLOGIE
 const express = require('express');
 const { query, queryOne, queryAll, withTransaction } = require('../config/database');
-const auth = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { validate, validateQuery, schemas } = require('../middleware/validation');
 const moment = require('moment');
 const UnifiedImportProcessor = require('../services/UnifiedImportProcessor');

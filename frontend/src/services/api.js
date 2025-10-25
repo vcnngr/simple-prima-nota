@@ -284,6 +284,9 @@ export const utentiCommercialistaAPI = {
   // Get user's tokens
   getTokenInviti: () => api.get('/utenti/token-inviti'),
 
+  // Revoke invitation token
+  revokeTokenInvito: (tokenId) => api.delete(`/utenti/token-inviti/${tokenId}`),
+
   // Get connected commercialista
   getCommercialista: () => api.get('/utenti/commercialista'),
 

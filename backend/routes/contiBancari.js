@@ -1,7 +1,7 @@
 // routes/contiBancari.js
 const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
-const auth = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 
 const router = express.Router();

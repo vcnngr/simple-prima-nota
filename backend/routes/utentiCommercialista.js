@@ -100,6 +100,43 @@ router.get('/commercialista', auth, async (req, res) => {
 });
 
 // ==============================================================================
+// DELETE /api/utenti/token-inviti/:tokenId - Revoke invitation token
+// ==============================================================================
+router.delete('/token-inviti/:tokenId', auth, async (req, res) => {
+  try {
+    const { tokenId } = req.params;
+
+    // Verify token belongs to user and is not used
+    const token = await queryOne(
+      `SELECT id, usato FROM token_inviti WHERE id = $1 AND user_id = $2`,
+      [tokenId, req.user.id]
+    );
+
+    if (!token) {
+      return res.status(404).json({ error: 'Token non trovato' });
+    }
+
+    if (token.usato) {
+      return res.status(400).json({ error: 'Non puoi revocare un token già utilizzato' });
+    }
+
+    // Delete token
+    await query(
+      'DELETE FROM token_inviti WHERE id = $1',
+      [tokenId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Token revocato con successo'
+    });
+  } catch (error) {
+    console.error('Revoke token error:', error);
+    res.status(500).json({ error: 'Errore nella revoca del token' });
+  }
+});
+
+// ==============================================================================
 // DELETE /api/utenti/commercialista - Disconnect from commercialista
 // ==============================================================================
 router.delete('/commercialista', auth, async (req, res) => {

@@ -3,7 +3,7 @@
 services:
   # Database PostgreSQL
   db:
-    image: postgres:16.1
+    image: docker.io/library/postgres:16.1
     container_name: prima_nota_db
     environment:
       POSTGRES_DB: prima_nota
@@ -65,7 +65,7 @@ services:
 
   # Adminer per gestione database (opzionale)
   adminer:
-    image: adminer
+    image: docker.io/library/adminer
     container_name: prima_nota_adminer
     restart: always
     ports:

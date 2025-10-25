@@ -1,7 +1,7 @@
 // backend/routes/export.js - Sistema di Export Unificato
 const express = require('express');
 const { queryOne, queryAll } = require('../config/database');
-const auth = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { validateQuery, schemas } = require('../middleware/validation');
 const moment = require('moment');
 const XLSX = require('xlsx');
