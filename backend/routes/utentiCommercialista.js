@@ -70,15 +70,7 @@ router.get('/token-inviti', auth, async (req, res) => {
 // ==============================================================================
 router.get('/commercialista', auth, async (req, res) => {
   try {
-    if (!req.user.commercialista_id) {
-      return res.json({
-        success: true,
-        has_commercialista: false,
-        commercialista: null
-      });
-    }
-
-    // Get commercialista info
+    // Query directly from database (don't trust JWT token which might be old)
     const commercialista = await queryOne(
       `SELECT c.id, c.username, c.email, c.ragione_sociale, c.partita_iva, c.telefono,
               col.data_collegamento, col.attivo
