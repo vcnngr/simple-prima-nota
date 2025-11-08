@@ -275,23 +275,36 @@ router.get('/clienti/:userId', authCommercialista, async (req, res) => {
       [userId]
     );
 
-    // Get client accounts
+    // Get client accounts with calculated balance
     const conti = await query(
-      `SELECT id, nome_banca, intestatario, iban, saldo_corrente, attivo
-       FROM conti_correnti
-       WHERE user_id = $1
-       ORDER BY attivo DESC, nome_banca`,
+      `SELECT
+        cc.id,
+        cc.nome_banca,
+        cc.intestatario,
+        cc.iban,
+        cc.attivo,
+        cc.saldo_iniziale +
+        COALESCE((
+          SELECT SUM(CASE
+            WHEN m.tipo = 'Entrata' THEN m.importo
+            ELSE -m.importo
+          END)
+          FROM movimenti m
+          WHERE m.conto_id = cc.id
+        ), 0) as saldo_corrente
+       FROM conti_correnti cc
+       WHERE cc.user_id = $1
+       ORDER BY cc.attivo DESC, cc.nome_banca`,
       [userId]
     );
 
     // Get recent movements
     const movimenti = await query(
-      `SELECT m.*, cc.nome_banca, ca.nome as categoria
+      `SELECT m.*, cc.nome_banca
        FROM movimenti m
        JOIN conti_correnti cc ON cc.id = m.conto_id
-       LEFT JOIN categorie_anagrafiche ca ON ca.id = m.categoria_id
        WHERE cc.user_id = $1
-       ORDER BY m.data_movimento DESC
+       ORDER BY m.data DESC
        LIMIT 50`,
       [userId]
     );
@@ -305,6 +318,29 @@ router.get('/clienti/:userId', authCommercialista, async (req, res) => {
   } catch (error) {
     console.error('Get client error:', error);
     res.status(500).json({ error: 'Errore nel recupero dei dati del cliente' });
+  }
+});
+
+// ==============================================================================
+// DELETE /api/commercialisti/clienti/:userId - Disconnect client
+// ==============================================================================
+router.delete('/clienti/:userId', authCommercialista, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+
+    // Call the disconnect function
+    await query(
+      'SELECT disconnetti_cliente_commercialista($1, $2)',
+      [req.commercialista.id, userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Cliente disconnesso con successo'
+    });
+  } catch (error) {
+    console.error('Disconnect client error:', error);
+    res.status(500).json({ error: error.message || 'Errore nella disconnessione del cliente' });
   }
 });
 

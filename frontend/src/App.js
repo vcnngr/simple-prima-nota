@@ -16,6 +16,8 @@ import CommercialistaLoginPage from './pages/Commercialista/CommercialistaLoginP
 import CommercialistaRegisterPage from './pages/Commercialista/CommercialistaRegisterPage';
 import CommercialistaDashboardPage from './pages/Commercialista/CommercialistaDashboardPage';
 import CommercialistaProfilePage from './pages/Commercialista/CommercialistaProfilePage';
+import ClientDetailPage from './pages/Commercialista/ClientDetailPage';
+import ClientiListPage from './pages/Commercialista/ClientiListPage';
 import DashboardPage from './pages/Dashboard/DashboardPage';
 import ContiBancariPage from './pages/ContiBancari/ContiBancariPage';
 import AnagrafichePage from './pages/Anagrafiche/AnagrafichePage';
@@ -152,6 +154,22 @@ function App() {
                 element={
                   <ProtectedCommercialistaRoute>
                     <CommercialistaProfilePage />
+                  </ProtectedCommercialistaRoute>
+                }
+              />
+              <Route
+                path="/commercialista/clienti"
+                element={
+                  <ProtectedCommercialistaRoute>
+                    <ClientiListPage />
+                  </ProtectedCommercialistaRoute>
+                }
+              />
+              <Route
+                path="/commercialista/clienti/:userId"
+                element={
+                  <ProtectedCommercialistaRoute>
+                    <ClientDetailPage />
                   </ProtectedCommercialistaRoute>
                 }
               />

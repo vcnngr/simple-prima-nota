@@ -27,6 +27,7 @@ DROP VIEW IF EXISTS vista_movimenti_completa CASCADE;
 
 -- Abilita estensioni
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ==============================================================================
 -- 1. TABELLA UTENTI

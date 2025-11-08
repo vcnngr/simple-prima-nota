@@ -121,22 +121,57 @@ RETURNS TABLE (
 ) AS $$
 BEGIN
     RETURN QUERY
+    WITH user_accounts AS (
+        SELECT
+            cc.user_id,
+            cc.id as conto_id,
+            cc.saldo_iniziale,
+            cc.updated_at as conto_updated_at,
+            COALESCE((
+                SELECT SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE -m.importo END)
+                FROM movimenti m
+                WHERE m.conto_id = cc.id
+            ), 0) as saldo_movimenti
+        FROM collegamenti_commercialista col
+        JOIN conti_correnti cc ON cc.user_id = col.user_id
+        WHERE col.commercialista_id = p_commercialista_id
+        AND col.attivo = TRUE
+        AND cc.attivo = TRUE
+    ),
+    user_movements AS (
+        SELECT
+            cc.user_id,
+            COUNT(m.id) as num_movimenti,
+            MAX(m.data)::TIMESTAMP as ultimo_mov,
+            MAX(m.created_at) as ultimo_movimento_created
+        FROM collegamenti_commercialista col
+        JOIN conti_correnti cc ON cc.user_id = col.user_id
+        LEFT JOIN movimenti m ON m.conto_id = cc.id
+        WHERE col.commercialista_id = p_commercialista_id
+        AND col.attivo = TRUE
+        AND cc.attivo = TRUE
+        GROUP BY cc.user_id
+    )
     SELECT
         u.id,
         u.username,
         u.email,
-        COALESCE(SUM(cc.saldo_corrente), 0) as saldo_totale,
-        COUNT(DISTINCT cc.id)::INTEGER as numero_conti,
-        COUNT(DISTINCT m.id)::INTEGER as numero_movimenti,
-        MAX(m.data_movimento) as ultimo_movimento,
-        MAX(GREATEST(u.updated_at, cc.updated_at, m.created_at)) as ultima_modifica
+        COALESCE(SUM(ua.saldo_iniziale + ua.saldo_movimenti), 0) as saldo_totale,
+        COUNT(DISTINCT ua.conto_id)::INTEGER as numero_conti,
+        COALESCE(um.num_movimenti, 0)::INTEGER as numero_movimenti,
+        um.ultimo_mov as ultimo_movimento,
+        GREATEST(
+            u.updated_at,
+            COALESCE(MAX(ua.conto_updated_at), u.updated_at),
+            COALESCE(um.ultimo_movimento_created, u.updated_at)
+        ) as ultima_modifica
     FROM collegamenti_commercialista col
     JOIN utenti u ON u.id = col.user_id
-    LEFT JOIN conti_correnti cc ON cc.user_id = u.id AND cc.attivo = TRUE
-    LEFT JOIN movimenti m ON m.conto_id = cc.id
+    LEFT JOIN user_accounts ua ON ua.user_id = u.id
+    LEFT JOIN user_movements um ON um.user_id = u.id
     WHERE col.commercialista_id = p_commercialista_id
     AND col.attivo = TRUE
-    GROUP BY u.id, u.username, u.email;
+    GROUP BY u.id, u.username, u.email, u.updated_at, um.num_movimenti, um.ultimo_mov, um.ultimo_movimento_created;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -207,5 +242,28 @@ BEGIN
     WHERE token = p_token;
 
     RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ==============================================================================
+-- 10. FUNCTION: Disconnect client from commercialista
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION disconnetti_cliente_commercialista(
+    p_commercialista_id INTEGER,
+    p_user_id INTEGER
+) RETURNS BOOLEAN AS $$
+BEGIN
+    -- Disattiva il collegamento
+    UPDATE collegamenti_commercialista
+    SET attivo = FALSE
+    WHERE commercialista_id = p_commercialista_id
+    AND user_id = p_user_id
+    AND attivo = TRUE;
+
+    IF FOUND THEN
+        RETURN TRUE;
+    ELSE
+        RAISE EXCEPTION 'Collegamento non trovato o già disattivato';
+    END IF;
 END;
 $$ LANGUAGE plpgsql;

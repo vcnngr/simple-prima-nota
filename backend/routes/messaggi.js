@@ -2,7 +2,7 @@
 // Async chat between user and commercialista
 const express = require('express');
 const { query, queryOne } = require('../config/database');
-const { auth } = require('../middleware/auth');
+const { authEither } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -53,7 +53,7 @@ const getCollegamentoId = async (req, res, next) => {
 // ==============================================================================
 // GET /api/messaggi - Get messages for current connection
 // ==============================================================================
-router.get('/', auth, getCollegamentoId, async (req, res) => {
+router.get('/', authEither, getCollegamentoId, async (req, res) => {
   try {
     const { limit = 50, offset = 0 } = req.query;
 
@@ -92,7 +92,7 @@ router.get('/', auth, getCollegamentoId, async (req, res) => {
 // ==============================================================================
 // POST /api/messaggi - Send new message
 // ==============================================================================
-router.post('/', auth, getCollegamentoId, async (req, res) => {
+router.post('/', authEither, getCollegamentoId, async (req, res) => {
   try {
     const { messaggio } = req.body;
 
@@ -122,7 +122,7 @@ router.post('/', auth, getCollegamentoId, async (req, res) => {
 // ==============================================================================
 // PUT /api/messaggi/:id/letto - Mark message as read
 // ==============================================================================
-router.put('/:id/letto', auth, getCollegamentoId, async (req, res) => {
+router.put('/:id/letto', authEither, getCollegamentoId, async (req, res) => {
   try {
     const messageId = parseInt(req.params.id);
 
@@ -160,7 +160,7 @@ router.put('/:id/letto', auth, getCollegamentoId, async (req, res) => {
 // ==============================================================================
 // PUT /api/messaggi/leggi-tutti - Mark all messages as read
 // ==============================================================================
-router.put('/leggi-tutti', auth, getCollegamentoId, async (req, res) => {
+router.put('/leggi-tutti', authEither, getCollegamentoId, async (req, res) => {
   try {
     const result = await query(
       `UPDATE messaggi_commercialista
