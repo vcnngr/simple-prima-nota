@@ -47,9 +47,11 @@ router.get('/token-inviti', auth, async (req, res) => {
   try {
     const tokens = await query(
       `SELECT t.id, t.token, t.scadenza, t.usato, t.data_utilizzo,
-              t.created_at, c.ragione_sociale as commercialista_nome
+              t.created_at, c.ragione_sociale as commercialista_nome,
+              col.attivo as collegamento_attivo
        FROM token_inviti t
        LEFT JOIN commercialisti c ON c.id = t.commercialista_id
+       LEFT JOIN collegamenti_commercialista col ON col.commercialista_id = c.id AND col.user_id = t.user_id
        WHERE t.user_id = $1
        ORDER BY t.created_at DESC`,
       [req.user.id]
@@ -98,9 +100,12 @@ router.delete('/token-inviti/:tokenId', auth, async (req, res) => {
   try {
     const { tokenId } = req.params;
 
-    // Verify token belongs to user and is not used
+    // Verify token belongs to user and check active connection
     const token = await queryOne(
-      `SELECT id, usato FROM token_inviti WHERE id = $1 AND user_id = $2`,
+      `SELECT t.id, t.usato, t.commercialista_id, col.attivo as collegamento_attivo
+       FROM token_inviti t
+       LEFT JOIN collegamenti_commercialista col ON col.commercialista_id = t.commercialista_id AND col.user_id = t.user_id
+       WHERE t.id = $1 AND t.user_id = $2`,
       [tokenId, req.user.id]
     );
 
@@ -108,8 +113,9 @@ router.delete('/token-inviti/:tokenId', auth, async (req, res) => {
       return res.status(404).json({ error: 'Token non trovato' });
     }
 
-    if (token.usato) {
-      return res.status(400).json({ error: 'Non puoi revocare un token già utilizzato' });
+    // Can't delete if there's an active connection
+    if (token.usato && token.collegamento_attivo) {
+      return res.status(400).json({ error: 'Non puoi eliminare un token con collegamento attivo. Disconnetti prima il commercialista.' });
     }
 
     // Delete token
@@ -120,11 +126,11 @@ router.delete('/token-inviti/:tokenId', auth, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Token revocato con successo'
+      message: 'Token eliminato con successo'
     });
   } catch (error) {
-    console.error('Revoke token error:', error);
-    res.status(500).json({ error: 'Errore nella revoca del token' });
+    console.error('Delete token error:', error);
+    res.status(500).json({ error: 'Errore nell\'eliminazione del token' });
   }
 });
 

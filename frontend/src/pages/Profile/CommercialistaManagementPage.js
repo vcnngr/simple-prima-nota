@@ -257,13 +257,16 @@ const CommercialistaManagementPage = () => {
               {data.tokens.map(token => {
                 const expired = isExpired(token.scadenza);
                 const used = token.usato;
-                const canRevoke = !used && !expired;
+                const hasActiveConnection = used && token.collegamento_attivo;
+                const canDelete = !expired && !hasActiveConnection;
 
                 return (
                   <div
                     key={token.id}
                     className={`p-6 rounded-lg border-2 ${
-                      used
+                      hasActiveConnection
+                        ? 'bg-green-50 border-green-400'
+                        : used
                         ? 'bg-gray-100 border-gray-400'
                         : expired
                         ? 'bg-red-50 border-red-400'
@@ -272,7 +275,12 @@ const CommercialistaManagementPage = () => {
                   >
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center space-x-3">
-                        {used && (
+                        {hasActiveConnection && (
+                          <span className="px-4 py-1 bg-green-600 text-white text-sm font-bold rounded-full">
+                            COLLEGATO
+                          </span>
+                        )}
+                        {!hasActiveConnection && used && (
                           <span className="px-4 py-1 bg-gray-600 text-white text-sm font-bold rounded-full">
                             USATO
                           </span>
@@ -283,7 +291,7 @@ const CommercialistaManagementPage = () => {
                           </span>
                         )}
                         {!used && !expired && (
-                          <span className="px-4 py-1 bg-green-600 text-white text-sm font-bold rounded-full">
+                          <span className="px-4 py-1 bg-blue-600 text-white text-sm font-bold rounded-full">
                             ATTIVO
                           </span>
                         )}
@@ -292,7 +300,7 @@ const CommercialistaManagementPage = () => {
                         </span>
                       </div>
 
-                      {canRevoke && (
+                      {canDelete && (
                         <Button
                           variant="danger"
                           onClick={() => revokeToken(token.id)}
@@ -301,7 +309,7 @@ const CommercialistaManagementPage = () => {
                           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
-                          REVOCA
+                          ELIMINA
                         </Button>
                       )}
                     </div>
