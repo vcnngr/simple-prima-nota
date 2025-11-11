@@ -7,7 +7,8 @@ import {
   User,
   LogOut,
   X,
-  TrendingUp
+  TrendingUp,
+  MessageCircle
 } from 'lucide-react';
 
 const navigation = [
@@ -22,6 +23,12 @@ const navigation = [
     href: '/commercialista/clienti',
     icon: Users,
     description: 'Lista completa clienti'
+  },
+  {
+    name: 'Chat',
+    href: '/commercialista/chat',
+    icon: MessageCircle,
+    description: 'Messaggi con i clienti'
   },
 ];
 
