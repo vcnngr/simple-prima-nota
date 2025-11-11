@@ -13,9 +13,17 @@ const getCollegamentoId = async (req, res, next) => {
   try {
     let collegamento;
 
+    console.log('🔍 getCollegamentoId:', {
+      hasUser: !!req.user,
+      hasCommercialista: !!req.commercialista,
+      query: req.query,
+      params: req.params
+    });
+
     // Determine if user or commercialista
     if (req.user) {
       // User
+      console.log('👤 User request:', req.user.id);
       collegamento = await queryOne(
         `SELECT id FROM collegamenti_commercialista
          WHERE user_id = $1 AND attivo = TRUE`,
@@ -26,23 +34,35 @@ const getCollegamentoId = async (req, res, next) => {
     } else if (req.commercialista) {
       // Commercialista - need user_id from query params
       const { userId } = req.query;
+      console.log('💼 Commercialista request:', {
+        commercialista_id: req.commercialista.id,
+        userId: userId,
+        userId_type: typeof userId
+      });
+
       if (!userId) {
+        console.error('❌ userId mancante nei query params');
         return res.status(400).json({ error: 'userId richiesto per commercialista' });
       }
+
       collegamento = await queryOne(
         `SELECT id FROM collegamenti_commercialista
          WHERE commercialista_id = $1 AND user_id = $2 AND attivo = TRUE`,
         [req.commercialista.id, parseInt(userId)]
       );
+
+      console.log('🔗 Collegamento trovato:', collegamento);
       req.mittente_tipo = 'commercialista';
       req.mittente_id = req.commercialista.id;
     }
 
     if (!collegamento) {
+      console.error('❌ Collegamento non trovato');
       return res.status(404).json({ error: 'Collegamento non trovato' });
     }
 
     req.collegamento_id = collegamento.id;
+    console.log('✅ Collegamento OK, ID:', req.collegamento_id);
     next();
   } catch (error) {
     console.error('Get collegamento error:', error);

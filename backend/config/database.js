@@ -8,18 +8,21 @@ const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD || 'password123',
   max: 20, // max number of clients in the pool
-  idleTimeoutMillis: 30000, // close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // return an error after 2 seconds if connection could not be established
+  min: 2, // minimum number of clients in the pool
+  idleTimeoutMillis: 600000, // close idle clients after 10 minutes (not 30 seconds)
+  connectionTimeoutMillis: 10000, // return an error after 10 seconds (not 2)
+  keepAlive: true, // keep connections alive
+  keepAliveInitialDelayMillis: 10000, // delay before first keepalive
 });
 
 // Test connection
-pool.on('connect', () => {
+pool.on('connect', (client) => {
   console.log('✅ Connected to PostgreSQL database');
 });
 
-pool.on('error', (err) => {
+pool.on('error', (err, client) => {
   console.error('❌ Unexpected error on idle client', err);
-  process.exit(-1);
+  // Don't exit - let the pool handle reconnection
 });
 
 // Helper function for transactions
