@@ -302,13 +302,16 @@ export const messaggiAPI = {
   getAll: (params = {}) => api.get('/messaggi', { params }),
 
   // Send message
-  send: (messaggio) => api.post('/messaggi', { messaggio }),
+  send: (messaggio, params = {}) => api.post('/messaggi', { messaggio }, { params }),
 
   // Mark message as read
-  markAsRead: (id) => api.put(`/messaggi/${id}/letto`),
+  markAsRead: (id, params = {}) => api.put(`/messaggi/${id}/letto`, {}, { params }),
 
   // Mark all messages as read
-  markAllAsRead: () => api.put('/messaggi/leggi-tutti'),
+  markAllAsRead: (params = {}) => api.put('/messaggi/leggi-tutti', {}, { params }),
+
+  // Get unread messages count
+  getUnreadCount: () => api.get('/messaggi/unread-count'),
 };
 
 // Export API (Nuovo sistema unificato) - CORRETTO

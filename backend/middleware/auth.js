@@ -41,28 +41,31 @@ const authEither = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Try user first
-    const user = await queryOne(
-      'SELECT id, username, email FROM utenti WHERE id = $1',
-      [decoded.id]
-    );
+    // Check tipo field in token to determine which table to query
+    if (decoded.tipo === 'commercialista') {
+      // Search only in commercialisti table
+      const commercialista = await queryOne(
+        'SELECT id, username, email, ragione_sociale FROM commercialisti WHERE id = $1',
+        [decoded.id]
+      );
 
-    if (user) {
-      req.user = user;
-      req.userType = 'user';
-      return next();
-    }
+      if (commercialista) {
+        req.commercialista = commercialista;
+        req.userType = 'commercialista';
+        return next();
+      }
+    } else {
+      // Search in utenti table (default for tokens without tipo field)
+      const user = await queryOne(
+        'SELECT id, username, email FROM utenti WHERE id = $1',
+        [decoded.id]
+      );
 
-    // Try commercialista
-    const commercialista = await queryOne(
-      'SELECT id, username, email, ragione_sociale FROM commercialisti WHERE id = $1',
-      [decoded.id]
-    );
-
-    if (commercialista) {
-      req.commercialista = commercialista;
-      req.userType = 'commercialista';
-      return next();
+      if (user) {
+        req.user = user;
+        req.userType = 'user';
+        return next();
+      }
     }
 
     return res.status(401).json({ error: 'Token non valido.' });

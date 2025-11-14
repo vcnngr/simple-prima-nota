@@ -93,7 +93,8 @@ const ChatPage = () => {
 
     setIsSending(true);
     try {
-      await messaggiAPI.send(newMessage.trim());
+      const params = userId ? { userId } : {};
+      await messaggiAPI.send(newMessage.trim(), params);
       setNewMessage('');
       loadMessages(false);
       scrollToBottom();
@@ -107,7 +108,8 @@ const ChatPage = () => {
 
   const handleMarkAsRead = async (messageId) => {
     try {
-      await messaggiAPI.markAsRead(messageId);
+      const params = userId ? { userId } : {};
+      await messaggiAPI.markAsRead(messageId, params);
       loadMessages(false);
     } catch (err) {
       // Silently fail
@@ -116,7 +118,8 @@ const ChatPage = () => {
 
   const handleMarkAllAsRead = async () => {
     try {
-      await messaggiAPI.markAllAsRead();
+      const params = userId ? { userId } : {};
+      await messaggiAPI.markAllAsRead(params);
       toast.success('Tutti i messaggi contrassegnati come letti');
       loadMessages(false);
     } catch (err) {
@@ -268,7 +271,7 @@ const ChatPage = () => {
       </div>
 
       {/* Message Input */}
-      <div className="bg-white border-t border-gray-200 px-6 py-4">
+      <div className="bg-white border-t border-gray-200 px-6 py-3">
         <form onSubmit={handleSendMessage} className="flex items-end space-x-3">
           <div className="flex-1">
             <textarea
@@ -281,7 +284,7 @@ const ChatPage = () => {
                 }
               }}
               placeholder="Scrivi un messaggio..."
-              rows="3"
+              rows="2"
               className="form-input resize-none"
               disabled={isSending}
             />

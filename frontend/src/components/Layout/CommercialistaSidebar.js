@@ -1,5 +1,5 @@
 // src/components/Layout/CommercialistaSidebar.js
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -10,6 +10,7 @@ import {
   TrendingUp,
   MessageCircle
 } from 'lucide-react';
+import { messaggiAPI } from '../../services/api';
 
 const navigation = [
   {
@@ -35,6 +36,22 @@ const navigation = [
 const CommercialistaSidebar = ({ isOpen, onClose }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    loadUnreadCount();
+    const interval = setInterval(loadUnreadCount, 30000); // Update every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadUnreadCount = async () => {
+    try {
+      const response = await messaggiAPI.getUnreadCount();
+      setUnreadCount(response.unread_count || 0);
+    } catch (err) {
+      // Silently fail
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('commercialista_token');
@@ -57,6 +74,7 @@ const CommercialistaSidebar = ({ isOpen, onClose }) => {
               currentPath={location.pathname}
               commercialista={commercialista}
               onLogout={handleLogout}
+              unreadCount={unreadCount}
             />
           </div>
         </div>
@@ -82,6 +100,7 @@ const CommercialistaSidebar = ({ isOpen, onClose }) => {
             commercialista={commercialista}
             onLogout={handleLogout}
             onClose={onClose}
+            unreadCount={unreadCount}
           />
         </div>
       </div>
@@ -90,7 +109,7 @@ const CommercialistaSidebar = ({ isOpen, onClose }) => {
 };
 
 // Componente contenuto sidebar
-const SidebarContent = ({ navigation, currentPath, commercialista, onLogout, onClose }) => {
+const SidebarContent = ({ navigation, currentPath, commercialista, onLogout, onClose, unreadCount }) => {
   return (
     <>
       {/* Logo */}
@@ -113,6 +132,7 @@ const SidebarContent = ({ navigation, currentPath, commercialista, onLogout, onC
         {navigation.map((item) => {
           const isActive = currentPath === item.href;
           const Icon = item.icon;
+          const showBadge = item.name === 'Chat' && unreadCount > 0;
 
           return (
             <NavLink
@@ -134,6 +154,11 @@ const SidebarContent = ({ navigation, currentPath, commercialista, onLogout, onC
                   {item.description}
                 </p>
               </div>
+              {showBadge && (
+                <span className="flex-shrink-0 inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-xs font-bold text-white bg-danger-600 rounded-full">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </NavLink>
           );
         })}

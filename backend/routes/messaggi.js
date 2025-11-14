@@ -202,4 +202,49 @@ router.put('/leggi-tutti', authEither, getCollegamentoId, async (req, res) => {
   }
 });
 
+// ==============================================================================
+// GET /api/messaggi/unread-count - Get total unread messages count
+// ==============================================================================
+router.get('/unread-count', authEither, async (req, res) => {
+  try {
+    let unreadCount = 0;
+
+    if (req.user) {
+      // User: count unread messages from their commercialista
+      const result = await queryOne(
+        `SELECT COUNT(*) as count
+         FROM messaggi_commercialista m
+         JOIN collegamenti_commercialista c ON m.collegamento_id = c.id
+         WHERE c.user_id = $1
+         AND c.attivo = TRUE
+         AND m.mittente_tipo = 'commercialista'
+         AND m.letto = FALSE`,
+        [req.user.id]
+      );
+      unreadCount = parseInt(result?.count || 0);
+    } else if (req.commercialista) {
+      // Commercialista: count unread messages from all their users
+      const result = await queryOne(
+        `SELECT COUNT(*) as count
+         FROM messaggi_commercialista m
+         JOIN collegamenti_commercialista c ON m.collegamento_id = c.id
+         WHERE c.commercialista_id = $1
+         AND c.attivo = TRUE
+         AND m.mittente_tipo = 'user'
+         AND m.letto = FALSE`,
+        [req.commercialista.id]
+      );
+      unreadCount = parseInt(result?.count || 0);
+    }
+
+    res.json({
+      success: true,
+      unread_count: unreadCount
+    });
+  } catch (error) {
+    console.error('Get unread count error:', error);
+    res.status(500).json({ error: 'Errore nel conteggio dei messaggi non letti' });
+  }
+});
+
 module.exports = router;
