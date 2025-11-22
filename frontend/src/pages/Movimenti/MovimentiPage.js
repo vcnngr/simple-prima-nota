@@ -365,19 +365,19 @@ const MovimentiPage = () => {
   
   return (
     <div className="space-y-6">
-    {/* Header */}
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+    {/* Header - MIGLIORATO PER MOBILE */}
+    <div className="flex flex-col gap-4">
     <div>
     <h1 className="text-2xl font-bold text-gray-900">Movimenti</h1>
     <p className="mt-1 text-sm text-gray-600">
     Gestisci entrate e uscite con tipologie flessibili
     </p>
     </div>
-    <div className="mt-4 sm:mt-0 flex space-x-3">
+    <div className="flex flex-col sm:flex-row gap-3">
     <Button
     variant="outline"
     onClick={() => setShowFilters(!showFilters)}
-    className="flex items-center"
+    className="flex items-center justify-center sm:justify-start"
     >
     <Filter className="w-4 h-4 mr-1" />
     Filtri
@@ -387,16 +387,17 @@ const MovimentiPage = () => {
       </Badge>
     )}
     </Button>
-    
-    {/* NUOVO PULSANTE IMPORT */}
+
+    <div className="flex gap-3">
+    {/* PULSANTE IMPORT */}
     <Button
     variant="outline"
     onClick={() => setShowImportDisclaimer(true)}
-    className="flex items-center"
+    className="flex items-center flex-1 sm:flex-none justify-center"
     disabled={isImporting}
     >
-    <Upload className="w-4 h-4 mr-1" />
-    {isImporting ? 'Importando...' : 'Import CSV'}
+    <Upload className="w-4 h-4 sm:mr-1" />
+    <span className="hidden sm:inline">{isImporting ? 'Importando...' : 'Import'}</span>
     </Button>
     
     <Button
@@ -405,10 +406,12 @@ const MovimentiPage = () => {
       setEditingMovimento(null);
       setShowModal(true);
     }}
+    className="flex items-center flex-1 sm:flex-none justify-center"
     >
-    <Plus className="w-4 h-4 mr-2" />
-    Nuovo Movimento
+    <Plus className="w-4 h-4 mr-1" />
+    <span className="hidden xs:inline">Nuovo </span>Movimento
     </Button>
+    </div>
     </div>
     </div>
     

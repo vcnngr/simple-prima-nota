@@ -247,4 +247,67 @@ router.get('/unread-count', authEither, async (req, res) => {
   }
 });
 
+// ==============================================================================
+// GET /api/messaggi/clients-overview - Get clients list with unread count and last message
+// ==============================================================================
+router.get('/clients-overview', authEither, async (req, res) => {
+  try {
+    // Only for commercialisti
+    if (!req.commercialista) {
+      return res.status(403).json({ error: 'Accesso riservato ai commercialisti' });
+    }
+
+    const clientsOverview = await query(
+      `SELECT
+        u.id as user_id,
+        u.username,
+        u.email,
+        c.id as collegamento_id,
+        c.data_collegamento,
+        (
+          SELECT COUNT(*)
+          FROM messaggi_commercialista m
+          WHERE m.collegamento_id = c.id
+          AND m.mittente_tipo = 'user'
+          AND m.letto = FALSE
+        ) as unread_count,
+        (
+          SELECT messaggio
+          FROM messaggi_commercialista m
+          WHERE m.collegamento_id = c.id
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) as last_message,
+        (
+          SELECT created_at
+          FROM messaggi_commercialista m
+          WHERE m.collegamento_id = c.id
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) as last_message_at,
+        (
+          SELECT mittente_tipo
+          FROM messaggi_commercialista m
+          WHERE m.collegamento_id = c.id
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) as last_message_from
+      FROM collegamenti_commercialista c
+      JOIN utenti u ON c.user_id = u.id
+      WHERE c.commercialista_id = $1
+      AND c.attivo = TRUE
+      ORDER BY unread_count DESC, last_message_at DESC NULLS LAST`,
+      [req.commercialista.id]
+    );
+
+    res.json({
+      success: true,
+      clients: clientsOverview.rows
+    });
+  } catch (error) {
+    console.error('Get clients overview error:', error);
+    res.status(500).json({ error: 'Errore nel recupero delle informazioni clienti' });
+  }
+});
+
 module.exports = router;

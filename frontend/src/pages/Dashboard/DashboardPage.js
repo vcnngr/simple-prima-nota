@@ -116,40 +116,42 @@ const DashboardPage = () => {
   
   return (
     <div className="space-y-6">
-      {/* Header con azioni rapide */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+      {/* Header con azioni rapide - MIGLIORATO PER MOBILE */}
+      <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="mt-1 text-sm text-gray-600">
             Panoramica della tua situazione contabile con tipologie flessibili
           </p>
         </div>
-        <div className="mt-4 sm:mt-0 flex space-x-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <select
             value={selectedPeriod}
             onChange={(e) => setSelectedPeriod(e.target.value)}
-            className="form-select text-sm"
+            className="form-select text-sm flex-1 sm:flex-none sm:w-auto"
           >
             <option value="7">Ultimi 7 giorni</option>
             <option value="30">Ultimi 30 giorni</option>
             <option value="90">Ultimi 3 mesi</option>
             <option value="365">Ultimo anno</option>
           </select>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            className="flex items-center"
-          >
-            <RefreshCw className="w-4 h-4 mr-1" />
-            Aggiorna
-          </Button>
-          <Link to="/movimenti?action=new">
-            <Button variant="primary" size="sm" className="flex items-center">
-              <Plus className="w-4 h-4 mr-1" />
-              Nuovo Movimento
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              className="flex items-center flex-1 sm:flex-none justify-center"
+            >
+              <RefreshCw className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">Aggiorna</span>
             </Button>
-          </Link>
+            <Link to="/movimenti?action=new" className="flex-1 sm:flex-none">
+              <Button variant="primary" size="sm" className="flex items-center w-full justify-center">
+                <Plus className="w-4 h-4 mr-1" />
+                <span className="hidden xs:inline">Nuovo </span>Movimento
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
       
@@ -204,8 +206,8 @@ const DashboardPage = () => {
         />
       </div>
       
-      {/* Grafici principali */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Grafici principali - MIGLIORATO BREAKPOINT */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Andamento mensile - VERSIONE MIGLIORATA */}
         <Card>
           <Card.Header>
@@ -213,7 +215,7 @@ const DashboardPage = () => {
             <p className="text-sm text-gray-600">Entrate vs Uscite ultimi 6 mesi</p>
           </Card.Header>
           <Card.Body>
-            <div className="h-80">
+            <div className="h-64 sm:h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart 
                   data={andamentoData}
@@ -347,8 +349,8 @@ const DashboardPage = () => {
         </Card>
       </div>
       
-      {/* Sezione inferiore */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Sezione inferiore - MIGLIORATO BREAKPOINT */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {/* Saldi conti */}
         <Card>
           <Card.Header className="flex items-center justify-between">
@@ -737,9 +739,9 @@ const TipologieHybridChart = ({ entrateData, usciteData, getIconForTipologia }) 
 
   return (
     <div className="space-y-6">
-      {/* Header con statistiche e toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-6">
+      {/* Header con statistiche e toggle - MIGLIORATO PER MOBILE */}
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
           <div className="text-center">
             <p className="text-2xl font-bold text-gray-900">
               {activeView === 'frequenza' ? totals.movimenti :
@@ -747,71 +749,72 @@ const TipologieHybridChart = ({ entrateData, usciteData, getIconForTipologia }) 
                `€${totals.media.toLocaleString('it-IT', { maximumFractionDigits: 0 })}`}
             </p>
             <p className="text-xs text-gray-500 uppercase tracking-wide">
-              {activeView === 'frequenza' ? 'Tot. Movimenti' : 
+              {activeView === 'frequenza' ? 'Tot. Movimenti' :
                activeView === 'totale' ? 'Valore Totale' : 'Media per Mov.'}
             </p>
           </div>
-          
+
+          {/* Toggle Entrate/Uscite - Visibile sempre */}
           <div className="flex bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setSelectedType('entrate')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center ${
+              className={`px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center ${
                 selectedType === 'entrate'
                   ? 'bg-success-100 text-success-700 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <TrendingUp className="w-3 h-3 mr-1" />
-              Entrate
+              <TrendingUp className="w-3 h-3 sm:mr-1" />
+              <span className="hidden sm:inline">Entrate</span>
             </button>
             <button
               onClick={() => setSelectedType('uscite')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center ${
+              className={`px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center ${
                 selectedType === 'uscite'
                   ? 'bg-danger-100 text-danger-700 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              <TrendingDown className="w-3 h-3 mr-1" />
-              Uscite
+              <TrendingDown className="w-3 h-3 sm:mr-1" />
+              <span className="hidden sm:inline">Uscite</span>
             </button>
           </div>
         </div>
 
-        {/* View Toggle */}
+        {/* View Toggle - Full width su mobile */}
         <div className="flex bg-gray-100 rounded-lg p-1">
           <button
             onClick={() => setActiveView('frequenza')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center ${
+            className={`flex-1 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center ${
               activeView === 'frequenza'
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <ArrowUpDown className="w-3 h-3 mr-1" />
-            Frequenza
+            <ArrowUpDown className="w-3 h-3 sm:mr-1" />
+            <span className="hidden xs:inline">Frequenza</span>
           </button>
           <button
             onClick={() => setActiveView('totale')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center ${
+            className={`flex-1 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center ${
               activeView === 'totale'
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <Euro className="w-3 h-3 mr-1" />
-            Valori
+            <Euro className="w-3 h-3 sm:mr-1" />
+            <span className="hidden xs:inline">Valori</span>
           </button>
           <button
             onClick={() => setActiveView('media')}
-            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center ${
+            className={`flex-1 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center ${
               activeView === 'media'
                 ? 'bg-white text-gray-900 shadow-sm'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <TrendingUp className="w-3 h-3 mr-1" />
-            Media
+            <TrendingUp className="w-3 h-3 sm:mr-1" />
+            <span className="hidden xs:inline">Media</span>
           </button>
         </div>
       </div>

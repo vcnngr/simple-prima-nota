@@ -12,3 +12,18 @@ frontend/node_modules/
 
 # Build outputs
 frontend/build/
+
+# Database exports and backups
+*.sql
+database_export*.sql
+*.dump
+
+# Logs
+*.log
+backend/logs/
+frontend/logs/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/

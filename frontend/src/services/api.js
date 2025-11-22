@@ -312,6 +312,9 @@ export const messaggiAPI = {
 
   // Get unread messages count
   getUnreadCount: () => api.get('/messaggi/unread-count'),
+
+  // Get clients overview with unread count and last message (commercialista only)
+  getClientsOverview: () => api.get('/messaggi/clients-overview'),
 };
 
 // Export API (Nuovo sistema unificato) - CORRETTO
