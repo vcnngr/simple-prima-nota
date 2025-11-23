@@ -70,8 +70,10 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minuti
-  max: 100, // max 100 richieste per IP ogni 15 minuti
-  message: 'Troppe richieste da questo IP, riprova più tardi.'
+  max: process.env.NODE_ENV === 'production' ? 300 : 10000, // 300 in prod, 10000 in dev
+  message: 'Troppe richieste da questo IP, riprova più tardi.',
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use('/api/', limiter);
 
