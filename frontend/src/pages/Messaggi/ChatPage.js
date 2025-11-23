@@ -111,6 +111,8 @@ const ChatPage = () => {
       const params = userId ? { userId } : {};
       await messaggiAPI.markAsRead(messageId, params);
       loadMessages(false);
+      // Emit event to update sidebar badge
+      window.dispatchEvent(new CustomEvent('messagesRead'));
     } catch (err) {
       // Silently fail
     }
@@ -122,6 +124,8 @@ const ChatPage = () => {
       await messaggiAPI.markAllAsRead(params);
       toast.success('Tutti i messaggi contrassegnati come letti');
       loadMessages(false);
+      // Emit event to update sidebar badge
+      window.dispatchEvent(new CustomEvent('messagesRead'));
     } catch (err) {
       toast.error('Errore nell\'aggiornamento dei messaggi');
     }

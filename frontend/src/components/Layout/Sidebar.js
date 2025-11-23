@@ -70,9 +70,26 @@ const Sidebar = ({ isOpen, onClose }) => {
 
   useEffect(() => {
     loadUnreadCount();
-    const interval = setInterval(loadUnreadCount, 30000); // Update every 30 seconds
-    return () => clearInterval(interval);
+    const interval = setInterval(loadUnreadCount, 15000); // Update every 15 seconds
+
+    // Listen for messages read event from ChatPage
+    const handleMessagesRead = () => {
+      loadUnreadCount();
+    };
+    window.addEventListener('messagesRead', handleMessagesRead);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('messagesRead', handleMessagesRead);
+    };
   }, []);
+
+  // Reload unread count when navigating to/from chat page
+  useEffect(() => {
+    if (location.pathname === '/chat') {
+      loadUnreadCount();
+    }
+  }, [location.pathname]);
 
   const loadUnreadCount = async () => {
     try {
