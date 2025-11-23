@@ -405,7 +405,7 @@ router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
         fields: [
           'data', 'descrizione', 'importo', 'tipo', 'note',
           'anagrafica_nome', 'anagrafica_piva', 'anagrafica_email',
-          'tipologia_nome', 'categoria_movimento', 'conto_nome'
+          'tipologia_nome', 'categoria', 'conto_nome'
         ]
       },
       semplice: {
@@ -416,14 +416,19 @@ router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
       entrate: {
         name: 'Solo Entrate',
         table: 'movimenti',
-        fields: ['data', 'descrizione', 'importo', 'anagrafica_nome', 'categoria_movimento'],
+        fields: ['data', 'descrizione', 'importo', 'anagrafica_nome', 'categoria'],
         filters: { tipo: 'Entrata' }
       },
       uscite: {
         name: 'Solo Uscite',
         table: 'movimenti',
-        fields: ['data', 'descrizione', 'importo', 'anagrafica_nome', 'categoria_movimento'],
+        fields: ['data', 'descrizione', 'importo', 'anagrafica_nome', 'categoria'],
         filters: { tipo: 'Uscita' }
+      },
+      custom: {
+        name: 'Export Personalizzato',
+        table: 'movimenti',
+        fields: [] // Will be provided by user
       }
     };
 
@@ -431,6 +436,11 @@ router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
     if (!exportConfig) {
       return res.status(400).json({ error: 'Tipo di export non valido' });
     }
+
+    // Handle custom fields
+    const fieldsToSelect = config.export_type === 'custom' && config.campi_personalizzati
+      ? config.campi_personalizzati
+      : exportConfig.fields;
 
     // Build query
     let sqlQuery = `
@@ -440,16 +450,15 @@ router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
         m.importo,
         m.tipo,
         m.note,
+        m.categoria,
         a.nome as anagrafica_nome,
         a.piva as anagrafica_piva,
         a.email as anagrafica_email,
         t.nome as tipologia_nome,
-        cm.nome as categoria_movimento,
         cc.nome_banca as conto_nome
       FROM movimenti m
       LEFT JOIN anagrafiche a ON a.id = m.anagrafica_id
       LEFT JOIN tipologie_anagrafiche t ON t.id = a.tipologia_id
-      LEFT JOIN categorie_movimenti cm ON cm.id = m.categoria_id
       JOIN conti_correnti cc ON cc.id = m.conto_id
       WHERE cc.user_id = $1
     `;
@@ -496,7 +505,7 @@ router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
     // Format data
     const formattedData = data.map(row => {
       const formatted = {};
-      exportConfig.fields.forEach(field => {
+      fieldsToSelect.forEach(field => {
         if (field === 'data') {
           formatted[field] = moment(row.data).format('DD/MM/YYYY');
         } else if (field === 'importo') {

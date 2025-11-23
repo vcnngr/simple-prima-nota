@@ -35,7 +35,8 @@ const ClientReportsPage = () => {
     tutto_storico: false,
     conto_id: '',
     ordina_per: 'data',
-    ordine: 'desc'
+    ordine: 'desc',
+    campi_personalizzati: []
   });
 
   const [conti, setConti] = useState([]);
@@ -162,8 +163,45 @@ const ClientReportsPage = () => {
       description: 'Tutte le spese del periodo',
       icon: TrendingDown,
       color: 'red'
+    },
+    {
+      id: 'custom',
+      name: 'Export Personalizzato',
+      description: 'Scegli esattamente quali campi esportare',
+      icon: Settings,
+      color: 'purple'
     }
   ];
+
+  const availableFields = [
+    { id: 'data', label: 'Data' },
+    { id: 'descrizione', label: 'Descrizione' },
+    { id: 'importo', label: 'Importo' },
+    { id: 'tipo', label: 'Tipo (Entrata/Uscita)' },
+    { id: 'categoria', label: 'Categoria' },
+    { id: 'note', label: 'Note' },
+    { id: 'anagrafica_nome', label: 'Nome Anagrafica' },
+    { id: 'anagrafica_piva', label: 'P.IVA Anagrafica' },
+    { id: 'anagrafica_email', label: 'Email Anagrafica' },
+    { id: 'tipologia_nome', label: 'Tipologia Anagrafica' },
+    { id: 'conto_nome', label: 'Conto Bancario' }
+  ];
+
+  const toggleField = (fieldId) => {
+    setConfig(prev => ({
+      ...prev,
+      campi_personalizzati: prev.campi_personalizzati.includes(fieldId)
+        ? prev.campi_personalizzati.filter(f => f !== fieldId)
+        : [...prev.campi_personalizzati, fieldId]
+    }));
+  };
+
+  const canExport = () => {
+    if (config.export_type === 'custom') {
+      return config.campi_personalizzati.length > 0;
+    }
+    return true;
+  };
 
   if (isLoading) {
     return (
@@ -243,6 +281,57 @@ const ClientReportsPage = () => {
           </div>
         </Card.Body>
       </Card>
+
+      {/* Custom Fields Selection */}
+      {config.export_type === 'custom' && (
+        <Card>
+          <Card.Header>
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+              <Settings className="h-5 w-5 mr-2" />
+              Seleziona Campi da Esportare
+            </h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Selezionati: {config.campi_personalizzati.length} campi
+            </p>
+          </Card.Header>
+          <Card.Body>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {availableFields.map((field) => {
+                const isSelected = config.campi_personalizzati.includes(field.id);
+                return (
+                  <label
+                    key={field.id}
+                    className={`flex items-center p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      isSelected
+                        ? 'border-purple-500 bg-purple-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleField(field.id)}
+                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 mr-3"
+                    />
+                    <span className={`font-medium ${
+                      isSelected ? 'text-purple-900' : 'text-gray-900'
+                    }`}>
+                      {field.label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            {config.campi_personalizzati.length === 0 && (
+              <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ Seleziona almeno un campo per procedere con l'export
+                </p>
+              </div>
+            )}
+          </Card.Body>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
@@ -360,7 +449,7 @@ const ClientReportsPage = () => {
               variant="outline"
               onClick={handleGeneratePreview}
               loading={isGenerating}
-              disabled={isGenerating}
+              disabled={isGenerating || !canExport()}
               className="flex-1"
             >
               <Eye className="h-4 w-4 mr-2" />
@@ -370,7 +459,7 @@ const ClientReportsPage = () => {
               variant="primary"
               onClick={() => handleDownload('csv')}
               loading={isGenerating}
-              disabled={isGenerating}
+              disabled={isGenerating || !canExport()}
               className="flex-1"
             >
               <Download className="h-4 w-4 mr-2" />
@@ -380,7 +469,7 @@ const ClientReportsPage = () => {
               variant="success"
               onClick={() => handleDownload('xlsx')}
               loading={isGenerating}
-              disabled={isGenerating}
+              disabled={isGenerating || !canExport()}
               className="flex-1"
             >
               <FileSpreadsheet className="h-4 w-4 mr-2" />
@@ -390,7 +479,7 @@ const ClientReportsPage = () => {
               variant="danger"
               onClick={() => handleDownload('pdf')}
               loading={isGenerating}
-              disabled={isGenerating}
+              disabled={isGenerating || !canExport()}
               className="flex-1"
             >
               <FileType className="h-4 w-4 mr-2" />
