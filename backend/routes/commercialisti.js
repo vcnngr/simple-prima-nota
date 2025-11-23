@@ -298,22 +298,44 @@ router.get('/clienti/:userId', authCommercialista, async (req, res) => {
       [userId]
     );
 
-    // Get recent movements
+    // Get movements with pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = (page - 1) * limit;
+
+    // Count total movements
+    const totalCount = await queryOne(
+      `SELECT COUNT(*) as count
+       FROM movimenti m
+       JOIN conti_correnti cc ON cc.id = m.conto_id
+       WHERE cc.user_id = $1`,
+      [userId]
+    );
+    const total = parseInt(totalCount.count);
+    const totalPages = Math.ceil(total / limit);
+
+    // Get paginated movements
     const movimenti = await query(
       `SELECT m.*, cc.nome_banca
        FROM movimenti m
        JOIN conti_correnti cc ON cc.id = m.conto_id
        WHERE cc.user_id = $1
        ORDER BY m.data DESC
-       LIMIT 50`,
-      [userId]
+       LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
     );
 
     res.json({
       success: true,
       cliente,
       conti: conti.rows,
-      movimenti: movimenti.rows
+      movimenti: movimenti.rows,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages
+      }
     });
   } catch (error) {
     console.error('Get client error:', error);

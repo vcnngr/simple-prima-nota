@@ -272,7 +272,7 @@ export const commercialistiAPI = {
 
   // Client management
   collegaCliente: (token) => api.post('/commercialisti/collega-cliente', { token }),
-  getClientDetails: (userId) => api.get(`/commercialisti/clienti/${userId}`),
+  getClientDetails: (userId, params = {}) => api.get(`/commercialisti/clienti/${userId}`, { params }),
   disconnectClient: (userId) => api.delete(`/commercialisti/clienti/${userId}`),
 };
 

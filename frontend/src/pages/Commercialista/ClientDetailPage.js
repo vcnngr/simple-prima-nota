@@ -10,7 +10,9 @@ import {
   Calendar,
   DollarSign,
   User,
-  UserMinus
+  UserMinus,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { commercialistiAPI } from '../../services/api';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
@@ -24,16 +26,21 @@ const ClientDetailPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
 
   useEffect(() => {
     loadClientData();
-  }, [userId]);
+  }, [userId, currentPage]);
 
   const loadClientData = async () => {
     try {
       setIsLoading(true);
-      const response = await commercialistiAPI.getClientDetails(userId);
+      const response = await commercialistiAPI.getClientDetails(userId, { page: currentPage, limit: 50 });
       setClientData(response);
+      if (response.pagination) {
+        setPagination(response.pagination);
+      }
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'Errore nel caricamento dei dati';
       toast.error(errorMessage);
@@ -181,8 +188,8 @@ const ClientDetailPage = () => {
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Movimenti</p>
-              <p className="text-2xl font-bold text-gray-900">{movimenti.length}</p>
+              <p className="text-sm text-gray-600 mb-1">Movimenti Totali</p>
+              <p className="text-2xl font-bold text-gray-900">{pagination?.total || movimenti.length}</p>
             </div>
             <div className="h-12 w-12 bg-warning-100 rounded-lg flex items-center justify-center">
               <TrendingUp className="h-6 w-6 text-warning-600" />
@@ -216,14 +223,17 @@ const ClientDetailPage = () => {
               Conti Bancari ({conti.length})
             </button>
             <button
-              onClick={() => setActiveTab('movimenti')}
+              onClick={() => {
+                setActiveTab('movimenti');
+                setCurrentPage(1);
+              }}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'movimenti'
                   ? 'border-success-600 text-success-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              Movimenti ({movimenti.length})
+              Movimenti ({pagination?.total || movimenti.length})
             </button>
           </nav>
         </div>
@@ -347,48 +357,112 @@ const ClientDetailPage = () => {
 
           {/* Movimenti Tab */}
           {activeTab === 'movimenti' && (
-            <div className="space-y-2">
+            <div className="space-y-4">
               {movimenti.length === 0 ? (
                 <p className="text-gray-600">Nessun movimento</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Descrizione</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Conto</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoria</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Importo</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {movimenti.map((movimento) => (
-                        <tr key={movimento.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {formatDate(movimento.data)}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900">
-                            {movimento.descrizione}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {movimento.nome_banca}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {movimento.categoria || '-'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right">
-                            <span className={`font-semibold ${
-                              movimento.tipo === 'Entrata' ? 'text-success-600' : 'text-danger-600'
-                            }`}>
-                              {movimento.tipo === 'Entrata' ? '+' : '-'}{formatCurrency(movimento.importo)}
-                            </span>
-                          </td>
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Descrizione</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Conto</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoria</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Importo</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {movimenti.map((movimento) => (
+                          <tr key={movimento.id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {formatDate(movimento.data)}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900">
+                              {movimento.descrizione}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {movimento.nome_banca}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600">
+                              {movimento.categoria || '-'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right">
+                              <span className={`font-semibold ${
+                                movimento.tipo === 'Entrata' ? 'text-success-600' : 'text-danger-600'
+                              }`}>
+                                {movimento.tipo === 'Entrata' ? '+' : '-'}{formatCurrency(movimento.importo)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {pagination && pagination.totalPages > 1 && (
+                    <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+                      <div className="flex items-center text-sm text-gray-700">
+                        <span>
+                          Mostrando <span className="font-medium">{Math.min((pagination.page - 1) * pagination.limit + 1, pagination.total)}</span> - <span className="font-medium">{Math.min(pagination.page * pagination.limit, pagination.total)}</span> di <span className="font-medium">{pagination.total}</span> movimenti
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                        >
+                          <ChevronLeft className="h-4 w-4 mr-1" />
+                          Precedente
+                        </Button>
+                        <div className="flex items-center space-x-1">
+                          {[...Array(pagination.totalPages)].map((_, index) => {
+                            const pageNum = index + 1;
+                            // Show first, last, current and adjacent pages
+                            if (
+                              pageNum === 1 ||
+                              pageNum === pagination.totalPages ||
+                              (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                            ) {
+                              return (
+                                <button
+                                  key={pageNum}
+                                  onClick={() => setCurrentPage(pageNum)}
+                                  className={`px-3 py-1 text-sm rounded ${
+                                    currentPage === pageNum
+                                      ? 'bg-primary-600 text-white'
+                                      : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {pageNum}
+                                </button>
+                              );
+                            } else if (
+                              pageNum === currentPage - 2 ||
+                              pageNum === currentPage + 2
+                            ) {
+                              return <span key={pageNum} className="px-2 text-gray-500">...</span>;
+                            }
+                            return null;
+                          })}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(currentPage + 1)}
+                          disabled={currentPage === pagination.totalPages}
+                        >
+                          Successiva
+                          <ChevronRight className="h-4 w-4 ml-1" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
