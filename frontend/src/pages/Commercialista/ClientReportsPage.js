@@ -79,39 +79,53 @@ const ClientReportsPage = () => {
   const handleDownload = async (formato) => {
     try {
       setIsGenerating(true);
-      const response = await commercialistiAPI.exportClientData(userId, {
-        ...config,
-        formato: 'json'
+
+      // Make request with responseType blob for binary data
+      const response = await fetch(`/api/commercialisti/clienti/${userId}/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          ...config,
+          formato
+        })
       });
 
-      // Convert to desired format
-      let content, filename, mimeType;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Errore nel download');
+      }
 
-      if (formato === 'csv') {
-        content = convertToCSV(response.data);
-        filename = `report_${clientInfo.username}_${new Date().toISOString().split('T')[0]}.csv`;
-        mimeType = 'text/csv;charset=utf-8;';
-      } else if (formato === 'xlsx') {
-        toast.info('Formato Excel: funzionalità in sviluppo. Usa CSV per ora.');
-        setIsGenerating(false);
-        return;
-      } else if (formato === 'pdf') {
-        toast.info('Formato PDF: funzionalità in sviluppo. Usa CSV per ora.');
-        setIsGenerating(false);
-        return;
+      // Get filename from headers if available
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `report_${clientInfo.username}_${new Date().toISOString().split('T')[0]}`;
+
+      if (contentDisposition) {
+        const matches = /filename="?([^"]+)"?/.exec(contentDisposition);
+        if (matches && matches[1]) {
+          filename = matches[1];
+        }
+      } else {
+        // Add extension based on format
+        const extensions = { csv: '.csv', xlsx: '.xlsx', pdf: '.pdf' };
+        filename += extensions[formato] || '.txt';
       }
 
       // Download file
-      const blob = new Blob([content], { type: mimeType });
+      const blob = await response.blob();
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = filename;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
 
       toast.success(`Report scaricato: ${filename}`);
     } catch (err) {
-      const errorMessage = err.response?.data?.error || 'Errore nel download del report';
+      const errorMessage = err.message || 'Errore nel download del report';
       toast.error(errorMessage);
     } finally {
       setIsGenerating(false);

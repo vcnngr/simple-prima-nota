@@ -396,6 +396,8 @@ router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
     // Import export logic from export.js
     const { queryAll } = require('../config/database');
     const moment = require('moment');
+    const XLSX = require('xlsx');
+    const PDFDocument = require('pdfkit');
 
     // Export configurations
     const EXPORT_CONFIGS = {
@@ -525,20 +527,219 @@ router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
       cliente_email: cliente.email,
       numero_record: formattedData.length,
       generato_il: new Date().toISOString(),
-      generato_da: req.commercialista.ragione_sociale || req.commercialista.username
+      generato_da: req.commercialista.ragione_sociale || req.commercialista.username,
+      filtri_applicati: buildFiltersDescription(config)
     };
 
-    // Return JSON for preview (frontend will handle file generation)
-    res.json({
-      metadata,
-      data: formattedData,
-      preview: formattedData.slice(0, 10)
-    });
+    // Handle different formats
+    const formato = config.formato || 'json';
+
+    if (formato === 'json') {
+      // Return JSON for preview
+      return res.json({
+        metadata,
+        data: formattedData,
+        preview: formattedData.slice(0, 10)
+      });
+    } else if (formato === 'csv') {
+      return exportToCsv(res, formattedData, metadata, cliente);
+    } else if (formato === 'xlsx') {
+      return exportToXlsx(res, formattedData, metadata, cliente);
+    } else if (formato === 'pdf') {
+      return exportToPdf(res, formattedData, metadata, cliente);
+    }
 
   } catch (error) {
     console.error('Export client error:', error);
     res.status(500).json({ error: 'Errore nella generazione dell\'export' });
   }
 });
+
+// Helper functions for export formats
+function buildFiltersDescription(config) {
+  const filters = [];
+
+  if (config.tutto_storico) {
+    filters.push('Tutto lo storico');
+  } else {
+    if (config.data_inizio && config.data_fine) {
+      filters.push(`Periodo: ${config.data_inizio} - ${config.data_fine}`);
+    }
+  }
+
+  if (config.conto_id) filters.push(`Conto specifico selezionato`);
+
+  return filters.join(', ') || 'Nessun filtro applicato';
+}
+
+function exportToCsv(res, data, metadata, cliente) {
+  if (!data || data.length === 0) {
+    return res.status(400).json({ error: 'Nessun dato da esportare' });
+  }
+
+  const moment = require('moment');
+  const headers = Object.keys(data[0]);
+  let csvContent = headers.join(',') + '\n';
+
+  data.forEach(row => {
+    const values = headers.map(header => {
+      let value = row[header] || '';
+      if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+        value = `"${value.replace(/"/g, '""')}"`;
+      }
+      return value;
+    });
+    csvContent += values.join(',') + '\n';
+  });
+
+  const filename = `${cliente.username}_${metadata.tipo_export}_${moment().format('YYYY-MM-DD')}.csv`;
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send('\ufeff' + csvContent);
+}
+
+function exportToXlsx(res, data, metadata, cliente) {
+  if (!data || data.length === 0) {
+    return res.status(400).json({ error: 'Nessun dato da esportare' });
+  }
+
+  const moment = require('moment');
+  const XLSX = require('xlsx');
+
+  const wb = XLSX.utils.book_new();
+
+  // Sheet principale con i dati
+  const ws = XLSX.utils.json_to_sheet(data);
+
+  // Formattazione colonne (larghezza automatica)
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const colWidths = [];
+
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const header = data.length > 0 ? Object.keys(data[0])[c] : '';
+    let maxWidth = header ? header.length : 10;
+
+    for (let r = 0; r < Math.min(data.length, 100); r++) {
+      const value = Object.values(data[r])[c];
+      if (value) {
+        maxWidth = Math.max(maxWidth, value.toString().length);
+      }
+    }
+
+    colWidths.push({ width: Math.min(maxWidth + 2, 50) });
+  }
+
+  ws['!cols'] = colWidths;
+  XLSX.utils.book_append_sheet(wb, ws, 'Movimenti');
+
+  // Sheet metadati
+  const metaData = {
+    'Cliente': metadata.cliente,
+    'Email Cliente': metadata.cliente_email,
+    'Tipo Export': metadata.nome_export,
+    'Record Esportati': metadata.numero_record,
+    'Generato il': moment(metadata.generato_il).format('DD/MM/YYYY HH:mm'),
+    'Generato da': metadata.generato_da,
+    'Filtri': metadata.filtri_applicati
+  };
+  const metaWs = XLSX.utils.json_to_sheet([metaData]);
+  XLSX.utils.book_append_sheet(wb, metaWs, 'Informazioni');
+
+  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const filename = `${cliente.username}_${metadata.tipo_export}_${moment().format('YYYY-MM-DD')}.xlsx`;
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
+}
+
+function exportToPdf(res, data, metadata, cliente) {
+  try {
+    const moment = require('moment');
+    const PDFDocument = require('pdfkit');
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4', layout: 'landscape' });
+    const filename = `${cliente.username}_${metadata.tipo_export}_${moment().format('YYYY-MM-DD')}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(18).text('Prima Nota - Report Cliente', { align: 'center' });
+    doc.moveDown(0.5);
+
+    // Info Cliente
+    doc.fontSize(12)
+       .text(`Cliente: ${metadata.cliente} (${metadata.cliente_email})`)
+       .text(`Tipo Export: ${metadata.nome_export}`)
+       .text(`Generato il: ${moment(metadata.generato_il).format('DD/MM/YYYY HH:mm')}`)
+       .text(`Generato da: ${metadata.generato_da}`)
+       .text(`Record esportati: ${metadata.numero_record}`)
+       .text(`Filtri: ${metadata.filtri_applicati}`)
+       .moveDown();
+
+    // Tabella dati (primi 30 record)
+    if (data.length > 0) {
+      doc.fontSize(10).fillColor('black');
+
+      const headers = Object.keys(data[0]);
+      const maxRecords = Math.min(data.length, 30);
+      const colWidth = 120;
+      let y = doc.y;
+
+      // Headers
+      doc.font('Helvetica-Bold');
+      headers.forEach((header, i) => {
+        if (i < 6) { // Mostra max 6 colonne
+          doc.text(header.toUpperCase(), 50 + i * colWidth, y, { width: colWidth - 5 });
+        }
+      });
+      doc.font('Helvetica');
+
+      y += 20;
+
+      // Dati
+      for (let rowIndex = 0; rowIndex < maxRecords; rowIndex++) {
+        const row = data[rowIndex];
+        headers.forEach((header, colIndex) => {
+          if (colIndex < 6) {
+            const value = row[header] || '';
+            doc.text(value.toString().substring(0, 20), 50 + colIndex * colWidth, y, { width: colWidth - 5 });
+          }
+        });
+
+        y += 18;
+
+        // Nuova pagina se necessario
+        if (y > 550) {
+          doc.addPage();
+          y = 50;
+        }
+      }
+
+      if (data.length > 30) {
+        doc.moveDown()
+           .fontSize(10)
+           .fillColor('gray')
+           .text(`Sono stati esportati ${data.length} record totali. Mostrando i primi 30.`, {
+             align: 'center',
+             italics: true
+           })
+           .text('Per visualizzare tutti i dati, utilizzare l\'export in formato CSV o Excel.', {
+             align: 'center',
+             italics: true
+           });
+      }
+    }
+
+    doc.end();
+  } catch (error) {
+    console.error('PDF export error:', error);
+    res.status(500).json({ error: 'Errore nella generazione del PDF' });
+  }
+}
 
 module.exports = router;
