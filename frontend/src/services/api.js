@@ -277,6 +277,40 @@ export const commercialistiAPI = {
 
   // Export client data
   exportClientData: (userId, config) => api.post(`/commercialisti/clienti/${userId}/export`, config),
+
+  // Export with blob response for downloads
+  exportClientCSV: async (userId, config) => {
+    const response = await api.post(`/commercialisti/clienti/${userId}/export`,
+      { ...config, formato: 'csv' },
+      {
+        responseType: 'blob',
+        headers: { 'Accept': 'text/csv' }
+      }
+    );
+    return response;
+  },
+
+  exportClientExcel: async (userId, config) => {
+    const response = await api.post(`/commercialisti/clienti/${userId}/export`,
+      { ...config, formato: 'xlsx' },
+      {
+        responseType: 'blob',
+        headers: { 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+      }
+    );
+    return response;
+  },
+
+  exportClientPDF: async (userId, config) => {
+    const response = await api.post(`/commercialisti/clienti/${userId}/export`,
+      { ...config, formato: 'pdf' },
+      {
+        responseType: 'blob',
+        headers: { 'Accept': 'application/pdf' }
+      }
+    );
+    return response;
+  },
 };
 
 // User-Commercialista relationship API

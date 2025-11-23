@@ -80,41 +80,26 @@ const ClientReportsPage = () => {
     try {
       setIsGenerating(true);
 
-      // Make request with responseType blob for binary data
-      const response = await fetch(`/api/commercialisti/clienti/${userId}/export`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          ...config,
-          formato
-        })
-      });
+      let blob;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Errore nel download');
-      }
-
-      // Get filename from headers if available
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `report_${clientInfo.username}_${new Date().toISOString().split('T')[0]}`;
-
-      if (contentDisposition) {
-        const matches = /filename="?([^"]+)"?/.exec(contentDisposition);
-        if (matches && matches[1]) {
-          filename = matches[1];
-        }
+      // Call appropriate API method based on format
+      if (formato === 'csv') {
+        blob = await commercialistiAPI.exportClientCSV(userId, config);
+      } else if (formato === 'xlsx') {
+        blob = await commercialistiAPI.exportClientExcel(userId, config);
+      } else if (formato === 'pdf') {
+        blob = await commercialistiAPI.exportClientPDF(userId, config);
       } else {
-        // Add extension based on format
-        const extensions = { csv: '.csv', xlsx: '.xlsx', pdf: '.pdf' };
-        filename += extensions[formato] || '.txt';
+        throw new Error('Formato non supportato');
       }
 
-      // Download file
-      const blob = await response.blob();
+      // Generate filename
+      const exportType = config.tipoExport || 'completo';
+      const dateStr = new Date().toISOString().split('T')[0];
+      const extensions = { csv: '.csv', xlsx: '.xlsx', pdf: '.pdf' };
+      const filename = `report_${exportType}_${clientInfo.username}_${dateStr}${extensions[formato]}`;
+
+      // Download file using blob
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = filename;
@@ -125,7 +110,8 @@ const ClientReportsPage = () => {
 
       toast.success(`Report scaricato: ${filename}`);
     } catch (err) {
-      const errorMessage = err.message || 'Errore nel download del report';
+      console.error('Download error:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Errore nel download del report';
       toast.error(errorMessage);
     } finally {
       setIsGenerating(false);
