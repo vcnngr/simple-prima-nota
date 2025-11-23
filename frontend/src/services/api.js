@@ -37,7 +37,14 @@ api.interceptors.request.use(
 
 // Interceptor per gestire risposte
 api.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    // Per risposte blob (file download), restituisci il blob direttamente
+    if (response.config.responseType === 'blob') {
+      return response.data;
+    }
+    // Per risposte JSON normali, estrai data
+    return response.data;
+  },
   (error) => {
     if (error.response?.status === 401) {
       const userType = localStorage.getItem('user_type');

@@ -12,9 +12,18 @@ const router = express.Router();
 // ==============================================================================
 const authCommercialista = async (req, res, next) => {
   try {
-    const token = req.header('Authorization')?.replace('Bearer ', '');
+    const authHeader = req.header('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+
+    console.log('🔐 Auth check:', {
+      path: req.path,
+      method: req.method,
+      hasAuthHeader: !!authHeader,
+      tokenLength: token?.length || 0
+    });
 
     if (!token) {
+      console.log('❌ No token provided');
       return res.status(401).json({ error: 'Accesso negato. Token non fornito.' });
     }
 
@@ -27,13 +36,15 @@ const authCommercialista = async (req, res, next) => {
     );
 
     if (!commercialista || decoded.tipo !== 'commercialista') {
+      console.log('❌ Invalid commercialista or tipo:', { commercialista: !!commercialista, tipo: decoded.tipo });
       return res.status(401).json({ error: 'Token non valido.' });
     }
 
+    console.log('✅ Auth successful:', commercialista.username);
     req.commercialista = commercialista;
     next();
   } catch (error) {
-    console.error('Commercialista auth error:', error);
+    console.error('❌ Commercialista auth error:', error.message);
     res.status(401).json({ error: 'Token non valido.' });
   }
 };
