@@ -12,7 +12,8 @@ import {
   User,
   UserMinus,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FileText
 } from 'lucide-react';
 import { commercialistiAPI } from '../../services/api';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
@@ -129,7 +130,13 @@ const ClientDetailPage = () => {
               <p className="text-sm text-gray-500">Cliente dal {formatDate(cliente.created_at)}</p>
             </div>
           </div>
-          <div>
+          <div className="flex items-center space-x-3">
+            <Link to={`/commercialista/clienti/${userId}/reports`}>
+              <Button variant="primary">
+                <FileText className="h-4 w-4 mr-2" />
+                Report
+              </Button>
+            </Link>
             <Button
               variant="danger"
               onClick={handleDisconnectClient}

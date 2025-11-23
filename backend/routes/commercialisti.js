@@ -366,4 +366,170 @@ router.delete('/clienti/:userId', authCommercialista, async (req, res) => {
   }
 });
 
+// ==============================================================================
+// POST /api/commercialisti/clienti/:userId/export - Generate export for client
+// ==============================================================================
+router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
+    const config = req.body;
+
+    // Verify commercialista has access to this client
+    const collegamento = await queryOne(
+      `SELECT id FROM collegamenti_commercialista
+       WHERE commercialista_id = $1 AND user_id = $2 AND attivo = TRUE`,
+      [req.commercialista.id, userId]
+    );
+
+    if (!collegamento) {
+      return res.status(403).json({
+        error: 'Non hai accesso a questo cliente'
+      });
+    }
+
+    // Get client info
+    const cliente = await queryOne(
+      'SELECT username, email FROM utenti WHERE id = $1',
+      [userId]
+    );
+
+    // Import export logic from export.js
+    const { queryAll } = require('../config/database');
+    const moment = require('moment');
+
+    // Export configurations
+    const EXPORT_CONFIGS = {
+      commercialista: {
+        name: 'Estratto per Commercialista',
+        table: 'movimenti',
+        fields: [
+          'data', 'descrizione', 'importo', 'tipo', 'note',
+          'anagrafica_nome', 'anagrafica_piva', 'anagrafica_email',
+          'tipologia_nome', 'categoria_movimento', 'conto_nome'
+        ]
+      },
+      semplice: {
+        name: 'Estratto Semplice',
+        table: 'movimenti',
+        fields: ['data', 'descrizione', 'importo', 'tipo', 'anagrafica_nome']
+      },
+      entrate: {
+        name: 'Solo Entrate',
+        table: 'movimenti',
+        fields: ['data', 'descrizione', 'importo', 'anagrafica_nome', 'categoria_movimento'],
+        filters: { tipo: 'Entrata' }
+      },
+      uscite: {
+        name: 'Solo Uscite',
+        table: 'movimenti',
+        fields: ['data', 'descrizione', 'importo', 'anagrafica_nome', 'categoria_movimento'],
+        filters: { tipo: 'Uscita' }
+      }
+    };
+
+    const exportConfig = EXPORT_CONFIGS[config.export_type];
+    if (!exportConfig) {
+      return res.status(400).json({ error: 'Tipo di export non valido' });
+    }
+
+    // Build query
+    let sqlQuery = `
+      SELECT
+        m.data,
+        m.descrizione,
+        m.importo,
+        m.tipo,
+        m.note,
+        a.nome as anagrafica_nome,
+        a.piva as anagrafica_piva,
+        a.email as anagrafica_email,
+        t.nome as tipologia_nome,
+        cm.nome as categoria_movimento,
+        cc.nome_banca as conto_nome
+      FROM movimenti m
+      LEFT JOIN anagrafiche a ON a.id = m.anagrafica_id
+      LEFT JOIN tipologie_anagrafiche t ON t.id = a.tipologia_id
+      LEFT JOIN categorie_movimenti cm ON cm.id = m.categoria_id
+      JOIN conti_correnti cc ON cc.id = m.conto_id
+      WHERE cc.user_id = $1
+    `;
+
+    const params = [userId];
+    let paramIndex = 2;
+
+    // Add filters
+    if (exportConfig.filters?.tipo) {
+      sqlQuery += ` AND m.tipo = $${paramIndex}`;
+      params.push(exportConfig.filters.tipo);
+      paramIndex++;
+    }
+
+    if (config.conto_id && config.conto_id !== '') {
+      sqlQuery += ` AND m.conto_id = $${paramIndex}`;
+      params.push(parseInt(config.conto_id));
+      paramIndex++;
+    }
+
+    if (!config.tutto_storico) {
+      if (config.data_inizio) {
+        sqlQuery += ` AND m.data >= $${paramIndex}`;
+        params.push(config.data_inizio);
+        paramIndex++;
+      }
+      if (config.data_fine) {
+        sqlQuery += ` AND m.data <= $${paramIndex}`;
+        params.push(config.data_fine);
+        paramIndex++;
+      }
+    }
+
+    // Add ordering
+    const orderField = config.ordina_per === 'importo' ? 'm.importo' :
+                       config.ordina_per === 'anagrafica' ? 'a.nome' : 'm.data';
+    const orderDirection = config.ordine === 'asc' ? 'ASC' : 'DESC';
+    sqlQuery += ` ORDER BY ${orderField} ${orderDirection}`;
+
+    // Execute query
+    const result = await queryAll(sqlQuery, params);
+    const data = result || [];
+
+    // Format data
+    const formattedData = data.map(row => {
+      const formatted = {};
+      exportConfig.fields.forEach(field => {
+        if (field === 'data') {
+          formatted[field] = moment(row.data).format('DD/MM/YYYY');
+        } else if (field === 'importo') {
+          formatted[field] = parseFloat(row.importo).toFixed(2);
+        } else {
+          formatted[field] = row[field] || '';
+        }
+      });
+      return formatted;
+    });
+
+    // Metadata
+    const metadata = {
+      tipo_export: config.export_type,
+      nome_export: exportConfig.name,
+      cliente: cliente.username,
+      cliente_email: cliente.email,
+      numero_record: formattedData.length,
+      generato_il: new Date().toISOString(),
+      generato_da: req.commercialista.ragione_sociale || req.commercialista.username
+    };
+
+    // Return JSON for preview (frontend will handle file generation)
+    res.json({
+      metadata,
+      data: formattedData,
+      preview: formattedData.slice(0, 10)
+    });
+
+  } catch (error) {
+    console.error('Export client error:', error);
+    res.status(500).json({ error: 'Errore nella generazione dell\'export' });
+  }
+});
+
 module.exports = router;
