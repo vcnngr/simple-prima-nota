@@ -80,17 +80,28 @@ const ClientReportsPage = () => {
     try {
       setIsGenerating(true);
 
-      let blob;
+      // Use fetch with correct commercialista token
+      const token = localStorage.getItem('commercialista_token');
 
-      // Call appropriate API method based on format
-      if (formato === 'csv') {
-        blob = await commercialistiAPI.exportClientCSV(userId, config);
-      } else if (formato === 'xlsx') {
-        blob = await commercialistiAPI.exportClientExcel(userId, config);
-      } else if (formato === 'pdf') {
-        blob = await commercialistiAPI.exportClientPDF(userId, config);
-      } else {
-        throw new Error('Formato non supportato');
+      if (!token) {
+        throw new Error('Token non trovato. Effettua nuovamente il login.');
+      }
+
+      const response = await fetch(`/api/commercialisti/clienti/${userId}/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...config,
+          formato
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Errore nel download');
       }
 
       // Generate filename
@@ -99,7 +110,8 @@ const ClientReportsPage = () => {
       const extensions = { csv: '.csv', xlsx: '.xlsx', pdf: '.pdf' };
       const filename = `report_${exportType}_${clientInfo.username}_${dateStr}${extensions[formato]}`;
 
-      // Download file using blob
+      // Download file
+      const blob = await response.blob();
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = filename;
@@ -111,7 +123,7 @@ const ClientReportsPage = () => {
       toast.success(`Report scaricato: ${filename}`);
     } catch (err) {
       console.error('Download error:', err);
-      const errorMessage = err.response?.data?.error || err.message || 'Errore nel download del report';
+      const errorMessage = err.message || 'Errore nel download del report';
       toast.error(errorMessage);
     } finally {
       setIsGenerating(false);
