@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, queryOne } = require('../config/database');
 const { auth } = require('../middleware/auth');
+const { requireCollegamento } = require('../middleware/collegamento');
 
 const router = express.Router();
 
@@ -15,15 +16,7 @@ const authCommercialista = async (req, res, next) => {
     const authHeader = req.header('Authorization');
     const token = authHeader?.replace('Bearer ', '');
 
-    console.log('🔐 Auth check:', {
-      path: req.path,
-      method: req.method,
-      hasAuthHeader: !!authHeader,
-      tokenLength: token?.length || 0
-    });
-
     if (!token) {
-      console.log('❌ No token provided');
       return res.status(401).json({ error: 'Accesso negato. Token non fornito.' });
     }
 
@@ -36,15 +29,13 @@ const authCommercialista = async (req, res, next) => {
     );
 
     if (!commercialista || decoded.tipo !== 'commercialista') {
-      console.log('❌ Invalid commercialista or tipo:', { commercialista: !!commercialista, tipo: decoded.tipo });
       return res.status(401).json({ error: 'Token non valido.' });
     }
 
-    console.log('✅ Auth successful:', commercialista.username);
     req.commercialista = commercialista;
     next();
   } catch (error) {
-    console.error('❌ Commercialista auth error:', error.message);
+    console.error('Commercialista auth error:', error.message);
     res.status(401).json({ error: 'Token non valido.' });
   }
 };
@@ -110,11 +101,6 @@ router.post('/register', async (req, res) => {
 // ==============================================================================
 router.post('/login', async (req, res) => {
   try {
-    console.log('🔍 COMMERCIALISTA LOGIN REQUEST:', {
-      body: req.body,
-      contentType: req.get('Content-Type'),
-      origin: req.get('Origin')
-    });
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -186,26 +172,27 @@ router.get('/dashboard', authCommercialista, async (req, res) => {
       [req.commercialista.id]
     );
 
-    // Get unread messages count
+    // Non letti per collegamento. La query raggruppa per collegamento_id: il merge
+    // deve usare la stessa chiave, altrimenti il conteggio resta a zero comunque.
     const unreadMessages = await query(
-      `SELECT collegamento_id, COUNT(*) as unread_count
+      `SELECT m.collegamento_id, COUNT(*)::int as unread_count
        FROM messaggi_commercialista m
        JOIN collegamenti_commercialista c ON c.id = m.collegamento_id
        WHERE c.commercialista_id = $1
        AND m.mittente_tipo = 'user'
        AND m.letto = FALSE
-       GROUP BY collegamento_id`,
+       GROUP BY m.collegamento_id`,
       [req.commercialista.id]
     );
 
-    // Merge unread messages with clients
-    const clientiConMessaggi = clienti.rows.map(cliente => {
-      const unread = unreadMessages.rows.find(um => um.user_id === cliente.user_id);
-      return {
-        ...cliente,
-        unread_messages: unread ? parseInt(unread.unread_count) : 0
-      };
-    });
+    const perCollegamento = new Map(
+      unreadMessages.rows.map(r => [r.collegamento_id, r.unread_count])
+    );
+
+    const clientiConMessaggi = clienti.rows.map(cliente => ({
+      ...cliente,
+      unread_messages: perCollegamento.get(cliente.collegamento_id) || 0
+    }));
 
     res.json({
       success: true,
@@ -230,27 +217,34 @@ router.post('/collega-cliente', authCommercialista, async (req, res) => {
       return res.status(400).json({ error: 'Token richiesto' });
     }
 
-    // Use database function to validate and use token
+    // La funzione SQL consuma il token e apre una richiesta in stato `in_attesa`:
+    // il token non da' accesso ai dati, da' il diritto di bussare.
     const result = await queryOne(
-      'SELECT usa_token_invito($1, $2) as success',
+      'SELECT usa_token_invito($1, $2) as collegamento_id',
       [token, req.commercialista.id]
     );
 
-    // Get connected user info
-    const userInfo = await queryOne(
-      `SELECT u.id, u.username, u.email
+    // Il cliente e' quello del collegamento appena creato, non "l'ultimo per data".
+    const collegamento = await queryOne(
+      `SELECT c.id AS collegamento_id, c.stato,
+              u.id, u.username, u.email
        FROM collegamenti_commercialista c
        JOIN utenti u ON u.id = c.user_id
-       WHERE c.commercialista_id = $1
-       ORDER BY c.data_collegamento DESC
-       LIMIT 1`,
-      [req.commercialista.id]
+       WHERE c.id = $1 AND c.commercialista_id = $2`,
+      [result.collegamento_id, req.commercialista.id]
     );
+
+    const inAttesa = collegamento && collegamento.stato === 'in_attesa';
 
     res.json({
       success: true,
-      message: 'Cliente collegato con successo',
-      cliente: userInfo
+      message: inAttesa
+        ? 'Richiesta inviata. Il cliente deve accettarla prima che i dati siano visibili.'
+        : 'Collegamento gia\' attivo con questo cliente',
+      stato: collegamento?.stato,
+      cliente: collegamento
+        ? { id: collegamento.id, username: collegamento.username, email: collegamento.email }
+        : null
     });
   } catch (error) {
     console.error('Connect client error:', error);
@@ -263,22 +257,9 @@ router.post('/collega-cliente', authCommercialista, async (req, res) => {
 // ==============================================================================
 // GET /api/commercialisti/clienti/:userId - Get client details
 // ==============================================================================
-router.get('/clienti/:userId', authCommercialista, async (req, res) => {
+router.get('/clienti/:userId', authCommercialista, requireCollegamento('dettaglio_cliente'), async (req, res) => {
   try {
-    const userId = parseInt(req.params.userId);
-
-    // Verify commercialista has access to this client
-    const collegamento = await queryOne(
-      `SELECT id FROM collegamenti_commercialista
-       WHERE commercialista_id = $1 AND user_id = $2 AND attivo = TRUE`,
-      [req.commercialista.id, userId]
-    );
-
-    if (!collegamento) {
-      return res.status(403).json({
-        error: 'Non hai accesso a questo cliente'
-      });
-    }
+    const userId = req.clienteId;
 
     // Get client details
     const cliente = await queryOne(
@@ -357,14 +338,14 @@ router.get('/clienti/:userId', authCommercialista, async (req, res) => {
 // ==============================================================================
 // DELETE /api/commercialisti/clienti/:userId - Disconnect client
 // ==============================================================================
-router.delete('/clienti/:userId', authCommercialista, async (req, res) => {
+router.delete('/clienti/:userId', authCommercialista, requireCollegamento('dettaglio_cliente'), async (req, res) => {
   try {
-    const userId = parseInt(req.params.userId);
+    const userId = req.clienteId;
+    const motivo = typeof req.body?.motivo === 'string' ? req.body.motivo.slice(0, 500) : null;
 
-    // Call the disconnect function
     await query(
-      'SELECT disconnetti_cliente_commercialista($1, $2)',
-      [req.commercialista.id, userId]
+      'SELECT disconnetti_cliente_commercialista($1, $2, $3, $4)',
+      [req.commercialista.id, userId, 'commercialista', motivo]
     );
 
     res.json({
@@ -380,23 +361,10 @@ router.delete('/clienti/:userId', authCommercialista, async (req, res) => {
 // ==============================================================================
 // POST /api/commercialisti/clienti/:userId/export - Generate export for client
 // ==============================================================================
-router.post('/clienti/:userId/export', authCommercialista, async (req, res) => {
+router.post('/clienti/:userId/export', authCommercialista, requireCollegamento('export'), async (req, res) => {
   try {
-    const userId = parseInt(req.params.userId);
+    const userId = req.clienteId;
     const config = req.body;
-
-    // Verify commercialista has access to this client
-    const collegamento = await queryOne(
-      `SELECT id FROM collegamenti_commercialista
-       WHERE commercialista_id = $1 AND user_id = $2 AND attivo = TRUE`,
-      [req.commercialista.id, userId]
-    );
-
-    if (!collegamento) {
-      return res.status(403).json({
-        error: 'Non hai accesso a questo cliente'
-      });
-    }
 
     // Get client info
     const cliente = await queryOne(

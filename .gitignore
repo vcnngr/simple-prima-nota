@@ -18,6 +18,11 @@ frontend/build/
 database_export*.sql
 *.dump
 
+# ...ma schema e migrazioni sono codice sorgente, non backup: senza queste
+# eccezioni ogni nuova migration resta fuori dal repo senza che nessuno se ne accorga.
+!database/init.sql
+!database/migrations/*.sql
+
 # Logs
 *.log
 backend/logs/

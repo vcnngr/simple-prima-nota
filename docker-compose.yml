@@ -13,6 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/migrations/001_commercialisti_system.sql:/docker-entrypoint-initdb.d/02-commercialisti.sql
+      - ./database/migrations/002_workflow_collegamento.sql:/docker-entrypoint-initdb.d/03-workflow-collegamento.sql
     ports:
       - "5432:5432"
     networks:

@@ -208,6 +208,28 @@ const schemas = {
   dateRange: Joi.object({
     data_inizio: Joi.date().required(),
     data_fine: Joi.date().required()
+  }),
+
+  // ============================================================================
+  // SCHEMA COLLEGAMENTO UTENTE <-> COMMERCIALISTA (workflow W1)
+  // ============================================================================
+
+  // Ambito che l'utente sceglie quando accetta una richiesta di collegamento.
+  // Tutti i campi sono opzionali: assenti = accesso senza limiti.
+  collegamentoAccetta: Joi.object({
+    ambito_dal: Joi.date().iso().allow(null).optional(),
+    ambito_al: Joi.date().iso().allow(null).min(Joi.ref('ambito_dal')).optional(),
+    conti_ammessi: Joi.array().items(Joi.number().integer().positive()).max(50).allow(null).optional()
+  }).messages({
+    'date.min': 'La data di fine ambito non puo\' precedere quella di inizio'
+  }),
+
+  collegamentoMotivo: Joi.object({
+    motivo: Joi.string().max(500).allow('', null).optional()
+  }),
+
+  tokenInvito: Joi.object({
+    giorni_validita: Joi.number().integer().min(1).max(30).default(7)
   })
 };
 

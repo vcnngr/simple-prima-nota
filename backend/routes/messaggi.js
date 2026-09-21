@@ -3,6 +3,7 @@
 const express = require('express');
 const { query, queryOne } = require('../config/database');
 const { authEither } = require('../middleware/auth');
+const { MOTIVO_PER_STATO } = require('../middleware/collegamento');
 
 const router = express.Router();
 
@@ -13,59 +14,65 @@ const getCollegamentoId = async (req, res, next) => {
   try {
     let collegamento;
 
-    console.log('🔍 getCollegamentoId:', {
-      hasUser: !!req.user,
-      hasCommercialista: !!req.commercialista,
-      query: req.query,
-      params: req.params
-    });
-
-    // Determine if user or commercialista
     if (req.user) {
-      // User
-      console.log('👤 User request:', req.user.id);
-      collegamento = await queryOne(
-        `SELECT id FROM collegamenti_commercialista
-         WHERE user_id = $1 AND attivo = TRUE`,
-        [req.user.id]
-      );
+      // Utente. Se indica un collegamento lo si usa, altrimenti si prende il piu'
+      // recente fra quelli attivi con un ordinamento deterministico: "il primo che
+      // trovo" smette di essere una risposta appena l'utente ha due commercialisti.
+      const richiesto = parseInt(req.query.collegamentoId ?? req.body?.collegamento_id, 10);
+
+      if (Number.isInteger(richiesto) && richiesto > 0) {
+        collegamento = await queryOne(
+          `SELECT id, stato FROM collegamenti_commercialista
+           WHERE id = $1 AND user_id = $2`,
+          [richiesto, req.user.id]
+        );
+      } else {
+        collegamento = await queryOne(
+          `SELECT id, stato FROM collegamenti_commercialista
+           WHERE user_id = $1 AND stato = 'attiva'
+           ORDER BY data_accettazione DESC NULLS LAST, id DESC
+           LIMIT 1`,
+          [req.user.id]
+        );
+      }
+
       req.mittente_tipo = 'user';
       req.mittente_id = req.user.id;
     } else if (req.commercialista) {
-      // Commercialista - need user_id from query params
-      const { userId } = req.query;
-      console.log('💼 Commercialista request:', {
-        commercialista_id: req.commercialista.id,
-        userId: userId,
-        userId_type: typeof userId
-      });
+      const userId = parseInt(req.query.userId, 10);
 
-      if (!userId) {
-        console.error('❌ userId mancante nei query params');
+      if (!Number.isInteger(userId) || userId <= 0) {
         return res.status(400).json({ error: 'userId richiesto per commercialista' });
       }
 
       collegamento = await queryOne(
-        `SELECT id FROM collegamenti_commercialista
-         WHERE commercialista_id = $1 AND user_id = $2 AND attivo = TRUE`,
-        [req.commercialista.id, parseInt(userId)]
+        `SELECT id, stato FROM collegamenti_commercialista
+         WHERE commercialista_id = $1 AND user_id = $2`,
+        [req.commercialista.id, userId]
       );
 
-      console.log('🔗 Collegamento trovato:', collegamento);
       req.mittente_tipo = 'commercialista';
       req.mittente_id = req.commercialista.id;
+    } else {
+      return res.status(401).json({ error: 'Accesso negato.' });
     }
 
     if (!collegamento) {
-      console.error('❌ Collegamento non trovato');
       return res.status(404).json({ error: 'Collegamento non trovato' });
     }
 
+    // Fail-closed: la chat vive solo su un collegamento attivo.
+    if (collegamento.stato !== 'attiva') {
+      return res.status(403).json({
+        error: MOTIVO_PER_STATO[collegamento.stato] || 'Collegamento non attivo',
+        stato: collegamento.stato
+      });
+    }
+
     req.collegamento_id = collegamento.id;
-    console.log('✅ Collegamento OK, ID:', req.collegamento_id);
     next();
   } catch (error) {
-    console.error('Get collegamento error:', error);
+    console.error('Get collegamento error:', error.message);
     res.status(500).json({ error: 'Errore nel recupero del collegamento' });
   }
 };
@@ -216,7 +223,7 @@ router.get('/unread-count', authEither, async (req, res) => {
          FROM messaggi_commercialista m
          JOIN collegamenti_commercialista c ON m.collegamento_id = c.id
          WHERE c.user_id = $1
-         AND c.attivo = TRUE
+         AND c.stato = 'attiva'
          AND m.mittente_tipo = 'commercialista'
          AND m.letto = FALSE`,
         [req.user.id]
@@ -229,7 +236,7 @@ router.get('/unread-count', authEither, async (req, res) => {
          FROM messaggi_commercialista m
          JOIN collegamenti_commercialista c ON m.collegamento_id = c.id
          WHERE c.commercialista_id = $1
-         AND c.attivo = TRUE
+         AND c.stato = 'attiva'
          AND m.mittente_tipo = 'user'
          AND m.letto = FALSE`,
         [req.commercialista.id]
@@ -295,7 +302,7 @@ router.get('/clients-overview', authEither, async (req, res) => {
       FROM collegamenti_commercialista c
       JOIN utenti u ON c.user_id = u.id
       WHERE c.commercialista_id = $1
-      AND c.attivo = TRUE
+      AND c.stato = 'attiva'
       ORDER BY unread_count DESC, last_message_at DESC NULLS LAST`,
       [req.commercialista.id]
     );

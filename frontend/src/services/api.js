@@ -322,9 +322,17 @@ export const commercialistiAPI = {
 
 // User-Commercialista relationship API
 export const utentiCommercialistaAPI = {
-  // Generate invitation token
-  generaTokenInvito: (giorni_validita = 30) =>
+  // Generate invitation token (max 30 giorni lato server, default 7)
+  generaTokenInvito: (giorni_validita = 7) =>
     api.post('/utenti/genera-token-invito', { giorni_validita }),
+
+  // Collegamenti: lista completa con stato, e transizioni della macchina a stati
+  getCollegamenti: () => api.get('/utenti/collegamenti'),
+  accettaCollegamento: (id, ambito = {}) => api.put(`/utenti/collegamenti/${id}/accetta`, ambito),
+  rifiutaCollegamento: (id, motivo) => api.put(`/utenti/collegamenti/${id}/rifiuta`, { motivo }),
+  sospendiCollegamento: (id, motivo) => api.put(`/utenti/collegamenti/${id}/sospendi`, { motivo }),
+  riattivaCollegamento: (id) => api.put(`/utenti/collegamenti/${id}/riattiva`),
+  revocaCollegamento: (id, motivo) => api.delete(`/utenti/collegamenti/${id}`, { data: { motivo } }),
 
   // Get user's tokens
   getTokenInviti: () => api.get('/utenti/token-inviti'),
