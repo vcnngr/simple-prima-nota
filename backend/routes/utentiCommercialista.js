@@ -31,16 +31,6 @@ const AZIONI = {
   revoca:   { da: ['in_attesa', 'attiva', 'sospesa'], a: 'revocata' }
 };
 
-// Vista per stato, derivata dalle azioni: serve a documentare la macchina e a
-// rispondere "da qui dove posso andare" senza tenere un secondo elenco a mano.
-const TRANSIZIONI_UTENTE = Object.values(AZIONI).reduce((acc, { da, a }) => {
-  da.forEach(s => {
-    acc[s] = acc[s] || [];
-    if (!acc[s].includes(a)) acc[s].push(a);
-  });
-  return acc;
-}, {});
-
 // Carica il collegamento verificando che appartenga all'utente autenticato.
 // Serve per i dati di contorno (nome dello studio) e per spiegare un rifiuto:
 // NON e' il controllo su cui poggia una transizione, che deve essere atomica.
@@ -95,24 +85,40 @@ router.post('/genera-token-invito', auth, validate(schemas.tokenInvito), async (
   try {
     const { giorni_validita } = req.body;
 
+    // La funzione restituisce il valore in chiaro UNA SOLA VOLTA: in tabella c'e'
+    // solo l'hash SHA-256. Se questa risposta si perde, il token e' irrecuperabile
+    // e va rigenerato. E' il prezzo di non tenere un segreto in chiaro nel database.
     const result = await queryOne(
       'SELECT genera_token_invito($1, $2) as token',
       [req.user.id, giorni_validita]
     );
 
     const tokenInfo = await queryOne(
-      'SELECT token, scadenza, created_at FROM token_inviti WHERE token = $1',
-      [result.token]
+      `SELECT id, prefisso, scadenza, stato, created_at
+       FROM token_inviti
+       WHERE user_id = $1 AND stato = 'attivo'`,
+      [req.user.id]
     );
 
     res.json({
       success: true,
       message: 'Token generato con successo',
-      token: tokenInfo.token,
-      scadenza: tokenInfo.scadenza,
-      istruzioni: 'Comunica questo token al tuo commercialista. Con il token potra\' inviarti una richiesta di collegamento, che dovrai accettare.'
+      token: result.token,
+      mostrato_una_volta: true,
+      id: tokenInfo?.id,
+      prefisso: tokenInfo?.prefisso,
+      scadenza: tokenInfo?.scadenza,
+      istruzioni: 'Copialo adesso: non sara\' piu\' visibile. Con questo token il commercialista potra\' inviarti una richiesta di collegamento, che dovrai comunque accettare.'
     });
   } catch (error) {
+    // 23505 = un token attivo esiste gia'. E' un conflitto di stato, non un guasto:
+    // arriva sia dal controllo esplicito nella funzione sia dall'indice unico
+    // parziale, che e' quello che regge sotto concorrenza.
+    if (error.code === '23505') {
+      return res.status(409).json({
+        error: 'Hai gia\' un token di invito attivo. Revocalo prima di generarne un altro.'
+      });
+    }
     console.error('Generate token error:', error.message);
     res.status(500).json({ error: 'Errore nella generazione del token' });
   }
@@ -123,8 +129,12 @@ router.post('/genera-token-invito', auth, validate(schemas.tokenInvito), async (
 // ==============================================================================
 router.get('/token-inviti', auth, async (req, res) => {
   try {
+    // Nessun valore di token esce da qui: la tabella non lo contiene piu'.
+    // `prefisso` sono i primi 8 caratteri, servono solo a riconoscere quale
+    // invito si sta guardando quando ce n'e' piu' d'uno nello storico.
     const tokens = await query(
-      `SELECT t.id, t.token, t.scadenza, t.usato, t.data_utilizzo, t.created_at,
+      `SELECT t.id, t.prefisso, t.scadenza, t.stato, t.usato,
+              t.data_utilizzo, t.data_revoca, t.created_at,
               c.ragione_sociale AS commercialista_nome,
               col.stato AS collegamento_stato,
               (col.stato = 'attiva') AS collegamento_attivo
@@ -144,7 +154,11 @@ router.get('/token-inviti', auth, async (req, res) => {
       [req.user.id]
     );
 
-    res.json({ success: true, tokens: tokens.rows });
+    res.json({
+      success: true,
+      tokens: tokens.rows,
+      ha_token_attivo: tokens.rows.some(t => t.stato === 'attivo')
+    });
   } catch (error) {
     console.error('Get tokens error:', error.message);
     res.status(500).json({ error: 'Errore nel recupero dei token' });
@@ -152,7 +166,7 @@ router.get('/token-inviti', auth, async (req, res) => {
 });
 
 // ==============================================================================
-// DELETE /api/utenti/token-inviti/:tokenId
+// DELETE /api/utenti/token-inviti/:tokenId - revoca (la riga resta come storico)
 // ==============================================================================
 router.delete('/token-inviti/:tokenId', auth, async (req, res) => {
   try {
@@ -161,36 +175,36 @@ router.delete('/token-inviti/:tokenId', auth, async (req, res) => {
       return res.status(400).json({ error: 'Identificativo token non valido' });
     }
 
-    const token = await queryOne(
-      `SELECT t.id, t.usato, t.commercialista_id, col.stato AS collegamento_stato
-       FROM token_inviti t
-       LEFT JOIN LATERAL (
-         SELECT cc.stato
-         FROM collegamenti_commercialista cc
-         WHERE cc.commercialista_id = t.commercialista_id AND cc.user_id = t.user_id
-         ORDER BY (cc.stato IN ('in_attesa','attiva','sospesa')) DESC, cc.id DESC
-         LIMIT 1
-       ) col ON TRUE
-       WHERE t.id = $1 AND t.user_id = $2`,
+    // Revoca atomica: solo un token ancora attivo puo' passare a `revocato`.
+    // Cancellare la riga toglieva la traccia di un invito emesso; qui resta.
+    const revocato = await queryOne(
+      `UPDATE token_inviti
+       SET stato = 'revocato', data_revoca = NOW()
+       WHERE id = $1 AND user_id = $2 AND stato = 'attivo'
+       RETURNING id, prefisso, stato, data_revoca`,
       [tokenId, req.user.id]
     );
 
-    if (!token) {
+    if (revocato) {
+      return res.json({ success: true, message: 'Token revocato', token: revocato });
+    }
+
+    const attuale = await queryOne(
+      'SELECT id, stato FROM token_inviti WHERE id = $1 AND user_id = $2',
+      [tokenId, req.user.id]
+    );
+
+    if (!attuale) {
       return res.status(404).json({ error: 'Token non trovato' });
     }
 
-    if (token.usato && ['attiva', 'sospesa', 'in_attesa'].includes(token.collegamento_stato)) {
-      return res.status(400).json({
-        error: 'Non puoi eliminare un token con un collegamento ancora aperto. Revoca prima il collegamento.'
-      });
-    }
-
-    await query('DELETE FROM token_inviti WHERE id = $1 AND user_id = $2', [tokenId, req.user.id]);
-
-    res.json({ success: true, message: 'Token eliminato con successo' });
+    return res.status(409).json({
+      error: `Un token in stato "${attuale.stato}" non puo' essere revocato`,
+      stato: attuale.stato
+    });
   } catch (error) {
-    console.error('Delete token error:', error.message);
-    res.status(500).json({ error: 'Errore nell\'eliminazione del token' });
+    console.error('Revoke token error:', error.message);
+    res.status(500).json({ error: 'Errore nella revoca del token' });
   }
 });
 

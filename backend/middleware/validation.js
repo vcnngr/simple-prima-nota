@@ -228,6 +228,18 @@ const schemas = {
     motivo: Joi.string().max(500).allow('', null).optional()
   }),
 
+  // Richiesta di collegamento avviata dal commercialista: username o email del
+  // cliente. Nessun formato imposto oltre alla lunghezza — un username non e'
+  // un'email, e scartare a priori quel che non ha la chiocciola escluderebbe meta'
+  // dei casi legittimi.
+  richiestaCollegamento: Joi.object({
+    identificativo_cliente: Joi.string().trim().min(3).max(100).required()
+      .messages({
+        'string.empty': 'Indica username o email del cliente',
+        'any.required': 'Indica username o email del cliente'
+      })
+  }),
+
   tokenInvito: Joi.object({
     giorni_validita: Joi.number().integer().min(1).max(30).default(7)
   }),

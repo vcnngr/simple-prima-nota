@@ -181,6 +181,44 @@ Effetto: chi ottiene il token non ottiene più i dati. Ottiene solo la possibili
 L'hash è la differenza fra "un segreto è trapelato" e "un segreto è trapelato **e il database lo
 conserva in chiaro a tempo indeterminato**".
 
+**Stato: implementato** — `database/migrations/003_invito_irrigidito.sql`.
+
+Quello che la migration fa davvero, dove si discosta da questa tabella e perché:
+
+- **Il valore in chiaro non è più in tabella.** `token_inviti.token` è stata eliminata; resta
+  `token_hash` (SHA-256, `sha256()` di core — nessuna dipendenza da `pgcrypto`) e `prefisso`, i
+  primi 8 caratteri, che servono solo a riconoscere di quale invito si parla quando nello storico
+  ce n'è più d'uno. `genera_token_invito()` restituisce il token una volta sola: se la risposta si
+  perde, il token è irrecuperabile e va revocato e rigenerato. È il comportamento voluto.
+- **Un solo token attivo per utente.** Indice unico parziale `(user_id) WHERE stato='attivo'`. Il
+  controllo dentro la funzione SQL non basta: due generazioni simultanee lo superano entrambe, ed è
+  l'indice a far fallire la seconda (`23505`, tradotto in `409` dalla route).
+- **`usato` booleano → `stato`** (`attivo | usato | revocato | scaduto`), con `usato` conservata
+  come colonna generata in sola lettura: stessa scelta fatta per `collegamenti.attivo` nella 002.
+- **La revoca non cancella.** `DELETE /api/utenti/token-inviti/:id` porta la riga a `revocato` con
+  `data_revoca`. Cancellarla toglieva la traccia di un invito emesso.
+- **Migrazione dei dati esistenti.** I token già in tabella vengono convertiti in hash; dove un
+  utente ne aveva più d'uno attivo sopravvive il più recente e gli altri passano a `revocato`,
+  altrimenti l'indice unico parziale non sarebbe applicabile a un database già in uso.
+
+### 3.2.1 Richiesta diretta: il percorso che non passa dal token
+
+`POST /api/commercialisti/richieste` con `{ identificativo_cliente }` (username o email) apre una
+richiesta `in_attesa`. È il percorso principale: il token resta solo per il commercialista non
+ancora registrato, che non può cercare un cliente prima di avere un account.
+
+L'endpoint risponde **`202` con lo stesso corpo sia che il cliente esista sia che non esista**.
+La risposta specifica ("cliente non trovato") sarebbe un modo per sapere quali username ed email
+sono registrati, una prova alla volta. Sopra c'è un tetto di **10 richieste all'ora per
+commercialista** — indicizzato sull'id dello studio, non sull'IP, così due studi dietro lo stesso
+indirizzo non si consumano il budget a vicenda.
+
+**Rischio residuo dichiarato**: un commercialista autenticato può comunque dedurre l'esistenza di
+un cliente guardando le proprie richieste pendenti (`GET /api/commercialisti/richieste`), che
+elencano solo quelle davvero create. Il tetto orario rende l'enumerazione lenta e visibile; la
+chiusura definitiva richiede di non mostrare la pendente finché il cliente non risponde, al prezzo
+di lasciare il commercialista senza riscontro. Scelta da rivedere nella fase «sicurezza».
+
 ### 3.3 Il collegamento diventa una macchina a stati esplicita
 
 Oggi c'è un booleano `attivo`. Serve un `stato`:
@@ -331,8 +369,8 @@ Rispetta l'ordine ratificato dal titolare: **workflow → sistema → sicurezza 
 
 | # | Blocco | Contenuto | Prova richiesta |
 |---|---|---|---|
-| W1 | Macchina a stati | migration 002 + rollback, `requireCollegamento`, rimozione `utenti.commercialista_id` | migration applicata e annullata su DB di prova; curl su ogni transizione |
-| W2 | Invito irrigidito | hash, 1 token attivo, 7 gg, richiesta + accettazione | token riusato → rifiutato; secondo token → rifiutato; token in chiaro assente dal DB |
+| W1 ✅ | Macchina a stati | migration 002 + rollback, `requireCollegamento`, rimozione `utenti.commercialista_id` | migration applicata e annullata su DB di prova; curl su ogni transizione |
+| W2 ✅ | Invito irrigidito | hash, 1 token attivo, 7 gg, richiesta diretta + accettazione | `scripts/smoke/w2-invito.sh` 43/43 e `w2-concorrenza.py` 4/4; le stesse fixture falliscono su `8793b25` |
 | W3 | Audit + ambito | `accessi_commercialista`, `ambito_*`, applicazione nel middleware | export fuori ambito → dati filtrati; riga di audit presente |
 | W4 | Notifiche | outbox + SMTP, sostituzione parziale del polling | email in coda su ogni evento; conteggio richieste per sessione ridotto |
 | W5 | Chat di lavoro | allegati, `movimento_id`, richieste di chiarimento | upload accettato/rifiutato per MIME e dimensione |

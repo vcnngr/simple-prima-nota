@@ -24,6 +24,9 @@ const CommercialistaDashboardPage = () => {
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [clientToken, setClientToken] = useState('');
   const [isConnectingClient, setIsConnectingClient] = useState(false);
+  const [identificativoCliente, setIdentificativoCliente] = useState('');
+  const [isRichiedendo, setIsRichiedendo] = useState(false);
+  const [richieste, setRichieste] = useState([]);
 
   const commercialista = JSON.parse(localStorage.getItem('commercialista') || '{}');
 
@@ -34,8 +37,12 @@ const CommercialistaDashboardPage = () => {
   const loadDashboard = async () => {
     try {
       setIsLoading(true);
-      const response = await commercialistiAPI.getDashboard();
+      const [response, richiesteResp] = await Promise.all([
+        commercialistiAPI.getDashboard(),
+        commercialistiAPI.getRichieste()
+      ]);
       setDashboardData(response);
+      setRichieste(richiesteResp.richieste || []);
     } catch (err) {
       const errorMessage = err.response?.data?.error || 'Errore nel caricamento della dashboard';
       toast.error(errorMessage);
@@ -63,6 +70,31 @@ const CommercialistaDashboardPage = () => {
       toast.error(errorMessage);
     } finally {
       setIsConnectingClient(false);
+    }
+  };
+
+  // Percorso principale: si nomina il cliente, lui accetta. Il token resta solo
+  // per il caso "non sono ancora registrato su questo portale".
+  const handleRichiediCollegamento = async (e) => {
+    e.preventDefault();
+    if (!identificativoCliente.trim()) {
+      toast.error('Inserisci username o email del cliente');
+      return;
+    }
+
+    setIsRichiedendo(true);
+    try {
+      const response = await commercialistiAPI.richiediCollegamento(identificativoCliente.trim());
+      // Il messaggio non dice se il cliente esiste: la risposta del server e'
+      // volutamente la stessa nei due casi.
+      toast.success(response.message || 'Richiesta inviata');
+      setShowTokenModal(false);
+      setIdentificativoCliente('');
+      loadDashboard();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Errore nell\'invio della richiesta');
+    } finally {
+      setIsRichiedendo(false);
     }
   };
 
@@ -176,6 +208,39 @@ const CommercialistaDashboardPage = () => {
             </div>
           </motion.div>
         </div>
+
+        {/* Richieste in attesa: inviate e non ancora accettate dal cliente.
+            Finche' sono qui il commercialista non vede alcun dato contabile. */}
+        {richieste.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="bg-white rounded-xl shadow-sm border border-amber-300"
+          >
+            <div className="p-6 border-b border-amber-200 bg-amber-50 rounded-t-xl">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Richieste in attesa ({richieste.length})
+              </h2>
+              <p className="text-sm text-gray-700 mt-1">
+                Il cliente deve accettare prima che i suoi dati siano visibili.
+              </p>
+            </div>
+            <div className="divide-y divide-gray-200">
+              {richieste.map((r) => (
+                <div key={r.id} className="p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{r.username}</p>
+                    <p className="text-sm text-gray-600">{r.email}</p>
+                  </div>
+                  <p className="text-sm text-gray-500">
+                    Richiesta del {formatDate(r.data_richiesta)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Clients List */}
         <motion.div
@@ -315,23 +380,57 @@ const CommercialistaDashboardPage = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6"
           >
-            <h3 className="text-xl font-semibold text-gray-900 mb-4">
+            <h3 className="text-xl font-semibold text-gray-900 mb-1">
               Aggiungi Cliente
             </h3>
             <p className="text-sm text-gray-600 mb-6">
-              Inserisci il token di invito fornito dal tuo cliente
+              Chiedi il collegamento al cliente: sara' lui ad accettarlo e a decidere
+              quali conti e quale periodo puoi vedere.
+            </p>
+
+            <form onSubmit={handleRichiediCollegamento} className="space-y-4">
+              <div>
+                <label htmlFor="identificativo" className="form-label">
+                  Username o email del cliente
+                </label>
+                <input
+                  id="identificativo"
+                  type="text"
+                  className="form-input"
+                  placeholder="mario.rossi oppure mario@esempio.it"
+                  value={identificativoCliente}
+                  onChange={(e) => setIdentificativoCliente(e.target.value)}
+                  disabled={isRichiedendo}
+                />
+              </div>
+
+              <Button
+                type="submit"
+                variant="success"
+                className="w-full"
+                loading={isRichiedendo}
+              >
+                Invia Richiesta
+              </Button>
+            </form>
+
+            <div className="border-t border-gray-200 my-6" />
+
+            <h4 className="text-sm font-semibold text-gray-900 mb-1">
+              Hai un token di invito?
+            </h4>
+            <p className="text-xs text-gray-600 mb-4">
+              Serve solo se il cliente te lo ha consegnato prima che ti registrassi.
+              Anche in questo caso dovra' accettare la richiesta.
             </p>
 
             <form onSubmit={handleConnectClient} className="space-y-4">
               <div>
-                <label htmlFor="token" className="form-label">
-                  Token di Invito
-                </label>
                 <input
                   id="token"
                   type="text"
                   className="form-input"
-                  placeholder="Inserisci il token qui"
+                  placeholder="Token di invito"
                   value={clientToken}
                   onChange={(e) => setClientToken(e.target.value)}
                   disabled={isConnectingClient}
@@ -341,11 +440,11 @@ const CommercialistaDashboardPage = () => {
               <div className="flex space-x-3">
                 <Button
                   type="submit"
-                  variant="success"
+                  variant="outline"
                   className="flex-1"
                   loading={isConnectingClient}
                 >
-                  Collega Cliente
+                  Usa Token
                 </Button>
                 <Button
                   type="button"
@@ -353,10 +452,11 @@ const CommercialistaDashboardPage = () => {
                   onClick={() => {
                     setShowTokenModal(false);
                     setClientToken('');
+                    setIdentificativoCliente('');
                   }}
-                  disabled={isConnectingClient}
+                  disabled={isConnectingClient || isRichiedendo}
                 >
-                  Annulla
+                  Chiudi
                 </Button>
               </div>
             </form>

@@ -68,7 +68,9 @@ assert_http "token con 365 giorni rifiutato (max 30)" 400 \
   -X POST $API/utenti/genera-token-invito -H "Authorization: Bearer $UT" "${AUTH_U[@]}" -d '{"giorni_validita":365}'
 
 TOK=$(curl -s -X POST $API/utenti/genera-token-invito -H "Authorization: Bearer $UT" "${AUTH_U[@]}" -d '{}' | j "['token']")
-GG=$(psql_q -c "SELECT (scadenza::date - CURRENT_DATE) FROM token_inviti WHERE token='$TOK';")
+# Dalla migration 003 la tabella non conserva il valore in chiaro: la riga si
+# ritrova per hash, non per token.
+GG=$(psql_q -c "SELECT (scadenza::date - CURRENT_DATE) FROM token_inviti WHERE token_hash = encode(sha256(convert_to('$TOK','UTF8')),'hex');")
 eq "validita' di default 7 giorni" "7" "$GG"
 
 assert_http "il token apre una richiesta, non un accesso" 200 \

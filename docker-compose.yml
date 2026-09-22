@@ -14,6 +14,7 @@ services:
       - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
       - ./database/migrations/001_commercialisti_system.sql:/docker-entrypoint-initdb.d/02-commercialisti.sql
       - ./database/migrations/002_workflow_collegamento.sql:/docker-entrypoint-initdb.d/03-workflow-collegamento.sql
+      - ./database/migrations/003_invito_irrigidito.sql:/docker-entrypoint-initdb.d/04-invito-irrigidito.sql
     ports:
       - "5432:5432"
     networks:

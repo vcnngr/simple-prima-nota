@@ -143,7 +143,9 @@ def prova_token():
 
     _, t = call('POST', '/utenti/genera-token-invito', {}, ut)
     tok = t['token']
-    uid = psql(f"SELECT user_id FROM token_inviti WHERE token='{tok}';")
+    # Dalla 003 il token in chiaro non e' in tabella: si cerca per hash.
+    uid = psql("SELECT user_id FROM token_inviti WHERE token_hash = "
+               f"encode(sha256(convert_to('{tok}','UTF8')),'hex');")
 
     ritardo('token_inviti', 'usato', True)
     try:

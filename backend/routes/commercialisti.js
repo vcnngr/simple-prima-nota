@@ -1,5 +1,6 @@
 // routes/commercialisti.js
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, queryOne } = require('../config/database');
@@ -8,6 +9,25 @@ const { requireCollegamento, clausolaAmbito, contoNellAmbito } = require('../mid
 const { validate, validateQuery, schemas } = require('../middleware/validation');
 
 const router = express.Router();
+
+// ==============================================================================
+// RATE LIMIT: richieste di collegamento
+// ==============================================================================
+// POST /richieste accetta username o email di un cliente. Senza un tetto, un
+// commercialista autenticato puo' usarlo per scoprire quali indirizzi sono
+// registrati, una prova alla volta. Il tetto non elimina il problema, lo rende
+// lento e visibile nei log.
+const limiteRichieste = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Il tetto e' per commercialista, non per IP: due studi dietro lo stesso
+  // indirizzo non devono consumarsi il budget a vicenda. Il middleware gira
+  // dopo authCommercialista, quindi req.commercialista c'e' gia'.
+  keyGenerator: (req) => (req.commercialista?.id ? `c${req.commercialista.id}` : req.ip),
+  message: { error: 'Troppe richieste di collegamento. Riprova piu\' tardi.' }
+});
 
 // ==============================================================================
 // MIDDLEWARE: Verify commercialista authentication
@@ -252,6 +272,60 @@ router.post('/collega-cliente', authCommercialista, validate(schemas.collegaClie
     res.status(400).json({
       error: error.message || 'Errore nel collegamento del cliente'
     });
+  }
+});
+
+// ==============================================================================
+// POST /api/commercialisti/richieste - chiede il collegamento nominando il cliente
+// ==============================================================================
+// Percorso principale del workflow: il commercialista bussa, il cliente apre.
+// Il token resta solo per il caso "il mio commercialista non e' ancora registrato".
+//
+// La risposta e' la STESSA che il cliente esista o no. Altrimenti l'endpoint
+// diventa un modo per sapere quali username ed email sono registrati: si prova
+// un indirizzo e si legge l'esito. Il rate limit qui sotto serve allo stesso scopo.
+router.post('/richieste', authCommercialista, limiteRichieste, validate(schemas.richiestaCollegamento), async (req, res) => {
+  const RISPOSTA_UNIFORME = {
+    success: true,
+    message: 'Richiesta inviata. Se il cliente esiste, la trovera\' in app e dovra\' accettarla prima che i dati siano visibili.'
+  };
+
+  try {
+    const { identificativo_cliente } = req.body;
+
+    // Il valore di ritorno (id del collegamento, oppure NULL se il cliente non
+    // esiste) resta qui dentro: non va nella risposta, sarebbe l'oracolo.
+    await queryOne(
+      'SELECT richiedi_collegamento($1, $2) as collegamento_id',
+      [req.commercialista.id, identificativo_cliente]
+    );
+
+    return res.status(202).json(RISPOSTA_UNIFORME);
+  } catch (error) {
+    console.error('Richiesta collegamento error:', error.message);
+    res.status(500).json({ error: 'Errore nell\'invio della richiesta' });
+  }
+});
+
+// ==============================================================================
+// GET /api/commercialisti/richieste - le proprie richieste ancora in attesa
+// ==============================================================================
+router.get('/richieste', authCommercialista, async (req, res) => {
+  try {
+    const richieste = await query(
+      `SELECT c.id, c.stato, c.richiesto_da, c.data_richiesta,
+              u.id AS user_id, u.username, u.email
+       FROM collegamenti_commercialista c
+       JOIN utenti u ON u.id = c.user_id
+       WHERE c.commercialista_id = $1 AND c.stato = 'in_attesa'
+       ORDER BY c.data_richiesta DESC NULLS LAST, c.id DESC`,
+      [req.commercialista.id]
+    );
+
+    res.json({ success: true, richieste: richieste.rows, totale: richieste.rows.length });
+  } catch (error) {
+    console.error('Get richieste error:', error.message);
+    res.status(500).json({ error: 'Errore nel recupero delle richieste' });
   }
 });
 

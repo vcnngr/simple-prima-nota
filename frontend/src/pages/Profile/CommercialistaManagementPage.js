@@ -13,11 +13,23 @@ const ETICHETTE_STATO = {
   scaduta: { testo: 'SCADUTO', classe: 'bg-gray-600' }
 };
 
+const ETICHETTE_TOKEN = {
+  attivo:   { testo: 'ATTIVO', classe: 'bg-blue-600' },
+  usato:    { testo: 'USATO', classe: 'bg-gray-600' },
+  revocato: { testo: 'REVOCATO', classe: 'bg-gray-600' },
+  scaduto:  { testo: 'SCADUTO', classe: 'bg-red-600' }
+};
+
 const CommercialistaManagementPage = () => {
   const [data, setData] = useState({
     collegamenti: [],
-    tokens: []
+    tokens: [],
+    haTokenAttivo: false
   });
+  // Il valore in chiaro del token arriva una volta sola, nella risposta alla
+  // generazione: il server tiene solo l'hash e non e' in grado di ridarlo.
+  // Vive qui finche' l'utente non lo chiude.
+  const [tokenAppenaGenerato, setTokenAppenaGenerato] = useState(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
@@ -36,7 +48,8 @@ const CommercialistaManagementPage = () => {
 
       setData({
         collegamenti: collResp.collegamenti || [],
-        tokens: tokensResp.tokens || []
+        tokens: tokensResp.tokens || [],
+        haTokenAttivo: !!tokensResp.ha_token_attivo
       });
     } catch (err) {
       toast.error(err.response?.data?.error || 'Errore caricamento dati');
@@ -46,12 +59,13 @@ const CommercialistaManagementPage = () => {
   };
 
   const generateToken = async () => {
-    if (!window.confirm('Generare un token di invito valido 7 giorni? Serve al commercialista per inviarti una richiesta, che dovrai comunque accettare.')) return;
+    if (!window.confirm('Generare un token di invito valido 7 giorni? Lo vedrai una sola volta: copialo subito. Serve al commercialista per inviarti una richiesta, che dovrai comunque accettare.')) return;
 
     try {
       setProcessing(true);
-      await utentiCommercialistaAPI.generaTokenInvito(7);
-      toast.success('Token generato!');
+      const resp = await utentiCommercialistaAPI.generaTokenInvito(7);
+      setTokenAppenaGenerato({ valore: resp.token, scadenza: resp.scadenza });
+      toast.success('Token generato: copialo ora, non sara\' piu\' visibile');
       await loadAll();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Errore generazione token');
@@ -61,7 +75,7 @@ const CommercialistaManagementPage = () => {
   };
 
   const revokeToken = async (tokenId) => {
-    if (!window.confirm('Revocare questo token?')) return;
+    if (!window.confirm('Revocare questo token? Chi lo ha ricevuto non potra\' piu\' usarlo.')) return;
 
     try {
       setProcessing(true);
@@ -119,8 +133,6 @@ const CommercialistaManagementPage = () => {
     if (!d) return 'N/A';
     return new Date(d).toLocaleDateString('it-IT');
   };
-
-  const isExpired = (d) => new Date(d) < new Date();
 
   const descriviAmbito = (c) => {
     const parti = [];
@@ -252,12 +264,18 @@ const CommercialistaManagementPage = () => {
       {/* TOKEN */}
       <div className="bg-white rounded-xl shadow-md border-2 border-gray-200 overflow-hidden">
         <div className="bg-gray-50 px-6 py-4 border-b-2 border-gray-200 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Token di Invito</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Token di Invito</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              Serve solo se il tuo commercialista non e' ancora registrato. Puoi averne uno alla volta.
+            </p>
+          </div>
           <Button
             variant="primary"
             size="lg"
             onClick={generateToken}
-            disabled={processing}
+            disabled={processing || data.haTokenAttivo}
+            title={data.haTokenAttivo ? 'Hai gia\' un token attivo: revocalo prima' : undefined}
           >
             <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -266,7 +284,41 @@ const CommercialistaManagementPage = () => {
           </Button>
         </div>
 
-        <div className="p-8">
+        <div className="p-8 space-y-6">
+          {/* Il valore in chiaro: una volta sola, qui. */}
+          {tokenAppenaGenerato && (
+            <div className="p-6 rounded-lg border-2 border-blue-500 bg-blue-50">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="text-sm font-bold text-blue-900 uppercase">Copialo adesso</div>
+                  <p className="text-sm text-blue-800 mt-1">
+                    Questo valore non sara' piu' visibile: il sistema ne conserva solo un'impronta.
+                    Se lo perdi, revoca il token e generane un altro.
+                  </p>
+                </div>
+                <button
+                  className="text-blue-700 hover:text-blue-900 text-sm underline"
+                  onClick={() => setTokenAppenaGenerato(null)}
+                >
+                  Fatto, nascondi
+                </button>
+              </div>
+              <div className="flex items-center space-x-2">
+                <code className="flex-1 bg-white px-4 py-3 rounded border-2 border-blue-300 text-sm font-mono break-all">
+                  {tokenAppenaGenerato.valore}
+                </code>
+                <Button variant="outline" onClick={() => copyToken(tokenAppenaGenerato.valore)}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </Button>
+              </div>
+              <p className="text-xs text-blue-700 mt-2">
+                Scade il {formatDate(tokenAppenaGenerato.scadenza)}
+              </p>
+            </div>
+          )}
+
           {data.tokens.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -277,77 +329,45 @@ const CommercialistaManagementPage = () => {
           ) : (
             <div className="space-y-4">
               {data.tokens.map(token => {
-                const expired = isExpired(token.scadenza);
-                const used = token.usato;
-                const hasActiveConnection = used && ['attiva', 'sospesa', 'in_attesa'].includes(token.collegamento_stato);
-                const canDelete = !expired && !hasActiveConnection;
+                const stato = token.stato;
+                const badge = ETICHETTE_TOKEN[stato] || { testo: stato, classe: 'bg-gray-600' };
 
                 return (
                   <div
                     key={token.id}
                     className={`p-6 rounded-lg border-2 ${
-                      hasActiveConnection
-                        ? 'bg-green-50 border-green-400'
-                        : used
-                        ? 'bg-gray-100 border-gray-400'
-                        : expired
-                        ? 'bg-red-50 border-red-400'
-                        : 'bg-blue-50 border-blue-400'
+                      stato === 'attivo' ? 'bg-blue-50 border-blue-400' : 'bg-gray-50 border-gray-300'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center space-x-3">
-                        {hasActiveConnection && (
-                          <span className="px-4 py-1 bg-green-600 text-white text-sm font-bold rounded-full">
-                            COLLEGATO
-                          </span>
-                        )}
-                        {!hasActiveConnection && used && (
-                          <span className="px-4 py-1 bg-gray-600 text-white text-sm font-bold rounded-full">
-                            USATO
-                          </span>
-                        )}
-                        {!used && expired && (
-                          <span className="px-4 py-1 bg-red-600 text-white text-sm font-bold rounded-full">
-                            SCADUTO
-                          </span>
-                        )}
-                        {!used && !expired && (
-                          <span className="px-4 py-1 bg-blue-600 text-white text-sm font-bold rounded-full">
-                            ATTIVO
-                          </span>
-                        )}
-                        <span className="text-gray-600">
+                    <div className="flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center space-x-3 flex-wrap gap-2">
+                        <span className={`px-4 py-1 ${badge.classe} text-white text-sm font-bold rounded-full`}>
+                          {badge.testo}
+                        </span>
+                        {/* Il token non esiste piu' in chiaro: restano i primi caratteri,
+                            quanto basta a riconoscere di quale invito si tratta. */}
+                        <code className="bg-white px-3 py-1 rounded border border-gray-300 text-sm font-mono">
+                          {token.prefisso}&hellip;
+                        </code>
+                        <span className="text-gray-600 text-sm">
                           Scadenza: <strong>{formatDate(token.scadenza)}</strong>
                         </span>
+                        {token.commercialista_nome && (
+                          <span className="text-gray-600 text-sm">
+                            Usato da <strong>{token.commercialista_nome}</strong> il {formatDate(token.data_utilizzo)}
+                          </span>
+                        )}
                       </div>
 
-                      {canDelete && (
+                      {stato === 'attivo' && (
                         <Button
                           variant="danger"
                           onClick={() => revokeToken(token.id)}
                           disabled={processing}
                         >
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          ELIMINA
+                          REVOCA
                         </Button>
                       )}
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <code className="flex-1 bg-white px-4 py-3 rounded border-2 border-gray-300 text-sm font-mono overflow-x-auto">
-                        {token.token}
-                      </code>
-                      <Button
-                        variant="outline"
-                        onClick={() => copyToken(token.token)}
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </Button>
                     </div>
                   </div>
                 );

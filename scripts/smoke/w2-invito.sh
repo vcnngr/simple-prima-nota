@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# Smoke test dell'invito irrigidito (blocco W2).
+#
+# Copre le tre cose che la migration 003 cambia:
+#   * il token esiste in chiaro solo nella risposta alla generazione: in tabella
+#     c'e' un hash SHA-256, e nessuna route lo restituisce piu';
+#   * un solo token attivo per utente, revocabile senza cancellare la riga;
+#   * il commercialista puo' chiedere il collegamento nominando il cliente, e
+#     l'endpoint risponde allo stesso modo che il cliente esista o no.
+#
+# Come lo smoke del W1 questo script ASSERISCE: esce 1 se anche un solo caso fallisce.
+#
+#   API=http://localhost:3010/api DB_CONTAINER=pn-w2-db ./scripts/smoke/w2-invito.sh
+#
+# ATTENZIONE: se si ricrea il database bisogna RIAVVIARE anche il backend. Il
+# contatore del rate limit sulle richieste sta in memoria ed e' indicizzato per
+# id del commercialista: azzerando il database gli id ripartono da 1 e la sezione E
+# della corsa precedente lascerebbe il budget gia' esaurito. In esercizio non
+# succede, perche' gli id non vengono riusati.
+
+set -u
+API="${API:-http://localhost:3001/api}"
+DB_CONTAINER="${DB_CONTAINER:-prima_nota_db}"
+DB_NAME="${DB_NAME:-prima_nota}"
+SFX="${SFX:-$(date +%s)$RANDOM}"
+
+PASS=0; FAIL=0
+
+psql_q() { docker exec -i "$DB_CONTAINER" psql -U postgres -d "$DB_NAME" -tA "$@"; }
+j()   { python3 -c "import sys,json;d=json.load(sys.stdin);print(d$1)" 2>/dev/null || echo "-"; }
+hit() { curl -s -o /tmp/w2body -w "%{http_code}" "$@"; }
+body(){ head -c 220 /tmp/w2body; }
+
+ok() { PASS=$((PASS+1)); printf '  OK    %s\n' "$1"; }
+ko() { FAIL=$((FAIL+1)); printf '  FAIL  %s\n         atteso=%s ottenuto=%s\n' "$1" "$2" "$3"; }
+eq() { if [ "$2" = "$3" ]; then ok "$1"; else ko "$1" "$2" "$3"; fi; }
+
+assert_http() {
+  local desc="$1" atteso="$2"; shift 2
+  local got; got=$(hit "$@")
+  if [ "$got" = "$atteso" ]; then ok "$desc"
+  else ko "$desc" "HTTP $atteso" "HTTP $got — $(body)"; fi
+}
+
+# assert_contiene <descrizione> <sottostringa attesa nel corpo>
+assert_contiene() {
+  if grep -qF "$2" /tmp/w2body; then ok "$1"
+  else ko "$1" "corpo contiene \"$2\"" "$(body)"; fi
+}
+
+JSON=(-H "Content-Type: application/json")
+
+echo "=== setup (suffisso $SFX) ==="
+UT=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"w2u$SFX\",\"email\":\"w2u$SFX@t.it\",\"password\":\"Password123!\"}" | j "['token']")
+CT=$(curl -s -X POST $API/commercialisti/register "${JSON[@]}" -d "{\"username\":\"w2c$SFX\",\"email\":\"w2c$SFX@t.it\",\"password\":\"Password123!\",\"ragione_sociale\":\"Studio W2\"}" | j "['token']")
+C2=$(curl -s -X POST $API/commercialisti/register "${JSON[@]}" -d "{\"username\":\"w2d$SFX\",\"email\":\"w2d$SFX@t.it\",\"password\":\"Password123!\",\"ragione_sociale\":\"Studio Due\"}" | j "['token']")
+CLI=$(curl -s $API/auth/profile -H "Authorization: Bearer $UT" | j "['id']")
+echo "user_id=$CLI"
+
+echo
+echo "=== A. il token in chiaro esiste solo nella risposta ==="
+assert_http "generazione token" 200 -X POST $API/utenti/genera-token-invito -H "Authorization: Bearer $UT" "${JSON[@]}" -d '{}'
+TOK=$(cat /tmp/w2body | j "['token']")
+PREF=$(cat /tmp/w2body | j "['prefisso']")
+eq "il prefisso sono i primi 8 caratteri del token" "${TOK:0:8}" "$PREF"
+
+eq "la colonna in chiaro non esiste piu' in tabella" "0" \
+  "$(psql_q -c "SELECT count(*) FROM information_schema.columns WHERE table_name='token_inviti' AND column_name='token';")"
+eq "in tabella c'e' l'hash SHA-256 del token" "1" \
+  "$(psql_q -c "SELECT count(*) FROM token_inviti WHERE token_hash = encode(sha256(convert_to('$TOK','UTF8')),'hex');")"
+eq "il valore in chiaro non compare in nessuna colonna testuale" "0" \
+  "$(psql_q -c "SELECT count(*) FROM token_inviti WHERE prefisso = '$TOK' OR token_hash = '$TOK';")"
+
+curl -s $API/utenti/token-inviti -H "Authorization: Bearer $UT" -o /tmp/w2body
+eq "la lista non restituisce alcun valore di token" "assente" \
+  "$(python3 -c "
+import json
+d=json.load(open('/tmp/w2body'))
+t=d['tokens'][0]
+print('PRESENTE' if ('token' in t or any(v=='$TOK' for v in t.values() if isinstance(v,str))) else 'assente')")"
+eq "la lista dichiara il token attivo" "True" "$(cat /tmp/w2body | j "['ha_token_attivo']")"
+
+echo
+echo "=== B. un solo token attivo per utente ==="
+assert_http "secondo token mentre uno e' attivo -> 409" 409 \
+  -X POST $API/utenti/genera-token-invito -H "Authorization: Bearer $UT" "${JSON[@]}" -d '{}'
+eq "resta un solo token attivo" "1" \
+  "$(psql_q -c "SELECT count(*) FROM token_inviti WHERE user_id=$CLI AND stato='attivo';")"
+assert_http "validita' oltre 30 giorni -> 400" 400 \
+  -X POST $API/utenti/genera-token-invito -H "Authorization: Bearer $UT" "${JSON[@]}" -d '{"giorni_validita":365}'
+
+TOKID=$(psql_q -c "SELECT id FROM token_inviti WHERE user_id=$CLI AND stato='attivo';")
+assert_http "revoca del token" 200 -X DELETE $API/utenti/token-inviti/$TOKID -H "Authorization: Bearer $UT"
+eq "la riga resta come storico, in stato revocato" "revocato" \
+  "$(psql_q -c "SELECT stato FROM token_inviti WHERE id=$TOKID;")"
+assert_http "revocare due volte -> 409" 409 -X DELETE $API/utenti/token-inviti/$TOKID -H "Authorization: Bearer $UT"
+assert_http "token revocato presentato dal commercialista -> 400" 400 \
+  -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $CT" "${JSON[@]}" -d "{\"token\":\"$TOK\"}"
+assert_contiene "il motivo del rifiuto e' la revoca" "revocato"
+
+assert_http "dopo la revoca se ne puo' generare un altro" 200 \
+  -X POST $API/utenti/genera-token-invito -H "Authorization: Bearer $UT" "${JSON[@]}" -d '{}'
+TOK2=$(cat /tmp/w2body | j "['token']")
+
+echo
+echo "=== C. consumo del token ==="
+assert_http "token inesistente -> 400" 400 \
+  -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $CT" "${JSON[@]}" -d '{"token":"0000000000000000000000000000000000000000000000000000000000000000"}'
+assert_contiene "il motivo e' token non valido" "non valido"
+
+assert_http "token valido -> richiesta in attesa" 200 \
+  -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $CT" "${JSON[@]}" -d "{\"token\":\"$TOK2\"}"
+eq "stato del collegamento" "in_attesa" "$(cat /tmp/w2body | j "['stato']")"
+assert_http "lo stesso token una seconda volta -> 400" 400 \
+  -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $C2" "${JSON[@]}" -d "{\"token\":\"$TOK2\"}"
+assert_contiene "il motivo e' token gia' utilizzato" "utilizzato"
+
+# Token scaduto: si forza la scadenza sulla riga, senza aspettare sette giorni.
+assert_http "nuovo token per la prova di scadenza" 200 \
+  -X POST $API/utenti/genera-token-invito -H "Authorization: Bearer $UT" "${JSON[@]}" -d '{}'
+TOK3=$(cat /tmp/w2body | j "['token']")
+psql_q -c "UPDATE token_inviti SET scadenza = NOW() - interval '1 day' WHERE user_id=$CLI AND stato='attivo';" >/dev/null
+assert_http "token scaduto -> 400" 400 \
+  -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $C2" "${JSON[@]}" -d "{\"token\":\"$TOK3\"}"
+assert_contiene "il motivo e' la scadenza" "scaduto"
+
+echo
+echo "=== D. richiesta diretta: il commercialista nomina il cliente ==="
+U2=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"w2e$SFX\",\"email\":\"w2e$SFX@t.it\",\"password\":\"Password123!\"}" | j "['token']")
+CLI2=$(curl -s $API/auth/profile -H "Authorization: Bearer $U2" | j "['id']")
+
+assert_http "identificativo troppo corto -> 400" 400 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C2" "${JSON[@]}" -d '{"identificativo_cliente":"ab"}'
+
+assert_http "richiesta per username esistente -> 202" 202 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C2" "${JSON[@]}" -d "{\"identificativo_cliente\":\"w2e$SFX\"}"
+RISP_ESISTE=$(cat /tmp/w2body)
+eq "nasce una richiesta in attesa" "in_attesa" \
+  "$(psql_q -c "SELECT stato FROM collegamenti_commercialista WHERE user_id=$CLI2;")"
+eq "la richiesta risulta partita dal commercialista" "commercialista" \
+  "$(psql_q -c "SELECT richiesto_da FROM collegamenti_commercialista WHERE user_id=$CLI2;")"
+
+assert_http "richiesta per cliente inesistente -> 202" 202 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C2" "${JSON[@]}" -d "{\"identificativo_cliente\":\"nessuno$SFX@nowhere.it\"}"
+eq "la risposta e' identica a quella del cliente esistente" "$RISP_ESISTE" "$(cat /tmp/w2body)"
+# L'uguaglianza da sola passerebbe anche se entrambe le risposte fossero un errore:
+# si verifica anche che sia la risposta giusta.
+assert_contiene "e non rivela se il cliente esiste" "Se il cliente esiste"
+eq "nessun collegamento nasce per un cliente inesistente" "1" \
+  "$(psql_q -c "SELECT count(*) FROM collegamenti_commercialista WHERE commercialista_id = (SELECT id FROM commercialisti WHERE username='w2d$SFX');")"
+
+assert_http "seconda richiesta per email -> 202" 202 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C2" "${JSON[@]}" -d "{\"identificativo_cliente\":\"w2e$SFX@t.it\"}"
+eq "non nasce un secondo collegamento aperto" "1" \
+  "$(psql_q -c "SELECT count(*) FROM collegamenti_commercialista WHERE user_id=$CLI2;")"
+
+assert_http "in attesa il commercialista non vede i dati" 403 \
+  "$API/commercialisti/clienti/$CLI2" -H "Authorization: Bearer $C2"
+
+curl -s $API/commercialisti/richieste -H "Authorization: Bearer $C2" -o /tmp/w2body
+eq "il commercialista vede la propria richiesta in attesa" "1" "$(cat /tmp/w2body | j "['totale']")"
+curl -s $API/commercialisti/richieste -H "Authorization: Bearer $CT" -o /tmp/w2body
+eq "e non vede quelle degli altri studi" "0" \
+  "$(python3 -c "
+import json;d=json.load(open('/tmp/w2body'))
+print(sum(1 for r in d['richieste'] if r['user_id']==$CLI2))")"
+
+COLL2=$(curl -s $API/utenti/collegamenti -H "Authorization: Bearer $U2" | j "['collegamenti'][0]['id']")
+assert_http "il cliente accetta" 200 \
+  -X PUT $API/utenti/collegamenti/$COLL2/accetta -H "Authorization: Bearer $U2" "${JSON[@]}" -d '{}'
+assert_http "ora il commercialista vede i dati" 200 \
+  "$API/commercialisti/clienti/$CLI2" -H "Authorization: Bearer $C2"
+curl -s $API/commercialisti/richieste -H "Authorization: Bearer $C2" -o /tmp/w2body
+eq "la richiesta accettata esce dall'elenco delle pendenti" "0" "$(cat /tmp/w2body | j "['totale']")"
+
+echo
+echo "=== E. il tetto sulle richieste ==="
+# 10 all'ora per commercialista. C2 ne ha gia' consumate 4: se ne mandano altre
+# finche' non scatta il 429. Ultimo blocco della suite, consuma il budget.
+CODICI=""
+for i in $(seq 1 9); do
+  CODICI="$CODICI $(hit -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C2" "${JSON[@]}" -d "{\"identificativo_cliente\":\"ignoto-$i-$SFX\"}")"
+done
+case "$CODICI" in
+  *429*) ok "il tetto per commercialista scatta" ;;
+  *) ko "il tetto per commercialista scatta" "un 429 fra le risposte" "$CODICI" ;;
+esac
+assert_http "un altro commercialista non e' toccato dal tetto altrui" 202 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $CT" "${JSON[@]}" -d "{\"identificativo_cliente\":\"ignoto-x-$SFX\"}"
+
+echo
+echo "================================================"
+printf 'PASS %d   FAIL %d\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ] || exit 1

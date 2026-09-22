@@ -279,6 +279,12 @@ export const commercialistiAPI = {
 
   // Client management
   collegaCliente: (token) => api.post('/commercialisti/collega-cliente', { token }),
+
+  // Richiesta diretta: si nomina il cliente (username o email), lui accetta.
+  // La risposta e' identica che il cliente esista o no — di proposito.
+  richiediCollegamento: (identificativo_cliente) =>
+    api.post('/commercialisti/richieste', { identificativo_cliente }),
+  getRichieste: () => api.get('/commercialisti/richieste'),
   getClientDetails: (userId, params = {}) => api.get(`/commercialisti/clienti/${userId}`, { params }),
   disconnectClient: (userId) => api.delete(`/commercialisti/clienti/${userId}`),
 
