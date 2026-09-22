@@ -201,6 +201,14 @@ ricostruire cosa è successo.
 `sospesa` copre il caso reale che oggi manca: *"non voglio che veda nulla fino a che non ho
 sistemato marzo"*, senza dover rompere il collegamento e rifare tutto il giro dell'invito.
 
+**Accettare e riattivare non sono la stessa transizione.** Portano entrambe ad `attiva`, ma
+`accetta` e' l'atto con cui il cliente concede un ambito e si fa **una volta sola**, da `in_attesa`;
+`riattiva` toglie una sospensione e non rimette in discussione il consenso gia' dato — ambito e
+`data_accettazione` restano quelli. Indicizzare le transizioni per stato di arrivo le fondeva in
+una sola: `accetta` risultava raggiungibile da `sospesa` e, con un corpo vuoto, azzerava
+`conti_ammessi`, riaprendo al commercialista i conti che il cliente aveva escluso. La tabella e'
+indicizzata per **azione**, non per stato di arrivo.
+
 **Gli stati terminali non si riaprono.** La `UNIQUE(commercialista_id, user_id)` dello schema 001
 costringeva a riusare la stessa riga per sempre: un token nuovo riportava a `in_attesa` anche un
 collegamento revocato, cancellando lo stato terminale. Al suo posto un indice unico **parziale** sui

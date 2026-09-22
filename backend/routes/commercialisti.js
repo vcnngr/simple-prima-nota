@@ -175,11 +175,15 @@ router.get('/dashboard', authCommercialista, async (req, res) => {
 
     // Non letti per collegamento. La query raggruppa per collegamento_id: il merge
     // deve usare la stessa chiave, altrimenti il conteggio resta a zero comunque.
+    // Solo collegamenti attivi: durante una sospensione la chat e' chiusa, quindi
+    // un contatore che continua a salire direbbe al commercialista cosa succede
+    // dall'altra parte proprio mentre il cliente gli ha tolto la visibilita'.
     const unreadMessages = await query(
       `SELECT m.collegamento_id, COUNT(*)::int as unread_count
        FROM messaggi_commercialista m
        JOIN collegamenti_commercialista c ON c.id = m.collegamento_id
        WHERE c.commercialista_id = $1
+       AND c.stato = 'attiva'
        AND m.mittente_tipo = 'user'
        AND m.letto = FALSE
        GROUP BY m.collegamento_id`,

@@ -150,8 +150,27 @@ print('vuoto' if all(c.get(k) is None for k in campi) else 'espone:'+','.join(k 
 PY
 eq "dashboard non espone dati contabili da sospeso" "vuoto" "$(cat /tmp/w1dashres)"
 
+DASH_UNREAD_SOSP=$(curl -s $API/commercialisti/dashboard -H "Authorization: Bearer $CT" | python3 -c "import sys,json;d=json.load(sys.stdin);print([c['unread_messages'] for c in d['clienti'] if c['user_id']==$CLI][0])")
+eq "non letti non contati durante la sospensione" "0" "$DASH_UNREAD_SOSP"
+
+# Riaccettare un collegamento sospeso azzerava l'ambito e riapriva i conti esclusi:
+# accettare si fa una volta sola, dallo stato in_attesa. La sospensione si toglie
+# con /riattiva, che non rimette in discussione il consenso gia' dato.
+ACC_PRIMA=$(psql_q -c "SELECT data_accettazione FROM collegamenti_commercialista WHERE id=$COLL;")
+assert_http "accettare un sospeso -> 409" 409 \
+  -X PUT "$API/utenti/collegamenti/$COLL/accetta" -H "Authorization: Bearer $UT" "${AUTH_U[@]}" -d '{}'
+eq "l'ambito sopravvive al tentativo" "{$CONTO_OK}" \
+  "$(psql_q -c "SELECT conti_ammessi FROM collegamenti_commercialista WHERE id=$COLL;")"
+
 assert_http "riattiva" 200 -X PUT "$API/utenti/collegamenti/$COLL/riattiva" -H "Authorization: Bearer $UT"
+eq "riattiva preserva i conti dell'ambito" "{$CONTO_OK}" \
+  "$(psql_q -c "SELECT conti_ammessi FROM collegamenti_commercialista WHERE id=$COLL;")"
+eq "riattiva preserva la data di accettazione" "$ACC_PRIMA" \
+  "$(psql_q -c "SELECT data_accettazione FROM collegamenti_commercialista WHERE id=$COLL;")"
 assert_http "dettaglio dopo riattivazione" 200 "$API/commercialisti/clienti/$CLI" -H "Authorization: Bearer $CT"
+curl -s "$API/commercialisti/clienti/$CLI" -H "Authorization: Bearer $CT" -o /tmp/w1det2
+eq "dopo la riattivazione l'ambito filtra ancora" "$CONTO_OK" \
+  "$(python3 -c "import json;d=json.load(open('/tmp/w1det2'));print(','.join(str(c['id']) for c in d['conti']))")"
 
 echo
 echo "=== H. revoca e stati terminali ==="

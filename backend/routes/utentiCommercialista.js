@@ -15,17 +15,29 @@ const { validate, schemas } = require('../middleware/validation');
 
 const router = express.Router();
 
-// Transizioni ammesse: stato corrente -> stati raggiungibili dall'utente.
-const TRANSIZIONI_UTENTE = {
-  in_attesa: ['attiva', 'rifiutata', 'revocata'],
-  attiva: ['sospesa', 'revocata'],
-  sospesa: ['attiva', 'revocata']
+// Transizioni ammesse, indicizzate per AZIONE e non per stato di arrivo.
+//
+// `accetta` e `riattiva` portano entrambe ad 'attiva', ma non sono la stessa
+// cosa: accettare e' l'atto con cui il cliente concede un ambito, riattivare
+// toglie una sospensione senza rimettere in discussione il consenso gia' dato.
+// Derivare le origini dallo stato di arrivo le fondeva in una sola, e rendeva
+// `accetta` raggiungibile da 'sospesa': con un corpo vuoto azzerava l'ambito
+// concordato e riapriva al commercialista i conti che il cliente aveva escluso.
+const AZIONI = {
+  accetta:  { da: ['in_attesa'], a: 'attiva' },
+  rifiuta:  { da: ['in_attesa'], a: 'rifiutata' },
+  sospendi: { da: ['attiva'], a: 'sospesa' },
+  riattiva: { da: ['sospesa'], a: 'attiva' },
+  revoca:   { da: ['in_attesa', 'attiva', 'sospesa'], a: 'revocata' }
 };
 
-// Origini ammesse per ciascuno stato di arrivo, derivate dalla tabella sopra:
-// una sola fonte di verita', invece di due elenchi da tenere allineati a mano.
-const ORIGINI = Object.entries(TRANSIZIONI_UTENTE).reduce((acc, [da, arrivi]) => {
-  arrivi.forEach(a => { (acc[a] = acc[a] || []).push(da); });
+// Vista per stato, derivata dalle azioni: serve a documentare la macchina e a
+// rispondere "da qui dove posso andare" senza tenere un secondo elenco a mano.
+const TRANSIZIONI_UTENTE = Object.values(AZIONI).reduce((acc, { da, a }) => {
+  da.forEach(s => {
+    acc[s] = acc[s] || [];
+    if (!acc[s].includes(a)) acc[s].push(a);
+  });
   return acc;
 }, {});
 
@@ -240,7 +252,7 @@ router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccet
     }
 
     const esito = await transizioneAtomica(
-      req.user.id, req.params.id, ORIGINI.attiva,
+      req.user.id, req.params.id, AZIONI.accetta.da,
       `stato = 'attiva',
        data_accettazione = NOW(),
        data_revoca = NULL, revocato_da = NULL, motivo_revoca = NULL,
@@ -253,8 +265,14 @@ router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccet
       return res.status(404).json({ error: 'Collegamento non trovato' });
     }
     if (esito.esito === 'conflitto') {
+      // Un collegamento gia' accettato non si riaccetta: da 'sospesa' si passa
+      // da /riattiva, che non tocca l'ambito. Dirlo, invece di lasciare il
+      // chiamante a indovinare quale rotta usare.
+      const rimedio = ['attiva', 'sospesa'].includes(esito.stato)
+        ? ' Per togliere la sospensione usa /riattiva: l\'ambito gia\' concordato resta invariato.'
+        : '';
       return res.status(409).json({
-        error: `Un collegamento in stato "${esito.stato}" non puo' essere accettato`,
+        error: `Un collegamento in stato "${esito.stato}" non puo' essere accettato.${rimedio}`,
         stato: esito.stato
       });
     }
@@ -276,7 +294,7 @@ router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccet
 router.put('/collegamenti/:id/rifiuta', auth, validate(schemas.collegamentoMotivo), async (req, res) => {
   try {
     const esito = await transizioneAtomica(
-      req.user.id, req.params.id, ORIGINI.rifiutata,
+      req.user.id, req.params.id, AZIONI.rifiuta.da,
       `stato = 'rifiutata', data_revoca = NOW(), revocato_da = 'user', motivo_revoca = $4`,
       [req.body.motivo || null]
     );
@@ -304,7 +322,7 @@ router.put('/collegamenti/:id/rifiuta', auth, validate(schemas.collegamentoMotiv
 router.put('/collegamenti/:id/sospendi', auth, validate(schemas.collegamentoMotivo), async (req, res) => {
   try {
     const esito = await transizioneAtomica(
-      req.user.id, req.params.id, ORIGINI.sospesa,
+      req.user.id, req.params.id, AZIONI.sospendi.da,
       `stato = 'sospesa', motivo_revoca = $4`,
       [req.body.motivo || null]
     );
@@ -336,7 +354,7 @@ router.put('/collegamenti/:id/sospendi', auth, validate(schemas.collegamentoMoti
 router.put('/collegamenti/:id/riattiva', auth, async (req, res) => {
   try {
     const esito = await transizioneAtomica(
-      req.user.id, req.params.id, ['sospesa'],
+      req.user.id, req.params.id, AZIONI.riattiva.da,
       `stato = 'attiva', motivo_revoca = NULL`
     );
 
@@ -363,7 +381,7 @@ router.put('/collegamenti/:id/riattiva', auth, async (req, res) => {
 router.delete('/collegamenti/:id', auth, validate(schemas.collegamentoMotivo), async (req, res) => {
   try {
     const esito = await transizioneAtomica(
-      req.user.id, req.params.id, ORIGINI.revocata,
+      req.user.id, req.params.id, AZIONI.revoca.da,
       `stato = 'revocata', data_revoca = NOW(), revocato_da = 'user', motivo_revoca = $4`,
       [req.body?.motivo || null]
     );
