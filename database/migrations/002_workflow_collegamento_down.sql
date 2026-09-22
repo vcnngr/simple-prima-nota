@@ -1,8 +1,15 @@
 -- Rollback della migration 002.
+-- Idempotente: si puo' eseguire piu' volte di seguito senza errori.
 -- Riporta collegamenti_commercialista al booleano `attivo`, ripristina
 -- utenti.commercialista_id e le firme originali delle funzioni.
 -- Perdita di dati attesa: lo storico delle transizioni (chi/quando/perche')
 -- e l'ambito di accesso non hanno posto nello schema 001.
+--
+-- Perdita ulteriore, esplicita: lo schema 001 ammette UNA sola riga per coppia
+-- (commercialista, cliente). Se dopo la 002 esistono piu' cicli di collaborazione
+-- per la stessa coppia, il rollback conserva soltanto la riga piu' rilevante
+-- (quella aperta, altrimenti la piu' recente) ed elimina le altre. I messaggi
+-- appesi alle righe eliminate cadono con loro (ON DELETE CASCADE).
 
 BEGIN;
 
@@ -14,14 +21,65 @@ ALTER TABLE utenti
     REFERENCES commercialisti(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_utenti_commercialista_id ON utenti(commercialista_id);
 
-UPDATE utenti u
-SET commercialista_id = c.commercialista_id
-FROM collegamenti_commercialista c
-WHERE c.user_id = u.id AND c.stato = 'attiva';
+-- Dipende da `stato`: su un database gia' riportato allo schema 001 la colonna
+-- non esiste piu' e il passo va saltato, non fatto fallire.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'collegamenti_commercialista' AND column_name = 'stato') THEN
+    EXECUTE $q$
+      UPDATE utenti u
+      SET commercialista_id = c.commercialista_id
+      FROM collegamenti_commercialista c
+      WHERE c.user_id = u.id AND c.stato = 'attiva'
+    $q$;
+  END IF;
+END $$;
 
 -- ==============================================================================
 -- 2. collegamenti: da `stato` al booleano
 -- ==============================================================================
+-- Lo schema 001 vuole UNA riga per coppia: si tiene quella aperta (o la piu'
+-- recente) e si eliminano gli storici, prima di rimettere il vincolo UNIQUE.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'collegamenti_commercialista' AND column_name = 'stato') THEN
+    EXECUTE $q$
+      DELETE FROM collegamenti_commercialista c
+      USING (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY commercialista_id, user_id
+                 ORDER BY (stato IN ('in_attesa','attiva','sospesa')) DESC, id DESC
+               ) AS rn
+        FROM collegamenti_commercialista
+      ) d
+      WHERE c.id = d.id AND d.rn > 1
+    $q$;
+  END IF;
+END $$;
+
+DROP INDEX IF EXISTS idx_collegamenti_aperto_unico;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    WHERE rel.relname = 'collegamenti_commercialista'
+      AND con.contype = 'u'
+      AND (SELECT array_agg(att.attname::text ORDER BY att.attname::text)
+           FROM unnest(con.conkey) k
+           JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k)
+          = ARRAY['commercialista_id','user_id']
+  ) THEN
+    ALTER TABLE collegamenti_commercialista
+      ADD CONSTRAINT collegamenti_commercialista_commercialista_id_user_id_key
+      UNIQUE (commercialista_id, user_id);
+  END IF;
+END $$;
+
 DO $$
 BEGIN
   IF EXISTS (

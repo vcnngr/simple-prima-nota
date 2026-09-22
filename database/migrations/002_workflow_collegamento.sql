@@ -87,9 +87,34 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_collegamenti_stato ON collegamenti_commercialista(stato);
 
--- Un solo collegamento non terminale per coppia (commercialista, cliente).
--- La UNIQUE(commercialista_id, user_id) originale resta e resta sufficiente,
--- ma serve anche poter rifare una richiesta dopo un rifiuto: si riusa la riga.
+-- Un solo collegamento NON TERMINALE per coppia (commercialista, cliente).
+--
+-- La UNIQUE(commercialista_id, user_id) originale costringeva a riusare la stessa
+-- riga per sempre: un token nuovo riportava a `in_attesa` anche un collegamento
+-- gia' revocato, cancellando uno stato terminale. Al suo posto un indice unico
+-- parziale sui soli stati aperti: le righe chiuse restano come storico e un nuovo
+-- ciclo di collaborazione nasce come riga nuova.
+DO $$
+DECLARE
+  v_conname TEXT;
+BEGIN
+  SELECT con.conname INTO v_conname
+  FROM pg_constraint con
+  JOIN pg_class rel ON rel.oid = con.conrelid
+  WHERE rel.relname = 'collegamenti_commercialista'
+    AND con.contype = 'u'
+    AND (SELECT array_agg(att.attname::text ORDER BY att.attname::text)
+         FROM unnest(con.conkey) k
+         JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k)
+        = ARRAY['commercialista_id','user_id'];
+  IF v_conname IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE collegamenti_commercialista DROP CONSTRAINT %I', v_conname);
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_collegamenti_aperto_unico
+  ON collegamenti_commercialista (commercialista_id, user_id)
+  WHERE stato IN ('in_attesa','attiva','sospesa');
 
 DROP TRIGGER IF EXISTS trigger_collegamenti_updated_at ON collegamenti_commercialista;
 CREATE TRIGGER trigger_collegamenti_updated_at
@@ -103,52 +128,64 @@ CREATE TRIGGER trigger_collegamenti_updated_at
 
 -- usa_token_invito: apre una RICHIESTA in attesa, non un accesso.
 -- Il tipo di ritorno cambia (BOOLEAN -> INTEGER): serve DROP, non CREATE OR REPLACE.
+--
+-- Due invarianti che la prima versione non garantiva:
+--  1. il token si consuma in modo ATOMICO (UPDATE ... WHERE usato = FALSE), quindi
+--     due commercialisti che lo presentano nello stesso istante non aprono due
+--     richieste: il secondo trova zero righe e riceve "Token gia' utilizzato";
+--  2. un collegamento in stato TERMINALE non viene riaperto dal token: si crea una
+--     riga nuova, e lo storico della collaborazione precedente resta intatto.
 DROP FUNCTION IF EXISTS usa_token_invito(VARCHAR, INTEGER);
 CREATE FUNCTION usa_token_invito(p_token VARCHAR, p_commercialista_id INTEGER)
 RETURNS INTEGER AS $$
 DECLARE
     v_user_id INTEGER;
-    v_scadenza TIMESTAMP;
-    v_usato BOOLEAN;
     v_collegamento_id INTEGER;
+    v_stato VARCHAR(20);
 BEGIN
-    SELECT user_id, scadenza, usato
-    INTO v_user_id, v_scadenza, v_usato
-    FROM token_inviti
-    WHERE token = p_token;
-
-    IF v_user_id IS NULL THEN
-        RAISE EXCEPTION 'Token non valido';
-    END IF;
-    IF v_usato THEN
-        RAISE EXCEPTION 'Token gia'' utilizzato';
-    END IF;
-    IF v_scadenza < NOW() THEN
-        RAISE EXCEPTION 'Token scaduto';
-    END IF;
-
-    INSERT INTO collegamenti_commercialista
-        (commercialista_id, user_id, stato, richiesto_da, data_richiesta)
-    VALUES
-        (p_commercialista_id, v_user_id, 'in_attesa', 'commercialista', NOW())
-    ON CONFLICT (commercialista_id, user_id) DO UPDATE
-    SET stato = CASE
-            -- un collegamento gia' attivo o sospeso non viene resettato da un token
-            WHEN collegamenti_commercialista.stato IN ('attiva','sospesa') THEN collegamenti_commercialista.stato
-            ELSE 'in_attesa'
-        END,
-        richiesto_da = 'commercialista',
-        data_richiesta = NOW(),
-        data_revoca = NULL,
-        revocato_da = NULL,
-        motivo_revoca = NULL
-    RETURNING id INTO v_collegamento_id;
-
+    -- Consumo atomico: il primo che arriva blocca la riga, il secondo non la trova
+    -- piu' libera. Nessuna finestra fra la lettura di `usato` e la sua scrittura.
     UPDATE token_inviti
     SET usato = TRUE,
         commercialista_id = p_commercialista_id,
         data_utilizzo = NOW()
-    WHERE token = p_token;
+    WHERE token = p_token
+      AND usato = FALSE
+      AND scadenza >= NOW()
+    RETURNING user_id INTO v_user_id;
+
+    IF v_user_id IS NULL THEN
+        -- Nessuna riga consumata: distinguo il motivo per l'utente finale.
+        SELECT usato INTO v_stato FROM token_inviti WHERE token = p_token;
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Token non valido';
+        END IF;
+        IF EXISTS (SELECT 1 FROM token_inviti WHERE token = p_token AND usato = TRUE) THEN
+            RAISE EXCEPTION 'Token gia'' utilizzato';
+        END IF;
+        RAISE EXCEPTION 'Token scaduto';
+    END IF;
+
+    -- Se esiste gia' un collegamento APERTO con questo commercialista lo si riusa
+    -- senza toccarne lo stato: il token non promuove e non retrocede nulla.
+    SELECT id, stato INTO v_collegamento_id, v_stato
+    FROM collegamenti_commercialista
+    WHERE commercialista_id = p_commercialista_id
+      AND user_id = v_user_id
+      AND stato IN ('in_attesa','attiva','sospesa')
+    FOR UPDATE;
+
+    IF v_collegamento_id IS NOT NULL THEN
+        RETURN v_collegamento_id;
+    END IF;
+
+    -- Nessun collegamento aperto: nasce una richiesta nuova. Le righe terminali
+    -- (revocata / rifiutata / scaduta) restano dove sono, come storico.
+    INSERT INTO collegamenti_commercialista
+        (commercialista_id, user_id, stato, richiesto_da, data_richiesta)
+    VALUES
+        (p_commercialista_id, v_user_id, 'in_attesa', 'commercialista', NOW())
+    RETURNING id INTO v_collegamento_id;
 
     RETURN v_collegamento_id;
 END;
@@ -185,6 +222,13 @@ $$ LANGUAGE plpgsql;
 
 -- get_commercialista_clients_summary: filtra su stato invece che su attivo,
 -- e restituisce il collegamento (serve al frontend per chat e ambito).
+--
+-- Due regole che la prima versione violava:
+--  1. un collegamento SOSPESO compare ancora nell'elenco (il commercialista deve
+--     capire perche' non vede piu' nulla) ma NON espone alcun dato contabile:
+--     niente email, niente saldo, niente conteggi, niente date di movimento;
+--  2. quando il collegamento e' attivo, i totali rispettano l'AMBITO accettato
+--     dal cliente: solo i conti ammessi e solo la finestra temporale concordata.
 DROP FUNCTION IF EXISTS get_commercialista_clients_summary(INTEGER);
 CREATE FUNCTION get_commercialista_clients_summary(p_commercialista_id INTEGER)
 RETURNS TABLE (
@@ -202,58 +246,85 @@ RETURNS TABLE (
 BEGIN
     RETURN QUERY
     WITH collegamenti AS (
-        SELECT col.id, col.user_id, col.stato
+        SELECT col.id, col.user_id, col.stato,
+               col.ambito_dal, col.ambito_al, col.conti_ammessi
         FROM collegamenti_commercialista col
         WHERE col.commercialista_id = p_commercialista_id
           AND col.stato IN ('attiva','sospesa')
     ),
-    user_accounts AS (
+    -- Solo i collegamenti attivi producono dati. La sospensione non filtra le
+    -- colonne a valle: toglie proprio le righe dalla sorgente degli aggregati.
+    attivi AS (
+        SELECT * FROM collegamenti c WHERE c.stato = 'attiva'
+    ),
+    conti_ammessi_cte AS (
         SELECT
-            cc.user_id,
+            a.id AS collegamento_id,
+            a.user_id,
+            a.ambito_dal,
+            a.ambito_al,
             cc.id AS conto_id,
             cc.saldo_iniziale,
-            cc.updated_at AS conto_updated_at,
-            COALESCE((
-                SELECT SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE -m.importo END)
-                FROM movimenti m WHERE m.conto_id = cc.id
-            ), 0) AS saldo_movimenti
-        FROM collegamenti c
-        JOIN conti_correnti cc ON cc.user_id = c.user_id
+            cc.updated_at AS conto_updated_at
+        FROM attivi a
+        JOIN conti_correnti cc ON cc.user_id = a.user_id
         WHERE cc.attivo = TRUE
+          AND (a.conti_ammessi IS NULL OR cc.id = ANY(a.conti_ammessi))
     ),
-    user_movements AS (
+    movimenti_ammessi AS (
         SELECT
-            cc.user_id,
-            COUNT(m.id) AS num_movimenti,
-            MAX(m.data)::TIMESTAMP AS ultimo_mov,
-            MAX(m.created_at) AS ultimo_movimento_created
-        FROM collegamenti c
-        JOIN conti_correnti cc ON cc.user_id = c.user_id
-        LEFT JOIN movimenti m ON m.conto_id = cc.id
-        WHERE cc.attivo = TRUE
-        GROUP BY cc.user_id
+            ca.collegamento_id,
+            ca.conto_id,
+            m.id AS movimento_id,
+            m.tipo,
+            m.importo,
+            m.data,
+            m.created_at
+        FROM conti_ammessi_cte ca
+        JOIN movimenti m ON m.conto_id = ca.conto_id
+        WHERE (ca.ambito_dal IS NULL OR m.data >= ca.ambito_dal)
+          AND (ca.ambito_al  IS NULL OR m.data <= ca.ambito_al)
+    ),
+    saldi AS (
+        SELECT
+            ca.collegamento_id,
+            SUM(ca.saldo_iniziale) AS saldo_iniziale_totale,
+            COUNT(DISTINCT ca.conto_id)::INTEGER AS numero_conti,
+            MAX(ca.conto_updated_at) AS conto_updated_at
+        FROM conti_ammessi_cte ca
+        GROUP BY ca.collegamento_id
+    ),
+    aggregati AS (
+        SELECT
+            ma.collegamento_id,
+            COALESCE(SUM(CASE WHEN ma.tipo = 'Entrata' THEN ma.importo ELSE -ma.importo END), 0) AS saldo_movimenti,
+            COUNT(ma.movimento_id)::INTEGER AS numero_movimenti,
+            MAX(ma.data)::TIMESTAMP AS ultimo_movimento,
+            MAX(ma.created_at) AS ultimo_movimento_created
+        FROM movimenti_ammessi ma
+        GROUP BY ma.collegamento_id
     )
     SELECT
         u.id,
         u.username,
-        u.email,
+        CASE WHEN c.stato = 'attiva' THEN u.email ELSE NULL END::VARCHAR,
         c.id,
         c.stato,
-        COALESCE(SUM(ua.saldo_iniziale + ua.saldo_movimenti), 0) AS saldo_totale,
-        COUNT(DISTINCT ua.conto_id)::INTEGER AS numero_conti,
-        COALESCE(um.num_movimenti, 0)::INTEGER AS numero_movimenti,
-        um.ultimo_mov AS ultimo_movimento,
-        GREATEST(
-            u.updated_at,
-            COALESCE(MAX(ua.conto_updated_at), u.updated_at),
-            COALESCE(um.ultimo_movimento_created, u.updated_at)
-        ) AS ultima_modifica
+        CASE WHEN c.stato = 'attiva'
+             THEN COALESCE(s.saldo_iniziale_totale, 0) + COALESCE(ag.saldo_movimenti, 0)
+             ELSE NULL END::DECIMAL,
+        CASE WHEN c.stato = 'attiva' THEN COALESCE(s.numero_conti, 0) ELSE NULL END::INTEGER,
+        CASE WHEN c.stato = 'attiva' THEN COALESCE(ag.numero_movimenti, 0) ELSE NULL END::INTEGER,
+        CASE WHEN c.stato = 'attiva' THEN ag.ultimo_movimento ELSE NULL END,
+        CASE WHEN c.stato = 'attiva'
+             THEN GREATEST(u.updated_at,
+                           COALESCE(s.conto_updated_at, u.updated_at),
+                           COALESCE(ag.ultimo_movimento_created, u.updated_at))
+             ELSE NULL END
     FROM collegamenti c
     JOIN utenti u ON u.id = c.user_id
-    LEFT JOIN user_accounts ua ON ua.user_id = u.id
-    LEFT JOIN user_movements um ON um.user_id = u.id
-    GROUP BY u.id, u.username, u.email, c.id, c.stato, u.updated_at,
-             um.num_movimenti, um.ultimo_mov, um.ultimo_movimento_created;
+    LEFT JOIN saldi s     ON s.collegamento_id  = c.id
+    LEFT JOIN aggregati ag ON ag.collegamento_id = c.id;
 END;
 $$ LANGUAGE plpgsql;
 

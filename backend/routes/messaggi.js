@@ -4,6 +4,7 @@ const express = require('express');
 const { query, queryOne } = require('../config/database');
 const { authEither } = require('../middleware/auth');
 const { MOTIVO_PER_STATO } = require('../middleware/collegamento');
+const { validate, validateQuery, schemas } = require('../middleware/validation');
 
 const router = express.Router();
 
@@ -45,9 +46,13 @@ const getCollegamentoId = async (req, res, next) => {
         return res.status(400).json({ error: 'userId richiesto per commercialista' });
       }
 
+      // Una coppia puo' avere piu' righe (storico dei cicli chiusi): la chat vive
+      // su quella aperta, non sulla prima che il piano di esecuzione restituisce.
       collegamento = await queryOne(
         `SELECT id, stato FROM collegamenti_commercialista
-         WHERE commercialista_id = $1 AND user_id = $2`,
+         WHERE commercialista_id = $1 AND user_id = $2
+         ORDER BY (stato IN ('in_attesa','attiva','sospesa')) DESC, id DESC
+         LIMIT 1`,
         [req.commercialista.id, userId]
       );
 
@@ -80,7 +85,7 @@ const getCollegamentoId = async (req, res, next) => {
 // ==============================================================================
 // GET /api/messaggi - Get messages for current connection
 // ==============================================================================
-router.get('/', authEither, getCollegamentoId, async (req, res) => {
+router.get('/', authEither, validateQuery(schemas.messaggiQuery), getCollegamentoId, async (req, res) => {
   try {
     const { limit = 50, offset = 0 } = req.query;
 
@@ -119,13 +124,9 @@ router.get('/', authEither, getCollegamentoId, async (req, res) => {
 // ==============================================================================
 // POST /api/messaggi - Send new message
 // ==============================================================================
-router.post('/', authEither, getCollegamentoId, async (req, res) => {
+router.post('/', authEither, validateQuery(schemas.messaggiQuery), validate(schemas.messaggioNuovo), getCollegamentoId, async (req, res) => {
   try {
     const { messaggio } = req.body;
-
-    if (!messaggio || messaggio.trim().length === 0) {
-      return res.status(400).json({ error: 'Messaggio richiesto' });
-    }
 
     const result = await queryOne(
       `INSERT INTO messaggi_commercialista

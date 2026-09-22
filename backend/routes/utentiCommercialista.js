@@ -22,11 +22,16 @@ const TRANSIZIONI_UTENTE = {
   sospesa: ['attiva', 'revocata']
 };
 
-function transizioneAmmessa(da, a) {
-  return (TRANSIZIONI_UTENTE[da] || []).includes(a);
-}
+// Origini ammesse per ciascuno stato di arrivo, derivate dalla tabella sopra:
+// una sola fonte di verita', invece di due elenchi da tenere allineati a mano.
+const ORIGINI = Object.entries(TRANSIZIONI_UTENTE).reduce((acc, [da, arrivi]) => {
+  arrivi.forEach(a => { (acc[a] = acc[a] || []).push(da); });
+  return acc;
+}, {});
 
 // Carica il collegamento verificando che appartenga all'utente autenticato.
+// Serve per i dati di contorno (nome dello studio) e per spiegare un rifiuto:
+// NON e' il controllo su cui poggia una transizione, che deve essere atomica.
 async function caricaCollegamento(userId, collegamentoId) {
   const id = parseInt(collegamentoId, 10);
   if (!Number.isInteger(id) || id <= 0) return null;
@@ -37,6 +42,38 @@ async function caricaCollegamento(userId, collegamentoId) {
      WHERE c.id = $1 AND c.user_id = $2`,
     [id, userId]
   );
+}
+
+/**
+ * Esegue una transizione di stato in un solo comando.
+ *
+ * Leggere lo stato e poi aggiornarlo in due passi lascia una finestra in cui due
+ * richieste concorrenti superano entrambe il controllo: "rifiuta" e "accetta"
+ * lanciate insieme rispondevano entrambe 200 e lo stato finale dipendeva
+ * dall'ordine di arrivo, riaprendo uno stato terminale. Qui lo stato di partenza
+ * e' un predicato dell'UPDATE: la seconda richiesta non trova righe.
+ *
+ * @returns {{esito:'ok'|'non_trovato'|'conflitto', collegamento?:object, stato?:string}}
+ */
+async function transizioneAtomica(userId, collegamentoId, statiOrigine, setSql, setParams = []) {
+  const id = parseInt(collegamentoId, 10);
+  if (!Number.isInteger(id) || id <= 0) return { esito: 'non_trovato' };
+
+  const aggiornato = await queryOne(
+    `UPDATE collegamenti_commercialista
+     SET ${setSql}
+     WHERE id = $1 AND user_id = $2 AND stato = ANY($3::varchar[])
+     RETURNING id, stato, data_accettazione, data_revoca,
+               ambito_dal, ambito_al, conti_ammessi`,
+    [id, userId, statiOrigine, ...setParams]
+  );
+
+  if (aggiornato) return { esito: 'ok', collegamento: aggiornato };
+
+  // Zero righe: o il collegamento non e' dell'utente, o era gia' in un altro stato.
+  const attuale = await caricaCollegamento(userId, id);
+  if (!attuale) return { esito: 'non_trovato' };
+  return { esito: 'conflitto', stato: attuale.stato };
 }
 
 // ==============================================================================
@@ -81,8 +118,15 @@ router.get('/token-inviti', auth, async (req, res) => {
               (col.stato = 'attiva') AS collegamento_attivo
        FROM token_inviti t
        LEFT JOIN commercialisti c ON c.id = t.commercialista_id
-       LEFT JOIN collegamenti_commercialista col
-              ON col.commercialista_id = t.commercialista_id AND col.user_id = t.user_id
+       -- LATERAL con LIMIT 1: dopo la 002 una coppia puo' avere piu' collegamenti
+       -- (storico), e un JOIN semplice moltiplicherebbe le righe del token.
+       LEFT JOIN LATERAL (
+         SELECT cc.stato
+         FROM collegamenti_commercialista cc
+         WHERE cc.commercialista_id = t.commercialista_id AND cc.user_id = t.user_id
+         ORDER BY (cc.stato IN ('in_attesa','attiva','sospesa')) DESC, cc.id DESC
+         LIMIT 1
+       ) col ON TRUE
        WHERE t.user_id = $1
        ORDER BY t.created_at DESC`,
       [req.user.id]
@@ -108,8 +152,13 @@ router.delete('/token-inviti/:tokenId', auth, async (req, res) => {
     const token = await queryOne(
       `SELECT t.id, t.usato, t.commercialista_id, col.stato AS collegamento_stato
        FROM token_inviti t
-       LEFT JOIN collegamenti_commercialista col
-              ON col.commercialista_id = t.commercialista_id AND col.user_id = t.user_id
+       LEFT JOIN LATERAL (
+         SELECT cc.stato
+         FROM collegamenti_commercialista cc
+         WHERE cc.commercialista_id = t.commercialista_id AND cc.user_id = t.user_id
+         ORDER BY (cc.stato IN ('in_attesa','attiva','sospesa')) DESC, cc.id DESC
+         LIMIT 1
+       ) col ON TRUE
        WHERE t.id = $1 AND t.user_id = $2`,
       [tokenId, req.user.id]
     );
@@ -175,12 +224,6 @@ router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccet
     if (!collegamento) {
       return res.status(404).json({ error: 'Collegamento non trovato' });
     }
-    if (!transizioneAmmessa(collegamento.stato, 'attiva')) {
-      return res.status(409).json({
-        error: `Un collegamento in stato "${collegamento.stato}" non puo' essere accettato`,
-        stato: collegamento.stato
-      });
-    }
 
     const { ambito_dal = null, ambito_al = null, conti_ammessi = null } = req.body;
 
@@ -196,22 +239,30 @@ router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccet
       }
     }
 
-    const aggiornato = await queryOne(
-      `UPDATE collegamenti_commercialista
-       SET stato = 'attiva',
-           data_accettazione = NOW(),
-           data_revoca = NULL, revocato_da = NULL, motivo_revoca = NULL,
-           ambito_dal = $3, ambito_al = $4, conti_ammessi = $5
-       WHERE id = $1 AND user_id = $2
-       RETURNING id, stato, data_accettazione, ambito_dal, ambito_al, conti_ammessi`,
-      [collegamento.id, req.user.id, ambito_dal, ambito_al,
+    const esito = await transizioneAtomica(
+      req.user.id, req.params.id, ORIGINI.attiva,
+      `stato = 'attiva',
+       data_accettazione = NOW(),
+       data_revoca = NULL, revocato_da = NULL, motivo_revoca = NULL,
+       ambito_dal = $4, ambito_al = $5, conti_ammessi = $6`,
+      [ambito_dal, ambito_al,
        Array.isArray(conti_ammessi) && conti_ammessi.length > 0 ? conti_ammessi : null]
     );
+
+    if (esito.esito === 'non_trovato') {
+      return res.status(404).json({ error: 'Collegamento non trovato' });
+    }
+    if (esito.esito === 'conflitto') {
+      return res.status(409).json({
+        error: `Un collegamento in stato "${esito.stato}" non puo' essere accettato`,
+        stato: esito.stato
+      });
+    }
 
     res.json({
       success: true,
       message: `Collegamento con ${collegamento.ragione_sociale || collegamento.commercialista_username} attivato`,
-      collegamento: aggiornato
+      collegamento: esito.collegamento
     });
   } catch (error) {
     console.error('Accetta collegamento error:', error.message);
@@ -224,26 +275,23 @@ router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccet
 // ==============================================================================
 router.put('/collegamenti/:id/rifiuta', auth, validate(schemas.collegamentoMotivo), async (req, res) => {
   try {
-    const collegamento = await caricaCollegamento(req.user.id, req.params.id);
-    if (!collegamento) {
+    const esito = await transizioneAtomica(
+      req.user.id, req.params.id, ORIGINI.rifiutata,
+      `stato = 'rifiutata', data_revoca = NOW(), revocato_da = 'user', motivo_revoca = $4`,
+      [req.body.motivo || null]
+    );
+
+    if (esito.esito === 'non_trovato') {
       return res.status(404).json({ error: 'Collegamento non trovato' });
     }
-    if (!transizioneAmmessa(collegamento.stato, 'rifiutata')) {
+    if (esito.esito === 'conflitto') {
       return res.status(409).json({
-        error: `Un collegamento in stato "${collegamento.stato}" non puo' essere rifiutato`,
-        stato: collegamento.stato
+        error: `Un collegamento in stato "${esito.stato}" non puo' essere rifiutato`,
+        stato: esito.stato
       });
     }
 
-    const aggiornato = await queryOne(
-      `UPDATE collegamenti_commercialista
-       SET stato = 'rifiutata', data_revoca = NOW(), revocato_da = 'user', motivo_revoca = $3
-       WHERE id = $1 AND user_id = $2
-       RETURNING id, stato, data_revoca`,
-      [collegamento.id, req.user.id, req.body.motivo || null]
-    );
-
-    res.json({ success: true, message: 'Richiesta rifiutata', collegamento: aggiornato });
+    res.json({ success: true, message: 'Richiesta rifiutata', collegamento: esito.collegamento });
   } catch (error) {
     console.error('Rifiuta collegamento error:', error.message);
     res.status(500).json({ error: 'Errore nel rifiuto della richiesta' });
@@ -255,29 +303,26 @@ router.put('/collegamenti/:id/rifiuta', auth, validate(schemas.collegamentoMotiv
 // ==============================================================================
 router.put('/collegamenti/:id/sospendi', auth, validate(schemas.collegamentoMotivo), async (req, res) => {
   try {
-    const collegamento = await caricaCollegamento(req.user.id, req.params.id);
-    if (!collegamento) {
+    const esito = await transizioneAtomica(
+      req.user.id, req.params.id, ORIGINI.sospesa,
+      `stato = 'sospesa', motivo_revoca = $4`,
+      [req.body.motivo || null]
+    );
+
+    if (esito.esito === 'non_trovato') {
       return res.status(404).json({ error: 'Collegamento non trovato' });
     }
-    if (!transizioneAmmessa(collegamento.stato, 'sospesa')) {
+    if (esito.esito === 'conflitto') {
       return res.status(409).json({
-        error: `Un collegamento in stato "${collegamento.stato}" non puo' essere sospeso`,
-        stato: collegamento.stato
+        error: `Un collegamento in stato "${esito.stato}" non puo' essere sospeso`,
+        stato: esito.stato
       });
     }
-
-    const aggiornato = await queryOne(
-      `UPDATE collegamenti_commercialista
-       SET stato = 'sospesa', motivo_revoca = $3
-       WHERE id = $1 AND user_id = $2
-       RETURNING id, stato`,
-      [collegamento.id, req.user.id, req.body.motivo || null]
-    );
 
     res.json({
       success: true,
       message: 'Collegamento sospeso. Il commercialista non vede piu\' i tuoi dati finche\' non lo riattivi.',
-      collegamento: aggiornato
+      collegamento: esito.collegamento
     });
   } catch (error) {
     console.error('Sospendi collegamento error:', error.message);
@@ -290,26 +335,22 @@ router.put('/collegamenti/:id/sospendi', auth, validate(schemas.collegamentoMoti
 // ==============================================================================
 router.put('/collegamenti/:id/riattiva', auth, async (req, res) => {
   try {
-    const collegamento = await caricaCollegamento(req.user.id, req.params.id);
-    if (!collegamento) {
+    const esito = await transizioneAtomica(
+      req.user.id, req.params.id, ['sospesa'],
+      `stato = 'attiva', motivo_revoca = NULL`
+    );
+
+    if (esito.esito === 'non_trovato') {
       return res.status(404).json({ error: 'Collegamento non trovato' });
     }
-    if (collegamento.stato !== 'sospesa') {
+    if (esito.esito === 'conflitto') {
       return res.status(409).json({
-        error: `Un collegamento in stato "${collegamento.stato}" non puo' essere riattivato`,
-        stato: collegamento.stato
+        error: `Un collegamento in stato "${esito.stato}" non puo' essere riattivato`,
+        stato: esito.stato
       });
     }
 
-    const aggiornato = await queryOne(
-      `UPDATE collegamenti_commercialista
-       SET stato = 'attiva', motivo_revoca = NULL
-       WHERE id = $1 AND user_id = $2
-       RETURNING id, stato`,
-      [collegamento.id, req.user.id]
-    );
-
-    res.json({ success: true, message: 'Collegamento riattivato', collegamento: aggiornato });
+    res.json({ success: true, message: 'Collegamento riattivato', collegamento: esito.collegamento });
   } catch (error) {
     console.error('Riattiva collegamento error:', error.message);
     res.status(500).json({ error: 'Errore nella riattivazione del collegamento' });
@@ -321,26 +362,23 @@ router.put('/collegamenti/:id/riattiva', auth, async (req, res) => {
 // ==============================================================================
 router.delete('/collegamenti/:id', auth, validate(schemas.collegamentoMotivo), async (req, res) => {
   try {
-    const collegamento = await caricaCollegamento(req.user.id, req.params.id);
-    if (!collegamento) {
+    const esito = await transizioneAtomica(
+      req.user.id, req.params.id, ORIGINI.revocata,
+      `stato = 'revocata', data_revoca = NOW(), revocato_da = 'user', motivo_revoca = $4`,
+      [req.body?.motivo || null]
+    );
+
+    if (esito.esito === 'non_trovato') {
       return res.status(404).json({ error: 'Collegamento non trovato' });
     }
-    if (!transizioneAmmessa(collegamento.stato, 'revocata')) {
+    if (esito.esito === 'conflitto') {
       return res.status(409).json({
-        error: `Un collegamento in stato "${collegamento.stato}" e' gia' chiuso`,
-        stato: collegamento.stato
+        error: `Un collegamento in stato "${esito.stato}" e' gia' chiuso`,
+        stato: esito.stato
       });
     }
 
-    const aggiornato = await queryOne(
-      `UPDATE collegamenti_commercialista
-       SET stato = 'revocata', data_revoca = NOW(), revocato_da = 'user', motivo_revoca = $3
-       WHERE id = $1 AND user_id = $2
-       RETURNING id, stato, data_revoca`,
-      [collegamento.id, req.user.id, req.body?.motivo || null]
-    );
-
-    res.json({ success: true, message: 'Collegamento revocato', collegamento: aggiornato });
+    res.json({ success: true, message: 'Collegamento revocato', collegamento: esito.collegamento });
   } catch (error) {
     console.error('Revoca collegamento error:', error.message);
     res.status(500).json({ error: 'Errore nella revoca del collegamento' });

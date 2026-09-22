@@ -201,6 +201,13 @@ ricostruire cosa è successo.
 `sospesa` copre il caso reale che oggi manca: *"non voglio che veda nulla fino a che non ho
 sistemato marzo"*, senza dover rompere il collegamento e rifare tutto il giro dell'invito.
 
+**Gli stati terminali non si riaprono.** La `UNIQUE(commercialista_id, user_id)` dello schema 001
+costringeva a riusare la stessa riga per sempre: un token nuovo riportava a `in_attesa` anche un
+collegamento revocato, cancellando lo stato terminale. Al suo posto un indice unico **parziale** sui
+soli stati aperti (`in_attesa`, `attiva`, `sospesa`): una coppia puo' avere un solo collegamento
+aperto alla volta, e ogni ciclo chiuso resta come riga di storico. Riprendere a collaborare con lo
+stesso studio apre una riga nuova, che parte da capo — richiesta, consenso, ambito.
+
 ### 3.4 Ambito di accesso
 
 Sul collegamento, opzionali e impostati dall'utente in fase di accettazione:

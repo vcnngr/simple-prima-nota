@@ -53,11 +53,17 @@ function requireCollegamento(tipoAccesso) {
         return res.status(400).json({ error: 'Identificativo cliente mancante o non valido' });
       }
 
+      // Dopo la migration 002 una coppia (commercialista, cliente) puo' avere piu'
+      // righe: al massimo una aperta, piu' lo storico dei cicli chiusi. Si prende
+      // sempre quella aperta; se non c'e', la piu' recente, per poterne riferire
+      // il motivo del diniego.
       const collegamento = await queryOne(
         `SELECT id, stato, ambito_dal, ambito_al, conti_ammessi,
                 data_accettazione, data_richiesta
          FROM collegamenti_commercialista
-         WHERE commercialista_id = $1 AND user_id = $2`,
+         WHERE commercialista_id = $1 AND user_id = $2
+         ORDER BY (stato IN ('in_attesa','attiva','sospesa')) DESC, id DESC
+         LIMIT 1`,
         [req.commercialista.id, userId]
       );
 
@@ -103,9 +109,61 @@ async function collegamentoDiUtente(userId, collegamentoId) {
   );
 }
 
+
+/**
+ * Traduce l'ambito accettato dal cliente in clausole SQL.
+ *
+ * L'ambito non e' un'etichetta: se non entra nelle query, il cliente crede di
+ * aver concesso due conti su cinque e il commercialista ne vede cinque. Questa
+ * funzione e' l'unico posto in cui l'ambito diventa un filtro reale, e va usata
+ * da OGNI query che legge dati contabili del cliente.
+ *
+ * @param {object} ambito        req.ambito ({ dal, al, conti })
+ * @param {object} alias         { conto: 'cc.id', data: 'm.data' }
+ * @param {number} paramIndex    primo segnaposto libero ($n)
+ * @returns {{ sql: string, params: any[], paramIndex: number }}
+ */
+function clausolaAmbito(ambito, alias, paramIndex) {
+  const params = [];
+  let sql = '';
+  let i = paramIndex;
+
+  if (!ambito) return { sql, params, paramIndex: i };
+
+  if (alias.conto && Array.isArray(ambito.conti) && ambito.conti.length > 0) {
+    sql += ` AND ${alias.conto} = ANY($${i}::int[])`;
+    params.push(ambito.conti);
+    i++;
+  }
+  if (alias.data && ambito.dal) {
+    sql += ` AND ${alias.data} >= $${i}`;
+    params.push(ambito.dal);
+    i++;
+  }
+  if (alias.data && ambito.al) {
+    sql += ` AND ${alias.data} <= $${i}`;
+    params.push(ambito.al);
+    i++;
+  }
+
+  return { sql, params, paramIndex: i };
+}
+
+/**
+ * Vero se il conto indicato rientra nell'ambito. Serve ai filtri che arrivano
+ * dal client (`conto_id` di un export): un conto fuori ambito non va ignorato,
+ * va rifiutato.
+ */
+function contoNellAmbito(ambito, contoId) {
+  if (!ambito || !Array.isArray(ambito.conti) || ambito.conti.length === 0) return true;
+  return ambito.conti.includes(Number(contoId));
+}
+
 module.exports = {
   requireCollegamento,
   collegamentoDiUtente,
+  clausolaAmbito,
+  contoNellAmbito,
   STATI_CON_ACCESSO,
   MOTIVO_PER_STATO
 };

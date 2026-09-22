@@ -4,7 +4,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, queryOne } = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { requireCollegamento } = require('../middleware/collegamento');
+const { requireCollegamento, clausolaAmbito, contoNellAmbito } = require('../middleware/collegamento');
+const { validate, validateQuery, schemas } = require('../middleware/validation');
 
 const router = express.Router();
 
@@ -209,13 +210,9 @@ router.get('/dashboard', authCommercialista, async (req, res) => {
 // ==============================================================================
 // POST /api/commercialisti/collega-cliente - Connect client using invitation token
 // ==============================================================================
-router.post('/collega-cliente', authCommercialista, async (req, res) => {
+router.post('/collega-cliente', authCommercialista, validate(schemas.collegaCliente), async (req, res) => {
   try {
     const { token } = req.body;
-
-    if (!token) {
-      return res.status(400).json({ error: 'Token richiesto' });
-    }
 
     // La funzione SQL consuma il token e apre una richiesta in stato `in_attesa`:
     // il token non da' accesso ai dati, da' il diritto di bussare.
@@ -257,7 +254,7 @@ router.post('/collega-cliente', authCommercialista, async (req, res) => {
 // ==============================================================================
 // GET /api/commercialisti/clienti/:userId - Get client details
 // ==============================================================================
-router.get('/clienti/:userId', authCommercialista, requireCollegamento('dettaglio_cliente'), async (req, res) => {
+router.get('/clienti/:userId', authCommercialista, requireCollegamento('dettaglio_cliente'), validateQuery(schemas.paginazione), async (req, res) => {
   try {
     const userId = req.clienteId;
 
@@ -267,7 +264,16 @@ router.get('/clienti/:userId', authCommercialista, requireCollegamento('dettagli
       [userId]
     );
 
-    // Get client accounts with calculated balance
+    // L'ambito accettato dal cliente entra QUI, nelle query: fuori di qui e' una
+    // dichiarazione d'intenti che il database non conosce.
+    const ambitoConti = clausolaAmbito(req.ambito, { conto: 'cc.id' }, 2);
+    const ambitoDate = clausolaAmbito(req.ambito, { data: 'm.data' }, 2 + ambitoConti.params.length);
+
+    // Il saldo del conto si ferma anch'esso alla finestra concordata: mostrare il
+    // saldo pieno significherebbe rivelare i movimenti che l'ambito esclude.
+    const saldoDate = clausolaAmbito(req.ambito, { data: 'm.data' }, 2);
+    const filtroConti = clausolaAmbito(req.ambito, { conto: 'cc.id' }, saldoDate.paramIndex);
+
     const conti = await query(
       `SELECT
         cc.id,
@@ -282,12 +288,12 @@ router.get('/clienti/:userId', authCommercialista, requireCollegamento('dettagli
             ELSE -m.importo
           END)
           FROM movimenti m
-          WHERE m.conto_id = cc.id
+          WHERE m.conto_id = cc.id${saldoDate.sql}
         ), 0) as saldo_corrente
        FROM conti_correnti cc
-       WHERE cc.user_id = $1
+       WHERE cc.user_id = $1${filtroConti.sql}
        ORDER BY cc.attivo DESC, cc.nome_banca`,
-      [userId]
+      [userId, ...saldoDate.params, ...filtroConti.params]
     );
 
     // Get movements with pagination
@@ -295,31 +301,42 @@ router.get('/clienti/:userId', authCommercialista, requireCollegamento('dettagli
     const limit = parseInt(req.query.limit) || 50;
     const offset = (page - 1) * limit;
 
+    const filtroMovimenti = ambitoConti.sql + ambitoDate.sql;
+    const paramsMovimenti = [...ambitoConti.params, ...ambitoDate.params];
+
     // Count total movements
     const totalCount = await queryOne(
       `SELECT COUNT(*) as count
        FROM movimenti m
        JOIN conti_correnti cc ON cc.id = m.conto_id
-       WHERE cc.user_id = $1`,
-      [userId]
+       WHERE cc.user_id = $1${filtroMovimenti}`,
+      [userId, ...paramsMovimenti]
     );
     const total = parseInt(totalCount.count);
     const totalPages = Math.ceil(total / limit);
 
     // Get paginated movements
+    const iLimit = 2 + paramsMovimenti.length;
     const movimenti = await query(
       `SELECT m.*, cc.nome_banca
        FROM movimenti m
        JOIN conti_correnti cc ON cc.id = m.conto_id
-       WHERE cc.user_id = $1
+       WHERE cc.user_id = $1${filtroMovimenti}
        ORDER BY m.data DESC
-       LIMIT $2 OFFSET $3`,
-      [userId, limit, offset]
+       LIMIT $${iLimit} OFFSET $${iLimit + 1}`,
+      [userId, ...paramsMovimenti, limit, offset]
     );
 
     res.json({
       success: true,
       cliente,
+      // L'ambito viaggia nella risposta: il commercialista deve sapere che sta
+      // guardando una fetta, non il tutto.
+      ambito: {
+        dal: req.ambito?.dal || null,
+        al: req.ambito?.al || null,
+        conti: req.ambito?.conti || null
+      },
       conti: conti.rows,
       movimenti: movimenti.rows,
       pagination: {
@@ -361,7 +378,7 @@ router.delete('/clienti/:userId', authCommercialista, requireCollegamento('detta
 // ==============================================================================
 // POST /api/commercialisti/clienti/:userId/export - Generate export for client
 // ==============================================================================
-router.post('/clienti/:userId/export', authCommercialista, requireCollegamento('export'), async (req, res) => {
+router.post('/clienti/:userId/export', authCommercialista, requireCollegamento('export'), validate(schemas.exportCommercialista), async (req, res) => {
   try {
     const userId = req.clienteId;
     const config = req.body;
@@ -447,6 +464,17 @@ router.post('/clienti/:userId/export', authCommercialista, requireCollegamento('
     const params = [userId];
     let paramIndex = 2;
 
+    // L'ambito accettato dal cliente vincola l'export prima di ogni filtro scelto
+    // dal commercialista: e' il perimetro, non una preferenza.
+    const ambitoExport = clausolaAmbito(
+      req.ambito,
+      { conto: 'm.conto_id', data: 'm.data' },
+      paramIndex
+    );
+    sqlQuery += ambitoExport.sql;
+    params.push(...ambitoExport.params);
+    paramIndex = ambitoExport.paramIndex;
+
     // Add filters
     if (exportConfig.filters?.tipo) {
       sqlQuery += ` AND m.tipo = $${paramIndex}`;
@@ -455,6 +483,13 @@ router.post('/clienti/:userId/export', authCommercialista, requireCollegamento('
     }
 
     if (config.conto_id && config.conto_id !== '') {
+      // Un conto fuori ambito non si ignora in silenzio: si rifiuta, altrimenti
+      // l'export tornerebbe vuoto senza spiegare perche'.
+      if (!contoNellAmbito(req.ambito, config.conto_id)) {
+        return res.status(403).json({
+          error: 'Il conto richiesto non rientra nell\'ambito concesso dal cliente'
+        });
+      }
       sqlQuery += ` AND m.conto_id = $${paramIndex}`;
       params.push(parseInt(config.conto_id));
       paramIndex++;

@@ -147,7 +147,7 @@ const CommercialistaDashboardPage = () => {
                 <p className="text-sm text-gray-600 mb-1">Saldo Totale</p>
                 <p className="text-3xl font-bold text-gray-900">
                   {formatCurrency(
-                    clienti.reduce((sum, c) => sum + (parseFloat(c.saldo_totale) || 0), 0)
+                    clienti.reduce((sum, c) => sum + (c.stato === 'attiva' ? parseFloat(c.saldo_totale) || 0 : 0), 0)
                   )}
                 </p>
               </div>
@@ -231,8 +231,13 @@ const CommercialistaDashboardPage = () => {
                           <h3 className="text-lg font-semibold text-gray-900">
                             {cliente.username}
                           </h3>
-                          <p className="text-sm text-gray-600">{cliente.email}</p>
+                          <p className="text-sm text-gray-600">{cliente.email || '—'}</p>
                         </div>
+                        {cliente.stato === 'sospesa' && (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+                            Sospeso dal cliente
+                          </span>
+                        )}
                         {cliente.unread_messages > 0 && (
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-warning-100 text-warning-800">
                             {cliente.unread_messages} nuovi messaggi
@@ -240,6 +245,14 @@ const CommercialistaDashboardPage = () => {
                         )}
                       </div>
 
+                      {/* Un collegamento sospeso non porta dati: il riquadro lo dice,
+                          invece di mostrare zeri che sembrerebbero una contabilita' vuota. */}
+                      {cliente.stato !== 'attiva' ? (
+                      <p className="mt-4 text-sm text-gray-600">
+                        Il cliente ha sospeso il collegamento. I dati contabili non sono
+                        consultabili finche' non lo riattiva.
+                      </p>
+                      ) : (
                       <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
                           <p className="text-xs text-gray-600">Saldo Totale</p>
@@ -270,9 +283,10 @@ const CommercialistaDashboardPage = () => {
                           </p>
                         </div>
                       </div>
+                      )}
                     </div>
 
-                    <div className="mt-4 md:mt-0 md:ml-6 flex space-x-3">
+                    <div className={`mt-4 md:mt-0 md:ml-6 flex space-x-3 ${cliente.stato !== 'attiva' ? 'hidden' : ''}`}>
                       <Link to={`/commercialista/clienti/${cliente.user_id}`}>
                         <Button variant="outline" size="sm">
                           <Eye className="h-4 w-4 mr-2" />

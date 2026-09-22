@@ -230,6 +230,58 @@ const schemas = {
 
   tokenInvito: Joi.object({
     giorni_validita: Joi.number().integer().min(1).max(30).default(7)
+  }),
+
+  // ============================================================================
+  // SCHEMA PORTALE COMMERCIALISTI
+  // ============================================================================
+
+  // Il token e' generato da gen_random_bytes(32) in esadecimale: 64 caratteri.
+  collegaCliente: Joi.object({
+    token: Joi.string().trim().length(64).hex().required().messages({
+      'string.length': 'Token non valido',
+      'string.hex': 'Token non valido'
+    })
+  }),
+
+  paginazione: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(500).default(50)
+  }),
+
+  // Export lato commercialista. I campi personalizzati sono nomi di colonna:
+  // vanno confinati a una whitelist, non accettati come stringhe libere.
+  exportCommercialista: Joi.object({
+    export_type: Joi.string().valid('commercialista', 'semplice', 'entrate', 'uscite', 'custom').required(),
+    formato: Joi.string().valid('json', 'csv', 'xlsx', 'pdf').default('json'),
+    campi_personalizzati: Joi.array().items(
+      Joi.string().valid(
+        'data', 'descrizione', 'importo', 'tipo', 'note', 'categoria',
+        'anagrafica_nome', 'anagrafica_piva', 'anagrafica_email',
+        'tipologia_nome', 'conto_nome'
+      )
+    ).optional(),
+    conto_id: Joi.alternatives().try(Joi.number().integer().positive(), Joi.string().allow('')).optional(),
+    data_inizio: Joi.date().optional(),
+    data_fine: Joi.date().optional(),
+    tutto_storico: Joi.boolean().default(false),
+    ordina_per: Joi.string().valid('data', 'importo', 'anagrafica').default('data'),
+    ordine: Joi.string().valid('asc', 'desc').default('desc')
+  }),
+
+  messaggioNuovo: Joi.object({
+    messaggio: Joi.string().trim().min(1).max(5000).required().messages({
+      'string.empty': 'Messaggio richiesto',
+      'any.required': 'Messaggio richiesto'
+    }),
+    collegamento_id: Joi.number().integer().positive().optional()
+  }),
+
+  messaggiQuery: Joi.object({
+    userId: Joi.number().integer().positive().optional(),
+    collegamentoId: Joi.number().integer().positive().optional(),
+    limit: Joi.number().integer().min(1).max(200).default(50),
+    offset: Joi.number().integer().min(0).default(0)
   })
 };
 

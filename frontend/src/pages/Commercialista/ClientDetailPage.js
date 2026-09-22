@@ -100,7 +100,21 @@ const ClientDetailPage = () => {
     );
   }
 
-  const { cliente, conti = [], movimenti = [] } = clientData;
+  const { cliente, conti = [], movimenti = [], ambito = null } = clientData;
+
+  // L'ambito e' il perimetro che il cliente ha concesso. Va detto a schermo:
+  // un saldo parziale presentato come totale e' un errore di lettura garantito.
+  const ambitoLimitato = !!ambito && (ambito.dal || ambito.al || (ambito.conti && ambito.conti.length > 0));
+  const descriviAmbito = () => {
+    const parti = [];
+    if (ambito.conti && ambito.conti.length > 0) {
+      parti.push(ambito.conti.length === 1 ? 'un solo conto' : `${ambito.conti.length} conti su richiesta del cliente`);
+    }
+    if (ambito.dal && ambito.al) parti.push(`dal ${formatDate(ambito.dal)} al ${formatDate(ambito.al)}`);
+    else if (ambito.dal) parti.push(`dal ${formatDate(ambito.dal)}`);
+    else if (ambito.al) parti.push(`fino al ${formatDate(ambito.al)}`);
+    return parti.join(', ');
+  };
 
   // Calculate totals
   const saldoTotale = conti.reduce((sum, c) => sum + (parseFloat(c.saldo_corrente) || 0), 0);
@@ -116,6 +130,13 @@ const ClientDetailPage = () => {
         <ArrowLeft className="h-4 w-4 mr-2" />
         Torna alla Dashboard
       </Link>
+
+      {ambitoLimitato && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Stai vedendo una parte della contabilita': {descriviAmbito()}. Saldi e totali
+          in questa pagina sono calcolati su quella parte.
+        </div>
+      )}
 
       {/* Header */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
