@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 """Prove di concorrenza sull'invito irrigidito (blocco W2).
 
-Due generazioni simultanee dello stesso utente devono lasciare UN SOLO token
-attivo: il controllo nella funzione SQL non basta da solo, perche' due
-transazioni lo superano entrambe. Il vincolo che regge e' l'indice unico
-parziale su (user_id) WHERE stato='attivo'.
+Due prove.
+
+1. Due generazioni simultanee dello stesso utente devono lasciare UN SOLO token
+   attivo: il controllo nella funzione SQL non basta da solo, perche' due
+   transazioni lo superano entrambe. Il vincolo che regge e' l'indice unico
+   parziale su (user_id) WHERE stato='attivo'.
+
+2. Due richieste di collegamento simultanee sulla stessa coppia nuova devono
+   rispondere entrambe 202 e lasciare UN SOLO collegamento aperto. La 003
+   leggeva-e-poi-inseriva: su una coppia nuova non c'e' riga da bloccare, il
+   secondo INSERT sbatteva contro l'indice parziale della 002 e la route
+   restituiva 500. Oltre al guasto era un oracolo, perche' per un cliente
+   inesistente la risposta restava 202.
 
     API=http://localhost:3010/api DB_CONTAINER=pn-w2-db python3 scripts/smoke/w2-concorrenza.py
 """
@@ -90,6 +99,41 @@ corrisponde = psql(
     f"WHERE user_id={uid} AND stato='attivo' "
     f"AND token_hash = encode(sha256(convert_to('{vincente}','UTF8')),'hex');")
 eq('il token restituito e\' quello memorizzato come hash', '1', corrisponde)
+
+print()
+print('=== richieste concorrenti sulla stessa coppia nuova (P0-2) ===')
+# Un commercialista nuovo per ogni gara: il tetto e' 10 richieste all'ora per
+# commercialista e due gare dello stesso studio lo consumerebbero.
+GARE = 6
+esiti = []
+aperti = []
+for i in range(GARE):
+    g = f'{sfx}g{i}'
+    _, cc = call('POST', '/commercialisti/register', {
+        'username': 'w2rc' + g, 'email': f'w2rc{g}@t.it',
+        'password': 'Password123!', 'ragione_sociale': 'Studio Gara'})
+    ct = cc['token']
+    _, uu = call('POST', '/auth/register', {
+        'username': 'w2ru' + g, 'email': f'w2ru{g}@t.it', 'password': 'Password123!'})
+    _, pr = call('GET', '/auth/profile', token=uu['token'])
+    target = pr['id']
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fs = [ex.submit(call, 'POST', '/commercialisti/richieste',
+                        {'identificativo_cliente': 'w2ru' + g}, ct) for _ in range(2)]
+        risp = [f.result() for f in fs]
+
+    esiti.append(sorted(r[0] for r in risp))
+    aperti.append(psql(
+        "SELECT count(*) FROM collegamenti_commercialista "
+        f"WHERE user_id={target} AND stato IN ('in_attesa','attiva','sospesa');"))
+
+print(f'  esiti={esiti}')
+print(f'  collegamenti aperti per gara={aperti}')
+
+eq('nessuna richiesta concorrente fallisce', [[202, 202]] * GARE, esiti)
+eq('nessun 500 fra le risposte', False, any(500 in e for e in esiti))
+eq('resta un solo collegamento aperto per coppia', ['1'] * GARE, aperti)
 
 print()
 print('================================================')

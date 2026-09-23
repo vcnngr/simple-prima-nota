@@ -302,8 +302,13 @@ router.post('/richieste', authCommercialista, limiteRichieste, validate(schemas.
 
     return res.status(202).json(RISPOSTA_UNIFORME);
   } catch (error) {
+    // Anche in errore la risposta resta 202. Un codice diverso qui e' un oracolo
+    // come lo sarebbe un messaggio diverso: l'errore puo' dipendere dal fatto che
+    // il cliente esista (ed e' esattamente cosi' che la richiesta concorrente
+    // rispondeva 500 solo per i clienti veri). Il guasto resta nei log, dove
+    // serve a noi; al chiamante non diciamo niente che non avremmo detto comunque.
     console.error('Richiesta collegamento error:', error.message);
-    res.status(500).json({ error: 'Errore nell\'invio della richiesta' });
+    return res.status(202).json(RISPOSTA_UNIFORME);
   }
 });
 

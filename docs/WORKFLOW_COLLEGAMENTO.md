@@ -213,6 +213,26 @@ sono registrati, una prova alla volta. Sopra c'è un tetto di **10 richieste all
 commercialista** — indicizzato sull'id dello studio, non sull'IP, così due studi dietro lo stesso
 indirizzo non si consumano il budget a vicenda.
 
+**La risposta è `202` anche quando la richiesta fallisce.** Un codice diverso in caso di errore è
+un oracolo come lo sarebbe un messaggio diverso, perché l'errore può dipendere proprio dal fatto
+che il cliente esista: è così che due richieste concorrenti sulla stessa coppia nuova rispondevano
+`500` solo per i clienti veri. Il guasto resta nei log del backend, dove serve a noi; al chiamante
+non si dice niente che non gli si sarebbe detto comunque.
+
+**Omonimi di sola maiuscola.** `utenti` ha `UNIQUE` *case-sensitive* su `username` ed `email`:
+`Mario` e `mario` sono due account diversi. Risolvere l'identificativo con `lower(...)` e poi
+scegliere il primo per id apriva il collegamento sull'utente sbagliato. La regola è: vince la
+**corrispondenza esatta**; quella normalizzata si usa **solo se è una sola**; se resta ambigua si
+restituisce `NULL` e l'endpoint risponde `202` come sempre — non si indovina e non si rivela nulla.
+
+**Il token in chiaro non deve comparire nei log.** `usa_token_invito` solleva un'eccezione per ogni
+token rifiutato (revocato, già usato, scaduto) e l'helper del database stampava i parametri della
+query: il valore in chiaro finiva nei log e ci restava, rendendo inutile l'hash in tabella.
+`config/database.js` ora stampa solo la **forma** dei parametri (tipo e lunghezza).
+La sezione G di `scripts/smoke/w2-invito.sh` lo verifica leggendo i log veri, e **fallisce** se non
+le si indica dove sono (`BACKEND_LOG` o `BACKEND_CONTAINER`): una prova sui log che non legge i log
+passerebbe sempre.
+
 **Rischio residuo dichiarato**: un commercialista autenticato può comunque dedurre l'esistenza di
 un cliente guardando le proprie richieste pendenti (`GET /api/commercialisti/richieste`), che
 elencano solo quelle davvero create. Il tetto orario rende l'enumerazione lenta e visibile; la
@@ -370,7 +390,7 @@ Rispetta l'ordine ratificato dal titolare: **workflow → sistema → sicurezza 
 | # | Blocco | Contenuto | Prova richiesta |
 |---|---|---|---|
 | W1 ✅ | Macchina a stati | migration 002 + rollback, `requireCollegamento`, rimozione `utenti.commercialista_id` | migration applicata e annullata su DB di prova; curl su ogni transizione |
-| W2 ✅ | Invito irrigidito | hash, 1 token attivo, 7 gg, richiesta diretta + accettazione | `scripts/smoke/w2-invito.sh` 43/43 e `w2-concorrenza.py` 4/4; le stesse fixture falliscono su `8793b25` |
+| W2 ✅ | Invito irrigidito | hash, 1 token attivo, 7 gg, richiesta diretta + accettazione; migration 004: richieste idempotenti e risoluzione senza scelta arbitraria | `scripts/smoke/w2-invito.sh` 54/54 e `w2-concorrenza.py` 7/7; le fixture di W2 falliscono su `8793b25`, quelle dei tre P0 della revisione falliscono su `5b57ba0` |
 | W3 | Audit + ambito | `accessi_commercialista`, `ambito_*`, applicazione nel middleware | export fuori ambito → dati filtrati; riga di audit presente |
 | W4 | Notifiche | outbox + SMTP, sostituzione parziale del polling | email in coda su ogni evento; conteggio richieste per sessione ridotto |
 | W5 | Chat di lavoro | allegati, `movimento_id`, richieste di chiarimento | upload accettato/rifiutato per MIME e dimensione |

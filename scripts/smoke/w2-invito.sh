@@ -10,7 +10,15 @@
 #
 # Come lo smoke del W1 questo script ASSERISCE: esce 1 se anche un solo caso fallisce.
 #
-#   API=http://localhost:3010/api DB_CONTAINER=pn-w2-db ./scripts/smoke/w2-invito.sh
+#   API=http://localhost:3010/api DB_CONTAINER=pn-w2-db \
+#     BACKEND_LOG=/tmp/w2-backend.log ./scripts/smoke/w2-invito.sh
+#
+# La sezione G verifica che il token in chiaro non finisca nei log del backend e
+# ha quindi bisogno di leggerli: o BACKEND_LOG (file su cui il processo scrive
+# stdout+stderr) oppure BACKEND_CONTAINER (nome del container docker). Se non e'
+# indicato ne' l'uno ne' l'altro la sezione FALLISCE: una prova sui log che non
+# legge i log passerebbe sempre, ed e' proprio il modo in cui questo difetto era
+# sfuggito al giro precedente.
 #
 # ATTENZIONE: se si ricrea il database bisogna RIAVVIARE anche il backend. Il
 # contatore del rate limit sulle richieste sta in memoria ed e' indicizzato per
@@ -46,6 +54,15 @@ assert_http() {
 assert_contiene() {
   if grep -qF "$2" /tmp/w2body; then ok "$1"
   else ko "$1" "corpo contiene \"$2\"" "$(body)"; fi
+}
+
+# Log del backend: file oppure container. Vedi l'avvertenza in testa allo script.
+BACKEND_LOG="${BACKEND_LOG:-}"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-}"
+leggi_log() {
+  if [ -n "$BACKEND_LOG" ] && [ -f "$BACKEND_LOG" ]; then cat "$BACKEND_LOG"
+  elif [ -n "$BACKEND_CONTAINER" ]; then docker logs "$BACKEND_CONTAINER" 2>&1
+  else return 1; fi
 }
 
 JSON=(-H "Content-Type: application/json")
@@ -172,6 +189,59 @@ assert_http "ora il commercialista vede i dati" 200 \
   "$API/commercialisti/clienti/$CLI2" -H "Authorization: Bearer $C2"
 curl -s $API/commercialisti/richieste -H "Authorization: Bearer $C2" -o /tmp/w2body
 eq "la richiesta accettata esce dall'elenco delle pendenti" "0" "$(cat /tmp/w2body | j "['totale']")"
+
+echo
+echo "=== F. omonimi di sola maiuscola (P0-3) ==="
+# `utenti` ha UNIQUE case-sensitive: "Om" e "om" sono due account diversi.
+# Risolvere il cliente con lower(...) ORDER BY id LIMIT 1 apriva il collegamento
+# sul primo dei due per id, cioe' sull'utente sbagliato.
+C3=$(curl -s -X POST $API/commercialisti/register "${JSON[@]}" -d "{\"username\":\"w2f$SFX\",\"email\":\"w2f$SFX@t.it\",\"password\":\"Password123!\",\"ragione_sociale\":\"Studio Tre\"}" | j "['token']")
+UMAI=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"Om$SFX\",\"email\":\"Om$SFX@t.it\",\"password\":\"Password123!\"}" | j "['token']")
+UMIN=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"om$SFX\",\"email\":\"om$SFX@t.it\",\"password\":\"Password123!\"}" | j "['token']")
+ID_MAI=$(curl -s $API/auth/profile -H "Authorization: Bearer $UMAI" | j "['id']")
+ID_MIN=$(curl -s $API/auth/profile -H "Authorization: Bearer $UMIN" | j "['id']")
+C3_ID=$(psql_q -c "SELECT id FROM commercialisti WHERE username='w2f$SFX';")
+echo "  Om=$ID_MAI  om=$ID_MIN  (l'id minore e' $([ "$ID_MAI" -lt "$ID_MIN" ] && echo Om || echo om))"
+
+assert_http "richiesta con l'identificativo esatto -> 202" 202 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C3" "${JSON[@]}" -d "{\"identificativo_cliente\":\"om$SFX\"}"
+eq "il collegamento nasce sull'utente nominato, non sull'omonimo" "$ID_MIN" \
+  "$(psql_q -c "SELECT user_id FROM collegamenti_commercialista WHERE commercialista_id=$C3_ID;")"
+eq "e ne nasce uno solo" "1" \
+  "$(psql_q -c "SELECT count(*) FROM collegamenti_commercialista WHERE commercialista_id=$C3_ID;")"
+
+# Identificativo che non corrisponde a nessuno in modo esatto e a due in modo
+# normalizzato: non si sceglie a caso, e la risposta resta quella di sempre.
+assert_http "identificativo ambiguo -> 202 come gli altri" 202 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C3" "${JSON[@]}" -d "{\"identificativo_cliente\":\"OM$SFX\"}"
+assert_contiene "e non rivela l'ambiguita'" "Se il cliente esiste"
+eq "nessun collegamento nasce da un identificativo ambiguo" "1" \
+  "$(psql_q -c "SELECT count(*) FROM collegamenti_commercialista WHERE commercialista_id=$C3_ID;")"
+
+echo
+echo "=== G. il token in chiaro non finisce nei log (P0-1) ==="
+# usa_token_invito solleva un'eccezione per ogni token rifiutato, e l'helper del
+# database stampava i parametri della query: il valore in chiaro restava nei log
+# a tempo indeterminato, e l'hash in tabella non proteggeva piu' niente.
+if ! leggi_log >/dev/null 2>&1; then
+  ko "i log del backend sono leggibili" "BACKEND_LOG o BACKEND_CONTAINER" "nessuno dei due"
+else
+  UG=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"w2g$SFX\",\"email\":\"w2g$SFX@t.it\",\"password\":\"Password123!\"}" | j "['token']")
+  TOKG=$(curl -s -X POST $API/utenti/genera-token-invito -H "Authorization: Bearer $UG" "${JSON[@]}" -d '{}' | j "['token']")
+  TOKG_ID=$(psql_q -c "SELECT id FROM token_inviti WHERE token_hash = encode(sha256(convert_to('$TOKG','UTF8')),'hex');")
+  eq "il token di prova e' stato generato" "64" "${#TOKG}"
+
+  curl -s -X DELETE $API/utenti/token-inviti/$TOKG_ID -H "Authorization: Bearer $UG" >/dev/null
+  assert_http "token revocato ripresentato -> 400" 400 \
+    -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $C3" "${JSON[@]}" -d "{\"token\":\"$TOKG\"}"
+  eq "il valore in chiaro non compare nei log" "0" "$(leggi_log | grep -cF "$TOKG" || true)"
+
+  # Stesso controllo sull'altro ramo d'errore: token che non esiste affatto.
+  TOKX=$(python3 -c "import secrets;print(secrets.token_hex(32))")
+  assert_http "token inesistente -> 400" 400 \
+    -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $C3" "${JSON[@]}" -d "{\"token\":\"$TOKX\"}"
+  eq "nemmeno un token sconosciuto viene stampato" "0" "$(leggi_log | grep -cF "$TOKX" || true)"
+fi
 
 echo
 echo "=== E. il tetto sulle richieste ==="

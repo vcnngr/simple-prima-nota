@@ -41,6 +41,20 @@ const withTransaction = async (callback) => {
   }
 };
 
+// Forma dei parametri, non valori: tipo e lunghezza bastano a capire quale
+// chiamata e' fallita senza scrivere in chiaro cio' che stiamo proteggendo.
+const descriviParametri = (params) => {
+  if (!Array.isArray(params)) return params === undefined ? [] : ['<non-array>'];
+  return params.map((v) => {
+    if (v === null || v === undefined) return 'null';
+    if (Array.isArray(v)) return `array(${v.length})`;
+    if (v instanceof Date) return 'date';
+    const t = typeof v;
+    if (t === 'string') return `string(${v.length})`;
+    return t;
+  });
+};
+
 // Helper function for queries
 const query = async (text, params) => {
   const start = Date.now();
@@ -54,7 +68,16 @@ const query = async (text, params) => {
     
     return res;
   } catch (error) {
-    console.error('❌ Database query error', { text, params, error: error.message });
+    // I parametri NON si stampano. Qui passano segreti in chiaro: il token di
+    // invito arriva come $1 di usa_token_invito, e ogni token rifiutato
+    // (revocato, gia' usato, scaduto) fa sollevare un'eccezione. Stampandoli,
+    // il valore in chiaro finiva nei log e ci restava: l'hash in tabella non
+    // serviva piu' a niente. Si tiene solo la forma degli argomenti.
+    console.error('❌ Database query error', {
+      text,
+      params: descriviParametri(params),
+      error: error.message
+    });
     throw error;
   }
 };
