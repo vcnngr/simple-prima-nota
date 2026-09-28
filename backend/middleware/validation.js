@@ -308,11 +308,12 @@ const validate = (schema) => {
     });
     
     if (error) {
+      // Nel log solo campo e tipo di errore: MAI il valore ne' il messaggio di
+      // Joi, che per alcune regole (pattern, valid) lo riporta tra virgolette.
+      // Un token d'invito malformato finiva qui in chiaro, aggirando l'hash.
       console.log('❌ Validation failed:', {
         errors: error.details.map(detail => ({
           field: detail.path.join('.'),
-          message: detail.message,
-          value: detail.context?.value,
           type: detail.type
         }))
       });
@@ -344,7 +345,7 @@ const validateQuery = (schema) => {
       console.log('❌ Query validation failed:', {
         errors: error.details.map(detail => ({
           field: detail.path.join('.'),
-          message: detail.message
+          type: detail.type
         }))
       });
 

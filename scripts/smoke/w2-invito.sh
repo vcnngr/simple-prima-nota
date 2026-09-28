@@ -241,7 +241,49 @@ else
   assert_http "token inesistente -> 400" 400 \
     -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $C3" "${JSON[@]}" -d "{\"token\":\"$TOKX\"}"
   eq "nemmeno un token sconosciuto viene stampato" "0" "$(leggi_log | grep -cF "$TOKX" || true)"
+
+  # Ramo Joi: un token malformato (63 caratteri) viene respinto dalla validazione
+  # prima di arrivare al database. Il middleware stampava il valore rifiutato.
+  TOKM=$(python3 -c "import secrets;print(secrets.token_hex(32)[:63])")
+  assert_http "token malformato -> 400" 400 \
+    -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $C3" "${JSON[@]}" -d "{\"token\":\"$TOKM\"}"
+  eq "il token malformato non compare nei log" "0" "$(leggi_log | grep -cF "$TOKM" || true)"
+
+  # Stessa cosa con un valore non esadecimale: Joi respinge per altra regola.
+  TOKN="zz$(python3 -c "import secrets;print(secrets.token_hex(31))")"
+  assert_http "token non esadecimale -> 400" 400 \
+    -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $C3" "${JSON[@]}" -d "{\"token\":\"$TOKN\"}"
+  eq "il token non esadecimale non compare nei log" "0" "$(leggi_log | grep -cF "$TOKN" || true)"
+
+  # Corpo JSON rotto (token senza virgolette). Da Node 20 il messaggio di
+  # JSON.parse riporta un estratto del corpo: si cercano i primi 8 caratteri.
+  TOKJ=$(python3 -c "import secrets;print(secrets.token_hex(32))")
+  assert_http "corpo JSON malformato -> 400, non 500" 400 \
+    -X POST $API/commercialisti/collega-cliente -H "Authorization: Bearer $C3" "${JSON[@]}" -d "{\"token\":$TOKJ}"
+  eq "nemmeno un estratto del corpo malformato finisce nei log" "0" "$(leggi_log | grep -cF "${TOKJ:0:8}" || true)"
 fi
+
+echo
+echo "=== H. un guasto non viene confermato come richiesta inviata ==="
+# 202 uniforme vale per gli esiti di dominio (cliente esistente, inesistente,
+# ambiguo, gia' collegato). Un'eccezione del database significa richiesta NON
+# salvata: rispondere success:true la confermerebbe al commercialista.
+C4=$(curl -s -X POST $API/commercialisti/register "${JSON[@]}" -d "{\"username\":\"w2h$SFX\",\"email\":\"w2h$SFX@t.it\",\"password\":\"Password123!\",\"ragione_sociale\":\"Studio H\"}" | j "['token']")
+UH=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"w2hu$SFX\",\"email\":\"w2hu$SFX@t.it\",\"password\":\"Password123!\"}" | j "['token']")
+UH_ID=$(curl -s $API/auth/profile -H "Authorization: Bearer $UH" | j "['id']")
+
+psql_q -c "ALTER FUNCTION richiedi_collegamento(integer, varchar) RENAME TO richiedi_collegamento_guasta;" >/dev/null
+assert_http "funzione assente -> 500" 500 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C4" "${JSON[@]}" -d "{\"identificativo_cliente\":\"w2hu$SFX\"}"
+eq "la risposta al guasto non dichiara successo" "-" "$(cat /tmp/w2body | j "['success']")"
+eq "e in effetti nessuna richiesta e' stata salvata" "0" \
+  "$(psql_q -c "SELECT count(*) FROM collegamenti_commercialista WHERE user_id=$UH_ID;")"
+psql_q -c "ALTER FUNCTION richiedi_collegamento_guasta(integer, varchar) RENAME TO richiedi_collegamento;" >/dev/null
+
+assert_http "ripristinata la funzione, la stessa richiesta -> 202" 202 \
+  -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C4" "${JSON[@]}" -d "{\"identificativo_cliente\":\"w2hu$SFX\"}"
+eq "ora la richiesta c'e'" "1" \
+  "$(psql_q -c "SELECT count(*) FROM collegamenti_commercialista WHERE user_id=$UH_ID AND stato='in_attesa';")"
 
 echo
 echo "=== E. il tetto sulle richieste ==="

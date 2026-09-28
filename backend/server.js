@@ -107,6 +107,14 @@ app.get('/api/health', (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
+  // Corpo JSON malformato: e' un errore del client, non del server. Il messaggio
+  // di JSON.parse (Node >= 20) include un estratto del corpo, quindi si registra
+  // solo il tipo: un token d'invito incollato male non deve finire nei log.
+  if (err.type === 'entity.parse.failed') {
+    console.error('Corpo JSON non valido:', req.method, req.originalUrl);
+    return res.status(400).json({ error: 'Corpo della richiesta non valido' });
+  }
+
   // Log degli errori
   const errorLog = `${new Date().toISOString()} - ERROR: ${err.stack}\n`;
   fs.appendFileSync(path.join(logsDir, 'error.log'), errorLog);

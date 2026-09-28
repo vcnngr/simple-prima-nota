@@ -293,8 +293,9 @@ router.post('/richieste', authCommercialista, limiteRichieste, validate(schemas.
   try {
     const { identificativo_cliente } = req.body;
 
-    // Il valore di ritorno (id del collegamento, oppure NULL se il cliente non
-    // esiste) resta qui dentro: non va nella risposta, sarebbe l'oracolo.
+    // La funzione ha tre esiti di dominio: id del collegamento (nuovo o gia'
+    // aperto), oppure NULL (cliente inesistente o identificativo ambiguo). Tutti
+    // e tre rispondono 202 con lo stesso corpo: distinguerli sarebbe l'oracolo.
     await queryOne(
       'SELECT richiedi_collegamento($1, $2) as collegamento_id',
       [req.commercialista.id, identificativo_cliente]
@@ -302,13 +303,13 @@ router.post('/richieste', authCommercialista, limiteRichieste, validate(schemas.
 
     return res.status(202).json(RISPOSTA_UNIFORME);
   } catch (error) {
-    // Anche in errore la risposta resta 202. Un codice diverso qui e' un oracolo
-    // come lo sarebbe un messaggio diverso: l'errore puo' dipendere dal fatto che
-    // il cliente esista (ed e' esattamente cosi' che la richiesta concorrente
-    // rispondeva 500 solo per i clienti veri). Il guasto resta nei log, dove
-    // serve a noi; al chiamante non diciamo niente che non avremmo detto comunque.
+    // Un'eccezione NON e' un esito di dominio: la richiesta non e' stata salvata,
+    // e rispondere 202 success:true confermerebbe qualcosa che non esiste.
+    // La gara fra richieste concorrenti, che rendeva il 500 un oracolo, e'
+    // assorbita dalla 004 (ON CONFLICT DO NOTHING): cio' che arriva qui e' un
+    // guasto (database giu', funzione mancante), indipendente dal cliente.
     console.error('Richiesta collegamento error:', error.message);
-    return res.status(202).json(RISPOSTA_UNIFORME);
+    return res.status(500).json({ error: 'Errore nell\'invio della richiesta. Riprova.' });
   }
 });
 

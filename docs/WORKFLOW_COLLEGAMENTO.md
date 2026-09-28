@@ -213,11 +213,19 @@ sono registrati, una prova alla volta. Sopra c'è un tetto di **10 richieste all
 commercialista** — indicizzato sull'id dello studio, non sull'IP, così due studi dietro lo stesso
 indirizzo non si consumano il budget a vicenda.
 
-**La risposta è `202` anche quando la richiesta fallisce.** Un codice diverso in caso di errore è
-un oracolo come lo sarebbe un messaggio diverso, perché l'errore può dipendere proprio dal fatto
-che il cliente esista: è così che due richieste concorrenti sulla stessa coppia nuova rispondevano
-`500` solo per i clienti veri. Il guasto resta nei log del backend, dove serve a noi; al chiamante
-non si dice niente che non gli si sarebbe detto comunque.
+**`202` solo per gli esiti di dominio, `500` per i guasti.** La funzione SQL ha tre esiti normali —
+collegamento nuovo, collegamento già aperto, `NULL` per cliente inesistente o ambiguo — e tutti
+rispondono `202` con lo stesso corpo. Un'eccezione invece significa che la richiesta **non** è
+stata salvata: rispondere `202 success:true` la confermerebbe al commercialista, che non la
+rivedrebbe mai. Una prima versione rispondeva `202` anche in errore, per timore dell'oracolo; ma il
+`500` che rivelava i clienti veri nasceva dalla gara fra richieste concorrenti, che la 004 assorbe
+con `ON CONFLICT DO NOTHING`. Ciò che arriva al `catch` oggi è un guasto (database giù, funzione
+mancante), indipendente dall'esistenza del cliente. La sezione H di `scripts/smoke/w2-invito.sh`
+rinomina la funzione nel DB di prova e verifica `500` senza `success`.
+
+Residuo: il ciclo di `richiedi_collegamento_interno` alza un'eccezione dopo 5 conflitti di fila, e
+solo per clienti esistenti. Richiede che il cliente revochi ripetutamente dentro la stessa finestra
+di pochi millisecondi: non riprodotto, dichiarato.
 
 **Omonimi di sola maiuscola.** `utenti` ha `UNIQUE` *case-sensitive* su `username` ed `email`:
 `Mario` e `mario` sono due account diversi. Risolvere l'identificativo con `lower(...)` e poi
@@ -229,6 +237,10 @@ restituisce `NULL` e l'endpoint risponde `202` come sempre — non si indovina e
 token rifiutato (revocato, già usato, scaduto) e l'helper del database stampava i parametri della
 query: il valore in chiaro finiva nei log e ci restava, rendendo inutile l'hash in tabella.
 `config/database.js` ora stampa solo la **forma** dei parametri (tipo e lunghezza).
+Stessa regola per gli altri due punti dove un corpo di richiesta arrivava ai log: il middleware
+Joi (`middleware/validation.js`) registra solo campo e tipo di errore, mai il valore né il messaggio
+di Joi, che per alcune regole lo cita; il gestore d'errori di `server.js` risponde `400` a un JSON
+malformato senza stamparne il messaggio, che da Node 20 include un estratto del corpo.
 La sezione G di `scripts/smoke/w2-invito.sh` lo verifica leggendo i log veri, e **fallisce** se non
 le si indica dove sono (`BACKEND_LOG` o `BACKEND_CONTAINER`): una prova sui log che non legge i log
 passerebbe sempre.
