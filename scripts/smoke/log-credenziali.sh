@@ -32,6 +32,9 @@ leggi_log() {
 j()   { python3 -c "import sys,json;d=json.load(sys.stdin);print(d$1)" 2>/dev/null || echo "-"; }
 hit() { curl -s -o /tmp/logcred-body -w "%{http_code}" "$@"; }
 JSON=(-H "Content-Type: application/json")
+# Marca di corsa nella query string dei login: morgan registra l'URL, cosi' il
+# controllo della sezione C lega il log a QUESTA corsa e non a righe vecchie.
+CORSA="corsa=lc$SFX"
 
 # assert_risponde <descrizione> <curl args...>: la route risponde, e non con un 500.
 assert_risponde() {
@@ -65,35 +68,35 @@ UT=$(j "['token']" < /tmp/logcred-body)
 assert_risponde "registrazione respinta dalla validazione" \
   -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"x\",\"email\":\"non-una-email\",\"password\":\"$PW_U\"}"
 assert_risponde "login con password giusta" \
-  -X POST $API/auth/login "${JSON[@]}" -d "{\"username\":\"lc$SFX\",\"password\":\"$PW_U\"}"
-eq "il login giusto riesce davvero" "200" "$(hit -X POST $API/auth/login "${JSON[@]}" -d "{\"username\":\"lc$SFX\",\"password\":\"$PW_U\"}")"
+  -X POST $API/auth/login?$CORSA "${JSON[@]}" -d "{\"username\":\"lc$SFX\",\"password\":\"$PW_U\"}"
+eq "il login giusto riesce davvero" "200" "$(hit -X POST $API/auth/login?$CORSA "${JSON[@]}" -d "{\"username\":\"lc$SFX\",\"password\":\"$PW_U\"}")"
 assert_risponde "login con password sbagliata" \
-  -X POST $API/auth/login "${JSON[@]}" -d "{\"username\":\"lc$SFX\",\"password\":\"$PW_BAD\"}"
+  -X POST $API/auth/login?$CORSA "${JSON[@]}" -d "{\"username\":\"lc$SFX\",\"password\":\"$PW_BAD\"}"
 assert_risponde "login respinto dalla validazione" \
-  -X POST $API/auth/login "${JSON[@]}" -d "{\"password\":\"$PW_BAD\"}"
+  -X POST $API/auth/login?$CORSA "${JSON[@]}" -d "{\"password\":\"$PW_BAD\"}"
 assert_risponde "cambio password con password corrente sbagliata" \
   -X POST $API/auth/change-password -H "Authorization: Bearer $UT" "${JSON[@]}" -d "{\"currentPassword\":\"$PW_BAD\",\"newPassword\":\"$PW_N\"}"
 assert_risponde "eliminazione account con password sbagliata" \
   -X DELETE $API/auth/account -H "Authorization: Bearer $UT" "${JSON[@]}" -d "{\"password\":\"$PW_BAD\"}"
 assert_risponde "login con corpo JSON malformato" \
-  -X POST $API/auth/login "${JSON[@]}" -d "{\"username\":\"lc$SFX\",\"password\":$PW_BAD}"
+  -X POST $API/auth/login?$CORSA "${JSON[@]}" -d "{\"username\":\"lc$SFX\",\"password\":$PW_BAD}"
 
 echo
 echo "=== B. commercialista ==="
 assert_risponde "registrazione commercialista" \
   -X POST $API/commercialisti/register "${JSON[@]}" -d "{\"username\":\"lcc$SFX\",\"email\":\"lcc$SFX@t.it\",\"password\":\"$PW_C\",\"ragione_sociale\":\"Studio LC\"}"
 assert_risponde "login commercialista con password giusta" \
-  -X POST $API/commercialisti/login "${JSON[@]}" -d "{\"username\":\"lcc$SFX\",\"password\":\"$PW_C\"}"
+  -X POST $API/commercialisti/login?$CORSA "${JSON[@]}" -d "{\"username\":\"lcc$SFX\",\"password\":\"$PW_C\"}"
 assert_risponde "login commercialista con password sbagliata" \
-  -X POST $API/commercialisti/login "${JSON[@]}" -d "{\"username\":\"lcc$SFX\",\"password\":\"$PW_BAD\"}"
+  -X POST $API/commercialisti/login?$CORSA "${JSON[@]}" -d "{\"username\":\"lcc$SFX\",\"password\":\"$PW_BAD\"}"
 
 echo
 echo "=== C. nessuna sentinella nei log ==="
 # Controllo che il log contenga davvero il traffico di questa corsa: senza, la
 # ricerca delle sentinelle non dimostrerebbe niente.
-RIGHE=$(leggi_log | grep -cE "POST /api/(auth|commercialisti)/login" || true)
-if [ "${RIGHE:-0}" -gt 0 ]; then ok "il log registra le richieste di login ($RIGHE righe)"
-else ko "il log registra le richieste di login" ">0 righe" "0"; fi
+RIGHE=$(leggi_log | grep -cE "POST /api/(auth|commercialisti)/login\?$CORSA" || true)
+if [ "${RIGHE:-0}" -gt 0 ]; then ok "il log registra i login di questa corsa ($RIGHE righe)"
+else ko "il log registra i login di questa corsa" ">0 righe con $CORSA" "0"; fi
 
 for coppia in "password utente:$PW_U" "nuova password:$PW_N" "password commercialista:$PW_C" "password sbagliata:$PW_BAD"; do
   nome="${coppia%%:*}"; val="${coppia#*:}"
