@@ -1,10 +1,6 @@
 -- Migration 001: Commercialisti System
 -- Adds tables and relationships for commercialisti (accountants) functionality
 
--- genera_token_invito usa gen_random_bytes(): senza pgcrypto la funzione si crea
--- ma fallisce alla prima chiamata. init.sql di main non la installava.
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
 -- ==============================================================================
 -- 1. COMMERCIALISTI TABLE
 -- ==============================================================================

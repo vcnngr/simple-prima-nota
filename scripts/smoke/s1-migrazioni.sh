@@ -22,7 +22,10 @@
 #      ConfigMap, porta un database di main alla versione corrente;
 #   M. docker-compose: il servizio di migrazione, eseguito come da `compose config`,
 #      fa lo stesso; il backend parte solo dopo;
-#   N. la copia dei file nel chart e' allineata a database/.
+#   N. la copia dei file nel chart e' allineata a database/ e non e' esclusa
+#      da .gitignore (il chart si pubblica da un checkout);
+#   O. un database storico (init + 001 del primo commit, senza pgcrypto) riceve
+#      l'estensione dalla 009, perche' la 001 riconosciuta non si riesegue.
 #
 #   ./scripts/smoke/s1-migrazioni.sh            (dal repo; servono docker e helm)
 #
@@ -211,11 +214,39 @@ contiene "dice perche'" "007 non e' l'ultima" "$T/out"
 migra a "$R/database" annulla "$ULTIMA"
 eq "annulla $ULTIMA exit 0" "0" "$RC"
 eq "registro alla versione precedente" "$(printf '%03d' $((10#$ULTIMA - 1)))" "$(versione a)"
-eq "oggetti della $ULTIMA tolti (token_account)" "" "$(q a "SELECT to_regclass('public.token_account')")"
+# la 009 non toglie nulla (vedi il suo _down): gli oggetti si vedono sparire con la 008
+migra a "$R/database" annulla 008
+eq "annulla 008 exit 0" "0" "$RC"
+eq "oggetti della 008 tolti (token_account)" "" "$(q a "SELECT to_regclass('public.token_account')")"
+eq "gen_random_bytes ancora disponibile dopo annulla 009" "8" "$(q a "SELECT length(encode(gen_random_bytes(4),'hex'))")"
 migra a "$R/database"
 eq "riapplicata" "0|$ULTIMA" "$RC|$(versione a)"
 schema a > "$T/a2.sql"
 eq "schema di nuovo identico al riferimento" "" "$(diff "$T/rif.sql" "$T/a2.sql" | head -5)"
+
+echo "=== O. database storico: init + 001 del primo commit, senza pgcrypto ==="
+# La 001 c'e' gia' ed e' riconosciuta, quindi non si riesegue: la correzione di
+# pgcrypto deve arrivare da una migrazione successiva (009).
+git show 60c1446:database/init.sql > "$T/init-60c.sql" 2>/dev/null
+git show 60c1446:database/migrations/001_commercialisti_system.sql > "$T/001-60c.sql" 2>/dev/null
+eq "file storici disponibili" "1" "$([ -s "$T/init-60c.sql" ] && [ -s "$T/001-60c.sql" ] && echo 1 || echo 0)"
+nuovo_db o
+sql_file o "$T/init-60c.sql"
+sql_file o "$T/001-60c.sql"
+eq "prima: pgcrypto assente" "0" "$(q o "SELECT count(*) FROM pg_extension WHERE extname='pgcrypto'")"
+semina_utenti o
+PRIMA=$(impronta_dati o)
+migra o "$R/database"
+eq "exit 0" "0" "$RC"
+[ "$RC" = 0 ] || sed 's/^/         | /' "$T/out" | tail -5
+contiene "riconosciuto 000 001" "rilevate 000 001$" "$T/out"
+eq "009 eseguita" "eseguita" "$(q o "SELECT origine FROM schema_migrazioni WHERE versione='009'")"
+eq "versione finale" "$ULTIMA" "$(versione o)"
+eq "dopo: pgcrypto presente" "1" "$(q o "SELECT count(*) FROM pg_extension WHERE extname='pgcrypto'")"
+eq "gen_random_bytes disponibile (token d'invito)" "8" "$(q o "SELECT length(encode(gen_random_bytes(4),'hex'))")"
+eq "utenti intatti" "$PRIMA" "$(impronta_dati o)"
+schema o > "$T/o.sql"
+eq "schema identico al riferimento" "" "$(diff "$T/rif.sql" "$T/o.sql" | head -5)"
 
 echo "=== L. Helm: il job renderizzato, con i file della sua ConfigMap ==="
 for modo in "" "--set cloudnativepg.enabled=false --set postgresql.enabled=true" \
@@ -237,25 +268,29 @@ if not jobs:
 job = jobs[0]; spec = job['spec']['template']['spec']; c = spec['containers'][0]
 out = sys.argv[2]; os.makedirs(out, exist_ok=True)
 vols = {v['name']: v for v in spec.get('volumes', [])}
-mounts = []
+mounts = []; mancanti = []
 for m in c.get('volumeMounts', []):
     v = vols[m['name']]; cm = cms[v['configMap']['name']]
     base = os.path.join(out, m['name']); os.makedirs(base, exist_ok=True)
     items = v['configMap'].get('items') or [{'key': k, 'path': k} for k in cm]
     for it in items:
+        if it['key'] not in cm:   # file che il job monta ma che la ConfigMap non ha
+            mancanti.append(it['key']); continue
         p = os.path.join(base, it['path']); os.makedirs(os.path.dirname(p), exist_ok=True)
         open(p, 'w').write(cm[it['key']])
     mounts.append(f"{base}:{m['mountPath']}:ro")
 env = {e['name']: e['value'] for e in c.get('env', []) if 'value' in e}
 q = shlex.quote
+print('FILE_MANCANTI=' + q(' '.join(mancanti)))
 print('JOB_HOOK=' + q(job['metadata'].get('annotations', {}).get('helm.sh/hook', '')))
 print('JOB_IMAGE=' + q(c['image']))
 print('JOB_CMD=' + q(' '.join(q(x) for x in (c.get('command') or []) + (c.get('args') or []))))
 print('JOB_MOUNTS=' + q(' '.join(mounts)))
 print('JOB_ENV=' + q(' '.join(f'{k}={v}' for k, v in env.items() if k not in ('PGHOST', 'DB_HOST'))))
 PY
-NESSUN_JOB=0; . "$T/job.env"
+NESSUN_JOB=0; FILE_MANCANTI=?; JOB_HOOK=; JOB_IMAGE=; JOB_CMD=; JOB_MOUNTS=; JOB_ENV=; . "$T/job.env"
 eq "c'e' un job dello schema" "0" "$NESSUN_JOB"
+eq "la ConfigMap del job ha tutti i file che monta" "" "$FILE_MANCANTI"
 if [ "$NESSUN_JOB" = 0 ]; then
   eq "gira prima del backend negli upgrade" "1" "$(echo "$JOB_HOOK" | grep -q pre-upgrade && echo 1 || echo 0)"
   nuovo_db l
@@ -314,6 +349,10 @@ if [ -x scripts/sincronizza-helm-db.sh ]; then
 else
   ko "helm-chart/files/database allineato" "scripts/sincronizza-helm-db.sh" "assente"
 fi
+# Il chart si pubblica da un checkout: i file devono essere nel repo, non solo
+# sul disco di chi ha lanciato la sincronizzazione.
+eq "file del chart non esclusi da .gitignore" "" \
+  "$(find helm-chart/files/database -type f | git check-ignore --stdin 2>/dev/null | head -3)"
 
 echo
 echo "================================================"

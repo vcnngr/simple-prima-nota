@@ -22,6 +22,10 @@ database_export*.sql
 # eccezioni ogni nuova migration resta fuori dal repo senza che nessuno se ne accorga.
 !database/init.sql
 !database/migrations/*.sql
+# e la loro copia nel chart Helm (scripts/sincronizza-helm-db.sh), che il job
+# delle migrazioni legge dalla ConfigMap.
+!helm-chart/files/database/*.sql
+!helm-chart/files/database/migrations/*.sql
 
 # Logs
 *.log

@@ -6,7 +6,7 @@ Ogni blocco è un branch `feat/s…`, con review `pn-gpt` prima della chiusura.
 
 | # | Blocco | Contenuto | Prova |
 |---|---|---|---|
-| S1 | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dichiarata dalla 001 | `scripts/smoke/s1-migrazioni.sh` |
+| S1 | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dalla migration 009 | `scripts/smoke/s1-migrazioni.sh` |
 | S2 | Configurazione del backend nel chart | `SMTP_*`, `MAIL_FROM`, `FRONTEND_URL` pubblico (oggi è l'URL interno del servizio: i link nelle mail non si aprono), volume per `ALLEGATI_DIR`, `NOTIFICHE_*` | `helm template` + job/deployment eseguiti come in S1 |
 | S3 | Dati e cancellazioni | cancellazione dell'account commercialista (oggi in cascata su collegamenti, registro e chat del cliente); file degli allegati orfani dopo il down della 007 | smoke dedicato |
 | S4 | Pulizia deploy | `nginx.conf` deploy-neutral, versione di PostgreSQL (README 16, chart standalone 15) | build + `compose config` + `helm template` |
@@ -24,6 +24,10 @@ database esistente:
 
 In più `init.sql` di `main` non installava `pgcrypto`, mentre `genera_token_invito` (001, 003) usa
 `gen_random_bytes()`: su un database di `main` la funzione si crea ma fallisce alla prima chiamata.
+La correzione è la migration **009** (`CREATE EXTENSION IF NOT EXISTS pgcrypto`), non una modifica
+della 001: sui database anteriori al registro la 001 è `rilevata` e non si riesegue, quindi una
+correzione lì dentro non arriverebbe proprio ai database storici (init + 001 dei primi commit) che ne
+hanno bisogno. Il `_down` della 009 non toglie l'estensione: l'`init.sql` attuale la crea già.
 
 **Come funziona ora.** Un solo script, `database/migra.sh`, per tutti gli ambienti:
 
@@ -53,7 +57,9 @@ Dove gira:
 
 **Regola per le prossime migration**: nuovo file `database/migrations/NNN_nome.sql` (+
 `NNN_nome_down.sql`), poi `scripts/sincronizza-helm-db.sh`. Non si tocca più `init.sql` per
-aggiungere schema.
+aggiungere schema. Una correzione a una migration già applicata è una migration nuova.
+`.gitignore` esclude `*.sql` ma non `database/` né `helm-chart/files/database/`: la copia del
+chart va committata (lo smoke lo controlla).
 
 Aperti, fuori da S1: `init.sql` crea gli utenti demo `admin`/`demo` con password note anche in
 produzione (fase «sicurezza»); `Chart.yaml` non è stato incrementato (si fa al rilascio).
