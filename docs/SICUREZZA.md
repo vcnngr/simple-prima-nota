@@ -2,6 +2,8 @@
 
 Terza fase dell'ordine ratificato dal titolare (**workflow → sistema → sicurezza → UX**).
 Workflow (W1–W6) e sistema (S1–S4, `docs/SISTEMA.md`) sono chiusi.
+**Fase chiusa il 2026-09-29**: K1–K5 GREEN di `pn-gpt` (card t_9c2cb07f, t_01d8af50, t_ebdec111,
+t_abcbb7dc, t_07dfdd9d, t_3e5699fc). Aperti rimandati alla UX: elencati nelle sezioni «Aperti».
 Ogni blocco è un branch `feat/k…`, con review `pn-gpt` prima della chiusura. Ogni correzione ha
 uno smoke che fallisce sul codice di prima.
 
@@ -10,8 +12,8 @@ uno smoke che fallisce sul codice di prima.
 | K1 ✅ | Token | il token dice per quale tabella vale (`tipo`); solo HS256; password di almeno 8 caratteri alla registrazione; registrazione dello studio validata | `scripts/smoke/k1-token.sh` |
 | K2 ✅ | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | `scripts/smoke/k2-ip.sh` |
 | K3 ✅ | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | `scripts/smoke/k3-errori.sh` |
-| K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | `scripts/smoke/k4-dipendenze.sh` |
-| K5 | Deploy | `JWT_SECRET` di esempio o debole rifiutato in produzione; compose senza segreto nel file; CSP senza `http:`/`https:` generici né script in linea; immagini senza `.env`, `node_modules` e mappe dei sorgenti. Utenti demo `admin`/`demo` di `init.sql` bloccati dalla migrazione 011 | `scripts/smoke/k5-deploy.sh`, `scripts/smoke/k5-account-demo.sh` |
+| K4 ✅ | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | `scripts/smoke/k4-dipendenze.sh` |
+| K5 ✅ | Deploy | `JWT_SECRET` di esempio o debole rifiutato in produzione; compose senza segreto nel file; CSP senza `http:`/`https:` generici né script in linea; immagini senza `.env`, `node_modules` e mappe dei sorgenti. Utenti demo `admin`/`demo` di `init.sql` bloccati dalla migrazione 011 | `scripts/smoke/k5-deploy.sh`, `scripts/smoke/k5-account-demo.sh` |
 
 ## K1 — Token
 
