@@ -58,6 +58,7 @@ services:
       DB_PASSWORD: password123
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
       PORT: 3001
+      TRUST_PROXY: "1"
       # Notifiche email: in sviluppo vanno a mailpit (http://localhost:8025).
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
@@ -68,7 +69,9 @@ services:
       # Allegati della chat: fuori dall'immagine, sopravvivono al rebuild.
       - allegati_data:/app/uploads
     ports:
-      - "3001:3001"
+      # Solo da questa macchina: da fuori si passa da nginx (porta 3000), che
+      # scrive l'indirizzo del client in X-Forwarded-For (TRUST_PROXY: 1).
+      - "127.0.0.1:3001:3001"
     depends_on:
       db:
         condition: service_healthy

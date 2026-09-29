@@ -27,6 +27,14 @@ map $uri $pn_cache_control {
     default                                      "no-cache";
 }
 
+# Schema visto dal client (blocco K2): dietro un ingress con TLS nginx riceve
+# http, quindi si inoltra quello dichiarato dall'ingress se c'e'. Il backend oggi
+# non lo usa per decisioni di sicurezza (i link delle mail vengono da FRONTEND_URL).
+map $http_x_forwarded_proto $pn_forwarded_proto {
+    ~^(https?)$   $1;
+    default       $scheme;
+}
+
 server {
     listen 80;
     server_name _;
@@ -73,7 +81,7 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $pn_forwarded_proto;
 
         proxy_connect_timeout 30s;
         proxy_send_timeout 60s;

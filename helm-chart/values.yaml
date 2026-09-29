@@ -227,8 +227,13 @@ backend:
     NODE_ENV: production
     PORT: 3001
     JWT_SECRET: ""
+    # Tetto generale per IP (blocco K2: prima erano ignorati e valeva 300 fisso).
     RATE_LIMIT_WINDOW_MS: 900000
-    RATE_LIMIT_MAX_REQUESTS: 100
+    RATE_LIMIT_MAX_REQUESTS: 300
+    # Quanti proxy davanti al backend: non impostato, 2 con ingress (ingress +
+    # nginx del frontend), 1 senza. Si scavalcano solo indirizzi privati; vedi
+    # backend/config/proxy.js. Dietro altri proxy, o un elenco di reti fidate.
+    # TRUST_PROXY: 2
     MAX_FILE_SIZE: 10485760
     LOG_LEVEL: info
     # Posta: notifiche (W4), reset password e conferma email (W6). Senza SMTP_HOST

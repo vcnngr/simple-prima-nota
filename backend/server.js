@@ -27,7 +27,8 @@ const allegati = require('./services/AllegatiService');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.set('trust proxy', 1); // Trust first proxy
+const { trustProxy, limiteGenerale } = require('./config/proxy');
+app.set('trust proxy', trustProxy()); // TRUST_PROXY, vedi config/proxy.js
 
 // Crea la directory logs se non esiste
 const logsDir = path.join(__dirname, 'logs');
@@ -42,13 +43,9 @@ const accessLogStream = fs.createWriteStream(
 );
 
 // Formato di log personalizzato simile a nginx
-morgan.token('real-ip', (req) => {
-  return req.headers['x-forwarded-for'] || 
-         req.headers['x-real-ip'] || 
-         req.connection.remoteAddress || 
-         req.socket.remoteAddress ||
-         (req.connection.socket ? req.connection.socket.remoteAddress : null);
-});
+// L'IP del client come lo vede Express (stessa regola dei tetti), non l'header
+// X-Forwarded-For grezzo, che il client puo' scrivere come vuole.
+morgan.token('real-ip', (req) => req.ip);
 
 const logFormat = ':real-ip - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms';
 
@@ -71,8 +68,7 @@ app.use(cors({
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minuti
-  max: process.env.NODE_ENV === 'production' ? 300 : 10000, // 300 in prod, 10000 in dev
+  ...limiteGenerale(), // RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS
   message: 'Troppe richieste da questo IP, riprova più tardi.',
   standardHeaders: true,
   legacyHeaders: false,

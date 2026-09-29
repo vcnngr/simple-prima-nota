@@ -8,7 +8,7 @@ uno smoke che fallisce sul codice di prima.
 | # | Blocco | Contenuto | Prova |
 |---|---|---|---|
 | K1 ✅ | Token | il token dice per quale tabella vale (`tipo`); solo HS256; password di almeno 8 caratteri alla registrazione; registrazione dello studio validata | `scripts/smoke/k1-token.sh` |
-| K2 | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | da scrivere |
+| K2 | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | `scripts/smoke/k2-ip.sh` |
 | K3 | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | da scrivere |
 | K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | da scrivere |
 | K5 | Deploy | utenti demo `admin`/`demo` con password note creati da `init.sql` anche in produzione; `JWT_SECRET` di esempio accettato in produzione; CSP che ammette `http:`, `https:` e `'unsafe-inline'` | da scrivere |
@@ -40,3 +40,46 @@ In più: `jwt.verify` senza elenco degli algoritmi; la registrazione dell'utente
 id, e prova il token dello studio su 11 rotte dell'utente (lettura, scrittura, eliminazione); token
 contraffatti col segreto giusto (tipo sconosciuto, HS384, `alg: none`); token utente senza tipo
 ancora validi; registrazioni con password corte, troppo lunghe e dati non validi.
+
+## K2 — IP e limiti
+
+**Il problema.** `server.js` aveva `trust proxy 1` fisso: Express prende come indirizzo del client
+l'ultimo elemento di `X-Forwarded-For`, fidandosi di un solo proxy, chiunque sia.
+
+- Nel chart la catena è ingress → nginx del frontend → backend: due proxy. `req.ip` era l'ingress
+  per tutti, quindi il tetto generale (300 richieste / 15 min per IP) e quello dei reset valevano
+  per l'intera app: un solo client poteva bloccare tutti.
+- Con il backend raggiungibile direttamente (compose pubblicava `3001` su tutte le interfacce) il
+  client scriveva `X-Forwarded-For` e sceglieva il proprio indirizzo: tetti aggirati.
+- Il log di accesso scriveva l'intestazione `X-Forwarded-For` grezza, cioè quello che il client
+  dichiarava.
+- `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS` erano nei values e in `.env.example` ma il
+  backend non li leggeva.
+- nginx inoltrava `X-Forwarded-Proto` con il proprio schema (`http` dietro un ingress TLS).
+
+**Come funziona ora.**
+
+- `TRUST_PROXY` (`backend/config/proxy.js`): con un numero N si scavalcano al più N proxy e solo
+  se l'indirizzo scavalcato è privato o loopback. Un client pubblico collegato direttamente non è
+  mai trattato come proxy: la sua `X-Forwarded-For` si ignora. `0` = nessun proxy; un elenco di
+  indirizzi o reti = solo quelli (un elenco non valido ferma l'avvio). Non impostata: `1`.
+- Chart: `TRUST_PROXY` 2 con l'ingress, 1 senza; un valore in `backend.env.TRUST_PROXY` vince.
+  Compose: `1`, e la porta 3001 è pubblicata solo su `127.0.0.1`.
+- Tetto generale da `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX_REQUESTS`; senza, come prima (300 in
+  produzione, 10000 fuori). Nel chart `RATE_LIMIT_MAX_REQUESTS` passa da 100 (mai applicato) a
+  300, il tetto effettivo di prima.
+- Log di accesso con `req.ip`, cioè la stessa regola dei tetti.
+- nginx inoltra `X-Forwarded-Proto` dell'ingress se vale `http` o `https`, altrimenti il proprio
+  schema. Il backend oggi non lo usa per decisioni (i link delle mail vengono da `FRONTEND_URL`).
+- Dipendenza esplicita `proxy-addr` (già presente come dipendenza di Express).
+
+**Prova**: `scripts/smoke/k2-ip.sh`. Avvia il backend del checkout con configurazioni diverse
+(senza database: `/api/health` passa dal tetto generale): tetto configurato rispettato; client
+separati dietro un proxy; catena ingress + nginx simulata con `X-Forwarded-For` a tre elementi (il
+tetto e il log sono del client, non dell'ingress; l'indirizzo inventato non conta); backend esposto
+(`TRUST_PROXY=0`); nginx del frontend vero davanti al backend; `X-Forwarded-Proto`; render del
+chart e `compose config`. Non osservato: un ingress reale (la catena è simulata con le intestazioni
+che un ingress scrive).
+
+Aperti, fuori da K2: il tetto è per IP anche per le richieste autenticate (molti utenti dietro lo
+stesso NAT aziendale condividono i 300); da rivedere con i dati d'uso.

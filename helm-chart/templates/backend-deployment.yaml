@@ -48,6 +48,11 @@ spec:
           value: {{ include "prima-nota.publicUrl" . | quote }}
         - name: ALLEGATI_DIR
           value: /app/uploads/allegati
+        {{- if not (hasKey .Values.backend.env "TRUST_PROXY") }}
+        # Proxy davanti al backend (blocco K2): ingress + nginx del frontend, o solo nginx.
+        - name: TRUST_PROXY
+          value: {{ ternary "2" "1" .Values.ingress.enabled | quote }}
+        {{- end }}
         {{- if or .Values.backend.smtpPassword.existingSecret .Values.backend.smtpPassword.value }}
         - name: SMTP_PASS
           valueFrom:
