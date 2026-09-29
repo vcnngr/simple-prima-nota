@@ -238,8 +238,8 @@ const CommercialistaRegisterPage = () => {
                     {...register('password', {
                       required: 'Password è richiesta',
                       minLength: {
-                        value: 6,
-                        message: 'Password deve essere di almeno 6 caratteri'
+                        value: 8,
+                        message: 'Password deve essere di almeno 8 caratteri'
                       }
                     })}
                   />

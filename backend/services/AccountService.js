@@ -56,10 +56,24 @@ function versioneValida(decoded, account) {
   return cv === account.versione_credenziali;
 }
 
+// Ogni token dice per quale tabella vale (`tipo`). Gli id di utenti e studi sono
+// due sequenze separate: senza il tipo, lo studio 1 era anche l'utente 1.
 function firmaJwt(t, account) {
-  const payload = { id: account.id, username: account.username, cv: account.versione_credenziali };
-  if (t === 'commercialista') payload.tipo = 'commercialista';
-  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: tipo(t).durataJwt });
+  const payload = { id: account.id, username: account.username, cv: account.versione_credenziali, tipo: t };
+  return jwt.sign(payload, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: tipo(t).durataJwt });
+}
+
+// Verifica firma e scadenza, solo HS256. Restituisce il payload con `tipo`
+// normalizzato ('user' | 'commercialista'); lancia se il token non vale.
+// I token utente firmati prima del blocco K1 non hanno `tipo`: sono utente (i
+// token degli studi l'hanno sempre avuto). Ogni altro valore e' rifiutato.
+function verificaJwt(token) {
+  const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+  if (decoded.tipo === undefined) decoded.tipo = 'user';
+  if (decoded.tipo !== 'user' && decoded.tipo !== 'commercialista') {
+    throw new jwt.JsonWebTokenError('tipo di token sconosciuto');
+  }
+  return decoded;
 }
 
 // ------------------------------------------------------------------------------
@@ -422,6 +436,7 @@ async function confermaEmail(t, token) {
 module.exports = {
   versioneValida,
   firmaJwt,
+  verificaJwt,
   richiediReset,
   reimpostaPassword,
   cambiaPassword,

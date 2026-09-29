@@ -2,7 +2,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { query, queryOne } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const {
@@ -47,7 +46,7 @@ const authCommercialista = async (req, res, next) => {
       return res.status(401).json({ error: 'Accesso negato. Token non fornito.' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = account.verificaJwt(token);
 
     // Verify commercialista exists
     const commercialista = await queryOne(
@@ -71,7 +70,7 @@ const authCommercialista = async (req, res, next) => {
 // ==============================================================================
 // POST /api/commercialisti/register - Register new commercialista
 // ==============================================================================
-router.post('/register', async (req, res) => {
+router.post('/register', validate(schemas.registrazioneCommercialista), async (req, res) => {
   try {
     const { username, password, email, ragione_sociale, partita_iva, telefono } = req.body;
 

@@ -1,7 +1,6 @@
 // middleware/auth.js
-const jwt = require('jsonwebtoken');
 const { queryOne } = require('../config/database');
-const { versioneValida } = require('../services/AccountService');
+const { versioneValida, verificaJwt } = require('../services/AccountService');
 
 // La versione delle credenziali serve solo al confronto con il claim `cv`: un
 // cambio o reset della password la incrementa e chiude le altre sessioni.
@@ -18,7 +17,11 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ error: 'Accesso negato. Token non fornito.' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verificaJwt(token);
+    // Il token di uno studio non apre le rotte dell'utente con lo stesso id.
+    if (decoded.tipo !== 'user') {
+      return res.status(401).json({ error: 'Token non valido.' });
+    }
 
     // Verifica se l'utente esiste ancora
     const user = await queryOne(
@@ -47,9 +50,9 @@ const authEither = async (req, res, next) => {
       return res.status(401).json({ error: 'Accesso negato. Token non fornito.' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verificaJwt(token);
 
-    // Check tipo field in token to determine which table to query
+    // Il tipo del token decide la tabella: mai l'una al posto dell'altra.
     if (decoded.tipo === 'commercialista') {
       // Search only in commercialisti table
       const commercialista = await queryOne(
@@ -63,7 +66,7 @@ const authEither = async (req, res, next) => {
         return next();
       }
     } else {
-      // Search in utenti table (default for tokens without tipo field)
+      // tipo === 'user'
       const user = await queryOne(
         'SELECT id, username, email, versione_credenziali FROM utenti WHERE id = $1',
         [decoded.id]

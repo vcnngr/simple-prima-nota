@@ -164,8 +164,8 @@ const RegisterPage = () => {
                   {...register('password', {
                     required: 'Password è richiesta',
                     minLength: {
-                      value: 6,
-                      message: 'Password deve essere di almeno 6 caratteri'
+                      value: 8,
+                      message: 'Password deve essere di almeno 8 caratteri'
                     },
                     pattern: {
                       value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
@@ -202,7 +202,7 @@ const RegisterPage = () => {
                   ))}
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Usa almeno 6 caratteri con lettere maiuscole, minuscole e numeri
+                  Usa almeno 8 caratteri con lettere maiuscole, minuscole e numeri
                 </p>
               </div>
             </div>

@@ -16,6 +16,13 @@ const passwordNuova = Joi.string().min(8).max(72)
     'any.required': 'La nuova password e\' richiesta'
   });
 
+// Password alla registrazione (blocco K1): stesse regole della password nuova.
+const passwordRegistrazione = passwordNuova.messages({
+  'string.min': 'La password deve essere di almeno 8 caratteri',
+  'string.max': 'La password e\' troppo lunga (massimo 72 byte)',
+  'any.required': 'La password e\' richiesta'
+});
+
 // Token di reset o di conferma email: 32 byte in esadecimale.
 const tokenAccount = Joi.string().pattern(/^[0-9a-f]{64}$/).required()
   .messages({ 'string.pattern.base': 'Link non valido o scaduto', 'any.required': 'Link non valido o scaduto' });
@@ -36,13 +43,7 @@ const schemas = {
         'string.max': 'Username non può superare 30 caratteri',
         'any.required': 'Username è richiesto'
       }),
-    password: Joi.string()
-      .min(6)
-      .required()
-      .messages({
-        'string.min': 'Password deve essere di almeno 6 caratteri',
-        'any.required': 'Password è richiesta'
-      }),
+    password: passwordRegistrazione,
     email: Joi.string()
       .email()
       .required()
@@ -350,6 +351,21 @@ const schemas = {
   confermaEmail: Joi.object({
     token: tokenAccount
   }),
+  // Registrazione dello studio (blocco K1): prima nessuna validazione.
+  registrazioneCommercialista: Joi.object({
+    username: Joi.string().trim().min(3).max(50).pattern(/^[a-zA-Z0-9_.-]+$/).required()
+      .messages({ 'string.pattern.base': 'Username: solo lettere, numeri, punto, trattino e underscore',
+                  'string.min': 'Username di almeno 3 caratteri', 'any.required': 'Username richiesto' }),
+    password: passwordRegistrazione,
+    email: Joi.string().trim().email().max(100).required()
+      .messages({ 'string.email': 'Email non valida', 'any.required': 'Email richiesta' }),
+    ragione_sociale: Joi.string().trim().max(200).allow('', null).optional(),
+    partita_iva: Joi.string().trim().pattern(/^[0-9]{11}$/).allow('', null).optional()
+      .messages({ 'string.pattern.base': 'La partita IVA ha 11 cifre' }),
+    telefono: Joi.string().trim().max(20).pattern(/^[0-9 +().-]*$/).allow('', null).optional()
+      .messages({ 'string.pattern.base': 'Telefono non valido' })
+  }),
+
   profiloCommercialista: Joi.object({
     ragione_sociale: Joi.string().trim().max(200).allow('', null).optional(),
     partita_iva: Joi.string().trim().pattern(/^[0-9]{11}$/).allow('', null).optional()
