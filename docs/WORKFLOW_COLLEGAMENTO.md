@@ -453,7 +453,7 @@ e il chart non ha ancora le variabili SMTP.
   simultanee: una `200`, nove `409`); `GET /api/messaggi/chiarimenti?stato=`; contatore
   `chiarimenti_aperti` nella risposta della chat.
 
-Prove: `scripts/smoke/w5-chat-lavoro.sh` 91/0 (su `db4e6d0` 25/66); E2E Chromium (movimento → chat
+Prove: `scripts/smoke/w5-chat-lavoro.sh` 93/0 (su `db4e6d0` 25/66; anche con backend in UTC+14); E2E Chromium (movimento → chat
 → allegato multipart → download identico → chiarimento risolto) 10/0.
 
 Residui dichiarati: il rollback della 007 non cancella i file su disco; un crash fra la scrittura

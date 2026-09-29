@@ -99,16 +99,19 @@ const MOVIMENTO_NON_CITABILE =
 // il cliente che ne cita uno escluso lo mostrerebbe a chi non doveva vederlo.
 // Stessa risposta per "non esiste", "non e' suo" e "fuori ambito".
 async function movimentoCitabile(collegamento, movimentoId) {
+  // L'ambito si legge qui dal collegamento, nella stessa query: ripassare al
+  // database le date come oggetti JS le espone al fuso orario del processo.
   const r = await queryOne(
     `SELECT 1 AS ok
-     FROM movimenti mv
-     JOIN conti_correnti cc ON cc.id = mv.conto_id
-     WHERE mv.id = $1 AND cc.user_id = $2
-       AND ($3::int[] IS NULL OR cardinality($3::int[]) = 0 OR cc.id = ANY($3::int[]))
-       AND ($4::date IS NULL OR mv.data >= $4::date)
-       AND ($5::date IS NULL OR mv.data <= $5::date)`,
-    [movimentoId, collegamento.user_id, collegamento.conti_ammessi,
-     collegamento.ambito_dal, collegamento.ambito_al]
+     FROM collegamenti_commercialista c
+     JOIN conti_correnti cc ON cc.user_id = c.user_id
+     JOIN movimenti mv ON mv.conto_id = cc.id
+     WHERE c.id = $1 AND mv.id = $2
+       AND (c.conti_ammessi IS NULL OR cardinality(c.conti_ammessi) = 0
+            OR cc.id = ANY(c.conti_ammessi))
+       AND (c.ambito_dal IS NULL OR mv.data >= c.ambito_dal)
+       AND (c.ambito_al  IS NULL OR mv.data <= c.ambito_al)`,
+    [collegamento.id, movimentoId]
   );
   return Boolean(r);
 }

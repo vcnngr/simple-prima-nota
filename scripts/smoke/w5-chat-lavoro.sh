@@ -93,6 +93,8 @@ M_OK=$(mov "$UT" 2025-06-01 $CONTO_OK "W5-DENTRO-$SFX")
 M_CONTO=$(mov "$UT" 2025-06-02 $CONTO_NO "W5-FUORI-CONTO-$SFX")
 M_DATA=$(mov "$UT" 2024-06-01 $CONTO_OK "W5-FUORI-DATA-$SFX")
 M_ALTRO=$(mov "$UT2" 2025-06-01 $CONTO_ALTRO "W5-ALTRUI-$SFX")
+M_BORDO=$(mov "$UT" 2025-01-01 $CONTO_OK "W5-BORDO-$SFX")
+M_VIGILIA=$(mov "$UT" 2024-12-31 $CONTO_OK "W5-VIGILIA-$SFX")
 
 collega() {  # collega <token studio> <username> <token cliente> <ambito json>
   curl -s -X POST $API/commercialisti/richieste -H "Authorization: Bearer $1" "${JSON[@]}" -d "{\"identificativo_cliente\":\"$2\"}" >/dev/null
@@ -199,6 +201,8 @@ ERR_CITA=""
 assert_http "fuori ambito per conto, dal cliente -> 400" 400 -X POST "$API/messaggi?$QU" -H "Authorization: Bearer $UT" "${JSON[@]}" -d "{\"messaggio\":\"x\",\"movimento_id\":$M_CONTO}"
 ERR_CITA=$(j "['error']" < $T/body)
 assert_http "fuori ambito per data, dallo studio -> 400" 400 -X POST "$API/messaggi?$QC" -H "Authorization: Bearer $CT" "${JSON[@]}" -d "{\"messaggio\":\"x\",\"movimento_id\":$M_DATA}"
+assert_http "il primo giorno dell'ambito si cita -> 201" 201 -X POST "$API/messaggi?$QC" -H "Authorization: Bearer $CT" "${JSON[@]}" -d "{\"messaggio\":\"x\",\"movimento_id\":$M_BORDO}"
+assert_http "il giorno prima no -> 400" 400 -X POST "$API/messaggi?$QC" -H "Authorization: Bearer $CT" "${JSON[@]}" -d "{\"messaggio\":\"x\",\"movimento_id\":$M_VIGILIA}"
 assert_http "movimento di un altro cliente -> 400" 400 -X POST "$API/messaggi?$QC" -H "Authorization: Bearer $CT" "${JSON[@]}" -d "{\"messaggio\":\"x\",\"movimento_id\":$M_ALTRO}"
 eq "stessa risposta di un movimento inesistente" "$ERR_CITA" \
   "$(curl -s -X POST "$API/messaggi?$QC" -H "Authorization: Bearer $CT" "${JSON[@]}" -d '{"messaggio":"x","movimento_id":99999999}' | j "['error']")"
