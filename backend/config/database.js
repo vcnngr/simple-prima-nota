@@ -21,7 +21,7 @@ pool.on('connect', (client) => {
 });
 
 pool.on('error', (err, client) => {
-  console.error('❌ Unexpected error on idle client', err);
+  console.error(`❌ Unexpected error on idle client: ${err.code || err.name || 'ERRORE'}`);
   // Don't exit - let the pool handle reconnection
 });
 
@@ -73,10 +73,14 @@ const query = async (text, params) => {
     // (revocato, gia' usato, scaduto) fa sollevare un'eccezione. Stampandoli,
     // il valore in chiaro finiva nei log e ci restava: l'hash in tabella non
     // serviva piu' a niente. Si tiene solo la forma degli argomenti.
+    // Nemmeno il messaggio di pg (K3): cita i valori ricevuti (`invalid input
+    // syntax for type integer: "..."`), e `detail` le chiavi duplicate. Basta
+    // lo SQLSTATE, piu' il vincolo quando c'e' (e' un nome dello schema).
     console.error('❌ Database query error', {
       text,
       params: descriviParametri(params),
-      error: error.message
+      code: error.code || error.name || 'ERRORE',
+      ...(error.constraint ? { constraint: error.constraint } : {})
     });
     throw error;
   }

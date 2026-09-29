@@ -4,6 +4,7 @@ const express = require('express');
 const { query, queryOne, withTransaction } = require('../config/database');
 const { authEither } = require('../middleware/auth');
 const multer = require('multer');
+const { logErrore } = require('../utils/errori');
 const {
   MOTIVO_PER_STATO, registraAccesso, registraAccessoOrario, registraAccessiElenco
 } = require('../middleware/collegamento');
@@ -83,7 +84,7 @@ const getCollegamentoId = async (req, res, next) => {
     req.cliente_id = req.commercialista ? parseInt(req.query.userId, 10) : null;
     next();
   } catch (error) {
-    console.error('Get collegamento error:', error.message);
+    logErrore('Get collegamento error', error);
     res.status(500).json({ error: 'Errore nel recupero del collegamento' });
   }
 };
@@ -193,7 +194,7 @@ router.get('/', authEither, validateQuery(schemas.messaggiQuery), getCollegament
       total: messaggi.rows.length
     });
   } catch (error) {
-    console.error('Get messages error:', error);
+    logErrore('Get messages error', error);
     res.status(500).json({ error: 'Errore nel recupero dei messaggi' });
   }
 });
@@ -225,7 +226,7 @@ router.post('/', authEither, validateQuery(schemas.messaggiQuery), validate(sche
       messaggio: result
     });
   } catch (error) {
-    console.error('Send message error:', error.message);
+    logErrore('Send message error', error);
     res.status(500).json({ error: 'Errore nell\'invio del messaggio' });
   }
 });
@@ -263,7 +264,7 @@ router.put('/:id/letto', authEither, getCollegamentoId, async (req, res) => {
       message: 'Messaggio contrassegnato come letto'
     });
   } catch (error) {
-    console.error('Mark read error:', error);
+    logErrore('Mark read error', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento del messaggio' });
   }
 });
@@ -288,7 +289,7 @@ router.put('/leggi-tutti', authEither, getCollegamentoId, async (req, res) => {
       updated: result.rowCount
     });
   } catch (error) {
-    console.error('Mark all read error:', error);
+    logErrore('Mark all read error', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento dei messaggi' });
   }
 });
@@ -337,7 +338,7 @@ router.get('/unread-count', authEither, async (req, res) => {
       unread_count: unreadCount
     });
   } catch (error) {
-    console.error('Get unread count error:', error);
+    logErrore('Get unread count error', error);
     res.status(500).json({ error: 'Errore nel conteggio dei messaggi non letti' });
   }
 });
@@ -403,7 +404,7 @@ router.get('/clients-overview', authEither, async (req, res) => {
       clients: clientsOverview.rows
     });
   } catch (error) {
-    console.error('Get clients overview error:', error);
+    logErrore('Get clients overview error', error);
     res.status(500).json({ error: 'Errore nel recupero delle informazioni clienti' });
   }
 });
@@ -426,7 +427,7 @@ function riceviFile(req, res, next) {
         error: `File troppo grande (massimo ${Math.floor(allegati.cfg().maxBytes / 1024 / 1024)} MB)`
       });
     }
-    console.error('Upload error:', err.code || 'ERRORE');
+    logErrore('Upload error', err);
     return res.status(400).json({ error: 'Caricamento non valido' });
   });
 }
@@ -446,7 +447,11 @@ router.post('/allegati', authEither, validateQuery(schemas.messaggiQuery), getCo
   try {
     info = allegati.verifica(req.file);
   } catch (err) {
-    return res.status(err.status || 400).json({ error: err.message });
+    // Con `status` e' il rifiuto scritto da noi in AllegatiService.verifica
+    // (tipo non ammesso): il testo si mostra. Altro e' un guasto: generico.
+    if (err.status) return res.status(err.status).json({ error: err.message });
+    logErrore('Verifica allegato error', err);
+    return res.status(400).json({ error: 'Caricamento non valido' });
   }
 
   if (campi.movimento_id && !(await movimentoCitabile(req.collegamento, campi.movimento_id))) {
@@ -504,7 +509,7 @@ router.post('/allegati', authEither, validateQuery(schemas.messaggiQuery), getCo
     if (salvato) {
       await allegati.rimuovi(salvato.chiave).catch(() => {});
     }
-    console.error('Upload allegato error:', error.code || error.message);
+    logErrore('Upload allegato error', error);
     res.status(500).json({ error: 'Errore nel caricamento dell\'allegato' });
   }
 });
@@ -544,7 +549,7 @@ router.get('/allegati/:id', authEither, validateQuery(schemas.messaggiQuery), ge
 
     const flusso = allegati.apri(a.chiave);
     flusso.on('error', (err) => {
-      console.error('Download allegato error:', err.code || 'ERRORE');
+      logErrore('Download allegato error', err);
       if (!res.headersSent) res.status(500).json({ error: 'Allegato non disponibile' });
       else res.destroy();
     });
@@ -562,7 +567,7 @@ router.get('/allegati/:id', authEither, validateQuery(schemas.messaggiQuery), ge
       flusso.pipe(res);
     });
   } catch (error) {
-    console.error('Download allegato error:', error.message);
+    logErrore('Download allegato error', error);
     if (!res.headersSent) res.status(500).json({ error: 'Errore nel recupero dell\'allegato' });
   }
 });
@@ -593,7 +598,7 @@ router.get('/chiarimenti', authEither, validateQuery(schemas.chiarimentiQuery), 
     );
     res.json({ success: true, chiarimenti: r.rows });
   } catch (error) {
-    console.error('Get chiarimenti error:', error.message);
+    logErrore('Get chiarimenti error', error);
     res.status(500).json({ error: 'Errore nel recupero delle richieste di chiarimento' });
   }
 });
@@ -632,7 +637,7 @@ router.put('/:id/chiarimento', authEither, validateQuery(schemas.messaggiQuery),
     }
     return res.status(409).json({ error: `La richiesta e' gia' ${attuale.chiarimento_stato}`, stato: attuale.chiarimento_stato });
   } catch (error) {
-    console.error('Chiarimento error:', error.message);
+    logErrore('Chiarimento error', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento della richiesta di chiarimento' });
   }
 });

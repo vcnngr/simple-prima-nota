@@ -23,6 +23,7 @@ const utentiCommercialistaRoutes = require('./routes/utentiCommercialista');
 const messaggiRoutes = require('./routes/messaggi');
 const notifiche = require('./services/NotificationService');
 const allegati = require('./services/AllegatiService');
+const { descriviErrore } = require('./utils/errori');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -113,14 +114,18 @@ app.use((err, req, res, next) => {
     return res.status(400).json({ error: 'Corpo della richiesta non valido' });
   }
 
-  // Log degli errori
-  const errorLog = `${new Date().toISOString()} - ERROR: ${err.stack}\n`;
-  fs.appendFileSync(path.join(logsDir, 'error.log'), errorLog);
-  
-  console.error(err.stack);
-  res.status(500).json({ 
-    error: 'Errore interno del server',
-    message: process.env.NODE_ENV === 'development' ? err.message : 'Si è verificato un errore'
+  // Errori dei parser di express (corpo troppo grande, codifica...): hanno uno
+  // status 4xx e un tipo; il messaggio resta fuori dalla risposta.
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
+
+  // Log degli errori (K3): metodo, percorso senza query string e codice
+  // dell'errore; mai lo stack col messaggio, che puo' citare i dati ricevuti.
+  const riga = `${req.method} ${req.path}: ${err.type || descriviErrore(err)}`;
+  fs.appendFileSync(path.join(logsDir, 'error.log'), `${new Date().toISOString()} - ERROR: ${riga}\n`);
+  console.error(`Errore non gestito ${riga}`);
+
+  res.status(status).json({
+    error: status === 500 ? 'Errore interno del server' : 'Richiesta non valida'
   });
 });
 

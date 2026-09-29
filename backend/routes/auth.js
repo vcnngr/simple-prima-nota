@@ -6,6 +6,7 @@ const { validate, schemas } = require('../middleware/validation');
 const { auth } = require('../middleware/auth');
 const account = require('../services/AccountService');
 const { limiteResetPassword, rispondiResetAccolto } = require('../middleware/account');
+const { logErrore, motivoRiga } = require('../utils/errori');
 
 const router = express.Router();
 
@@ -52,7 +53,7 @@ router.post('/register', validate(schemas.user), async (req, res) => {
     // 23505: username o email presi fra il controllo e l'INSERT (l'indice
     // unico su lower(email) della 008 vale anche per le maiuscole).
     if (error.code === '23505') return res.status(400).json({ error: 'Username o email già in uso' });
-    console.error('Registration error:', error.code || error.message);
+    logErrore('Registration error', error);
     res.status(500).json({ error: 'Errore durante la registrazione' });
   }
 });
@@ -91,7 +92,7 @@ router.post('/login', validate(schemas.login), async (req, res) => {
       token
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logErrore('Login error', error);
     res.status(500).json({ error: 'Errore durante il login' });
   }
 });
@@ -104,7 +105,7 @@ router.get('/verify', auth, async (req, res) => {
       user: req.user
     });
   } catch (error) {
-    console.error('Token verification error:', error);
+    logErrore('Token verification error', error);
     res.status(500).json({ error: 'Errore durante la verifica del token' });
   }
 });
@@ -123,7 +124,7 @@ router.get('/profile', auth, async (req, res) => {
     
     res.json(user);
   } catch (error) {
-    console.error('Profile error:', error);
+    logErrore('Profile error', error);
     res.status(500).json({ error: 'Errore durante il caricamento del profilo' });
   }
 });
@@ -141,7 +142,7 @@ router.post('/change-password', auth, validate(schemas.cambioPassword), async (r
     }
     res.json({ message: 'Password cambiata con successo', token: r.token });
   } catch (error) {
-    console.error('Change password error:', error.code || error.message);
+    logErrore('Change password error', error);
     res.status(500).json({ error: 'Errore durante il cambio password' });
   }
 });
@@ -157,7 +158,7 @@ router.post('/password-reimposta', validate(schemas.passwordReimposta), async (r
     if (!ok) return res.status(400).json({ error: 'Link non valido o scaduto' });
     res.json({ success: true, message: 'Password reimpostata: accedi con la nuova password' });
   } catch (error) {
-    console.error('Reset password error:', error.code || error.message);
+    logErrore('Reset password error', error);
     res.status(500).json({ error: 'Errore durante la reimpostazione della password' });
   }
 });
@@ -171,7 +172,7 @@ router.post('/email', auth, validate(schemas.cambioEmail), async (req, res) => {
     if (r.esito === 'email_in_uso') return res.status(409).json({ error: 'Indirizzo gia\' in uso' });
     res.status(202).json({ success: true, message: 'Ti abbiamo scritto al nuovo indirizzo: il cambio vale dopo la conferma' });
   } catch (error) {
-    console.error('Change email error:', error.code || error.message);
+    logErrore('Change email error', error);
     res.status(500).json({ error: 'Errore durante il cambio email' });
   }
 });
@@ -183,7 +184,7 @@ router.post('/email/conferma', validate(schemas.confermaEmail), async (req, res)
     if (r.esito === 'email_in_uso') return res.status(409).json({ error: 'Indirizzo gia\' in uso' });
     res.json({ success: true, message: 'Indirizzo email aggiornato', email: r.email });
   } catch (error) {
-    console.error('Confirm email error:', error.code || error.message);
+    logErrore('Confirm email error', error);
     res.status(500).json({ error: 'Errore durante la conferma dell\'indirizzo' });
   }
 });
@@ -243,10 +244,9 @@ router.post('/backup/import', auth, async (req, res) => {
         }
         console.log('✅ Dati esistenti eliminati');
       } catch (error) {
-        console.error('❌ Errore eliminazione dati esistenti:', error);
+        logErrore('❌ Errore eliminazione dati esistenti', error);
         return res.status(500).json({ 
-          error: 'Errore durante l\'eliminazione dei dati esistenti',
-          details: error.message 
+          error: 'Errore durante l\'eliminazione dei dati esistenti'
         });
       }
     }
@@ -272,7 +272,7 @@ router.post('/backup/import', auth, async (req, res) => {
           idMappings.conti.set(conto.id, result.rows[0].id);
           results.imported.conti_correnti++;
         } catch (error) {
-          results.errors.push(`Conto ${conto.nome_banca}: ${error.message}`);
+          results.errors.push(`Conto ${conto.nome_banca}: ${motivoRiga(error)}`);
         }
       }
     }
@@ -292,7 +292,7 @@ router.post('/backup/import', auth, async (req, res) => {
           idMappings.tipologie.set(tipologia.id, result.rows[0].id);
           results.imported.tipologie_anagrafiche++;
         } catch (error) {
-          results.errors.push(`Tipologia ${tipologia.nome}: ${error.message}`);
+          results.errors.push(`Tipologia ${tipologia.nome}: ${motivoRiga(error)}`);
         }
       }
     }
@@ -309,7 +309,7 @@ router.post('/backup/import', auth, async (req, res) => {
           
           results.imported.categorie_anagrafiche++;
         } catch (error) {
-          results.errors.push(`Categoria anagrafica ${categoria.nome}: ${error.message}`);
+          results.errors.push(`Categoria anagrafica ${categoria.nome}: ${motivoRiga(error)}`);
         }
       }
     }
@@ -326,7 +326,7 @@ router.post('/backup/import', auth, async (req, res) => {
           
           results.imported.categorie_movimenti++;
         } catch (error) {
-          results.errors.push(`Categoria movimento ${categoria.nome}: ${error.message}`);
+          results.errors.push(`Categoria movimento ${categoria.nome}: ${motivoRiga(error)}`);
         }
       }
     }
@@ -349,7 +349,7 @@ router.post('/backup/import', auth, async (req, res) => {
           idMappings.anagrafiche.set(anagrafica.id, result.rows[0].id);
           results.imported.anagrafiche++;
         } catch (error) {
-          results.errors.push(`Anagrafica ${anagrafica.nome}: ${error.message}`);
+          results.errors.push(`Anagrafica ${anagrafica.nome}: ${motivoRiga(error)}`);
         }
       }
     }
@@ -375,7 +375,7 @@ router.post('/backup/import', auth, async (req, res) => {
           
           results.imported.movimenti++;
         } catch (error) {
-          results.errors.push(`Movimento ${movimento.descrizione}: ${error.message}`);
+          results.errors.push(`Movimento ${movimento.descrizione}: ${motivoRiga(error)}`);
         }
       }
     }
@@ -393,7 +393,7 @@ router.post('/backup/import', auth, async (req, res) => {
           
           results.imported.alerts++;
         } catch (error) {
-          console.log('Alert import error (ignorato):', error.message);
+          logErrore('Alert import error (ignorato)', error);
         }
       }
     }
@@ -406,10 +406,9 @@ router.post('/backup/import', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Errore import backup:', error);
+    logErrore('❌ Errore import backup', error);
     res.status(500).json({ 
-      error: 'Errore durante l\'import del backup',
-      details: error.message 
+      error: 'Errore durante l\'import del backup'
     });
   }
 });
@@ -565,10 +564,9 @@ router.get('/backup/export', auth, async (req, res) => {
     res.json(backup);
 
   } catch (error) {
-    console.error('❌ Errore export backup:', error);
+    logErrore('❌ Errore export backup', error);
     res.status(500).json({ 
-      error: 'Errore durante l\'export del backup',
-      details: error.message 
+      error: 'Errore durante l\'export del backup'
     });
   }
 });
@@ -580,7 +578,7 @@ router.delete('/account', auth, async (req, res) => {
 
   console.log(`🗑️ Richiesta eliminazione account per utente ${userId}`);
 
-  if (!password) {
+  if (!password || typeof password !== 'string') {
     return res.status(400).json({ 
       error: 'Password richiesta per confermare l\'eliminazione' 
     });
@@ -615,7 +613,7 @@ router.delete('/account', auth, async (req, res) => {
       conteggi.categorie_movimenti = (await queryOne('SELECT COUNT(*) as count FROM categorie_movimenti WHERE user_id = $1', [userId]))?.count || 0;
       conteggi.categorie_anagrafiche = (await queryOne('SELECT COUNT(*) as count FROM categorie_anagrafiche WHERE user_id = $1', [userId]))?.count || 0;
     } catch (error) {
-      console.log('⚠️ Errore nel conteggio dati (continuo comunque):', error.message);
+      logErrore('⚠️ Errore nel conteggio dati (continuo comunque)', error);
     }
 
 
@@ -631,7 +629,7 @@ router.delete('/account', auth, async (req, res) => {
       throw new Error('Errore nell\'eliminazione dell\'utente');
     }
 
-    console.log(`✅ Account ${userId} (${user.username}) eliminato con successo (+ CASCADE)`);
+    console.log(`✅ Account ${userId} eliminato con successo (+ CASCADE)`);
     
     res.json({
       success: true,
@@ -643,10 +641,9 @@ router.delete('/account', auth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Errore eliminazione account:', error);
+    logErrore('❌ Errore eliminazione account', error);
     res.status(500).json({ 
-      error: 'Errore durante l\'eliminazione dell\'account',
-      details: error.message 
+      error: 'Errore durante l\'eliminazione dell\'account'
     });
   }
 });
@@ -673,11 +670,11 @@ router.get('/account/stats', auth, async (req, res) => {
     // Calcola totale categorie
     stats.categorie_totali = parseInt(stats.categorie_movimenti || 0) + parseInt(stats.categorie_anagrafiche || 0);
 
-    console.log(`📊 Statistiche inviate:`, stats);
+    console.log(`📊 Statistiche inviate per utente ${userId}`);
     res.json(stats);
     
   } catch (error) {
-    console.error('❌ Errore nel recupero statistiche:', error);
+    logErrore('❌ Errore nel recupero statistiche', error);
     res.status(500).json({ error: 'Errore nel recupero delle statistiche' });
   }
 });

@@ -1,6 +1,7 @@
 // middleware/auth.js
 const { queryOne } = require('../config/database');
 const { versioneValida, verificaJwt } = require('../services/AccountService');
+const { logErrore } = require('../utils/errori');
 
 // La versione delle credenziali serve solo al confronto con il claim `cv`: un
 // cambio o reset della password la incrementa e chiude le altre sessioni.
@@ -36,7 +37,7 @@ const auth = async (req, res, next) => {
     req.user = senzaVersione(user);
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
+    logErrore('Auth middleware error', error);
     res.status(401).json({ error: 'Token non valido.' });
   }
 };
@@ -81,7 +82,7 @@ const authEither = async (req, res, next) => {
 
     return res.status(401).json({ error: 'Token non valido.' });
   } catch (error) {
-    console.error('AuthEither middleware error:', error);
+    logErrore('AuthEither middleware error', error);
     res.status(401).json({ error: 'Token non valido.' });
   }
 };

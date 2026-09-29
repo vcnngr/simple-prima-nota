@@ -9,6 +9,7 @@
 // che consente l'accesso, la richiesta si ferma qui.
 
 const { queryOne } = require('../config/database');
+const { logErrore } = require('../utils/errori');
 
 // Stati in cui il commercialista puo' leggere i dati del cliente.
 const STATI_CON_ACCESSO = ['attiva'];
@@ -105,7 +106,7 @@ function requireCollegamento(tipoAccesso, dettagli) {
 
       next();
     } catch (error) {
-      console.error('requireCollegamento error:', error.message);
+      logErrore('requireCollegamento error', error);
       res.status(500).json({ error: 'Errore nella verifica del collegamento' });
     }
   };

@@ -7,6 +7,7 @@ const moment = require('moment');
 const csv = require('csv-writer');
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 router.use(auth);
@@ -129,7 +130,7 @@ router.get('/estratto-conto', validateQuery(reportFiltersSchema), async (req, re
 
     res.json(report);
   } catch (error) {
-    console.error('Error generating estratto conto:', error);
+    logErrore('Error generating estratto conto', error);
     res.status(500).json({ error: 'Errore durante la generazione dell\'estratto conto' });
   }
 });
@@ -274,7 +275,7 @@ router.get('/movimenti-anagrafica', validateQuery(reportFiltersSchema), async (r
 
     res.json(report);
   } catch (error) {
-    console.error('Error generating movimenti anagrafica:', error);
+    logErrore('Error generating movimenti anagrafica', error);
     res.status(500).json({ error: 'Errore durante la generazione del report movimenti anagrafica' });
   }
 });
@@ -447,7 +448,7 @@ router.get('/entrate-vs-uscite', validateQuery(reportFiltersSchema), async (req,
 
     res.json(report);
   } catch (error) {
-    console.error('Error generating entrate vs uscite:', error);
+    logErrore('Error generating entrate vs uscite', error);
     res.status(500).json({ error: 'Errore durante la generazione del report entrate vs uscite' });
   }
 });
@@ -564,7 +565,7 @@ router.get('/bilancio-mensile', async (req, res) => {
 
     res.json(report);
   } catch (error) {
-    console.error('Error generating bilancio mensile:', error);
+    logErrore('Error generating bilancio mensile', error);
     res.status(500).json({ error: 'Errore durante la generazione del bilancio mensile' });
   }
 });
@@ -595,7 +596,7 @@ async function exportToCsv(res, data, filename) {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
     res.send(csvContent);
   } catch (error) {
-    console.error('Error exporting CSV:', error);
+    logErrore('Error exporting CSV', error);
     res.status(500).json({ error: 'Errore durante l\'export CSV' });
   }
 }
@@ -616,7 +617,7 @@ async function exportToXlsx(res, data, filename) {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
     res.send(buffer);
   } catch (error) {
-    console.error('Error exporting XLSX:', error);
+    logErrore('Error exporting XLSX', error);
     res.status(500).json({ error: 'Errore durante l\'export Excel' });
   }
 }
@@ -659,7 +660,7 @@ async function exportToPdf(res, reportData) {
 
     doc.end();
   } catch (error) {
-    console.error('Error exporting PDF:', error);
+    logErrore('Error exporting PDF', error);
     res.status(500).json({ error: 'Errore durante l\'export PDF' });
   }
 }
@@ -687,7 +688,7 @@ router.get('/template', (req, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="template_import_movimenti.csv"');
     res.send(csvContent);
   } catch (error) {
-    console.error('Error generating template:', error);
+    logErrore('Error generating template', error);
     res.status(500).json({ error: 'Errore durante la generazione del template' });
   }
 });

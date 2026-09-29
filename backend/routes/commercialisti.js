@@ -4,6 +4,7 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const { query, queryOne } = require('../config/database');
 const { auth } = require('../middleware/auth');
+const { logErrore, messaggioApplicativo } = require('../utils/errori');
 const {
   requireCollegamento, clausolaAmbito, contoNellAmbito,
   completaAccesso, registraAccessiElenco
@@ -62,7 +63,7 @@ const authCommercialista = async (req, res, next) => {
     req.commercialista = commercialista;
     next();
   } catch (error) {
-    console.error('Commercialista auth error:', error.message);
+    logErrore('Commercialista auth error', error);
     res.status(401).json({ error: 'Token non valido.' });
   }
 };
@@ -115,7 +116,7 @@ router.post('/register', validate(schemas.registrazioneCommercialista), async (r
     });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'Username o email già esistente' });
-    console.error('Register error:', error.code || error.message);
+    logErrore('Register error', error);
     res.status(500).json({ error: 'Errore durante la registrazione' });
   }
 });
@@ -161,7 +162,7 @@ router.post('/login', async (req, res) => {
       token
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logErrore('Login error', error);
     res.status(500).json({ error: 'Errore durante il login' });
   }
 });
@@ -176,7 +177,7 @@ router.get('/profile', authCommercialista, async (req, res) => {
       commercialista: req.commercialista
     });
   } catch (error) {
-    console.error('Profile error:', error);
+    logErrore('Profile error', error);
     res.status(500).json({ error: 'Errore nel recupero del profilo' });
   }
 });
@@ -196,7 +197,7 @@ router.put('/profile', authCommercialista, validate(schemas.profiloCommercialist
     );
     res.json({ success: true, commercialista: r });
   } catch (error) {
-    console.error('Update profile error:', error.code || error.message);
+    logErrore('Update profile error', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento del profilo' });
   }
 });
@@ -213,7 +214,7 @@ router.put('/password', authCommercialista, validate(schemas.cambioPassword), as
     }
     res.json({ success: true, message: 'Password cambiata con successo', token: r.token });
   } catch (error) {
-    console.error('Change password error:', error.code || error.message);
+    logErrore('Change password error', error);
     res.status(500).json({ error: 'Errore durante il cambio password' });
   }
 });
@@ -233,7 +234,7 @@ router.delete('/account', authCommercialista, validate(schemas.eliminaAccount), 
     console.log(`eliminazione studio ${req.commercialista.id}: fatta, collegamenti revocati ${r.revocati}`);
     res.json({ success: true, message: 'Account eliminato', collegamenti_revocati: r.revocati });
   } catch (error) {
-    console.error('Delete account error:', error.code || error.message);
+    logErrore('Delete account error', error);
     res.status(500).json({ error: 'Errore durante l\'eliminazione dell\'account' });
   }
 });
@@ -247,7 +248,7 @@ router.post('/password-reimposta', validate(schemas.passwordReimposta), async (r
     if (!ok) return res.status(400).json({ error: 'Link non valido o scaduto' });
     res.json({ success: true, message: 'Password reimpostata: accedi con la nuova password' });
   } catch (error) {
-    console.error('Reset password error:', error.code || error.message);
+    logErrore('Reset password error', error);
     res.status(500).json({ error: 'Errore durante la reimpostazione della password' });
   }
 });
@@ -261,7 +262,7 @@ router.post('/email', authCommercialista, validate(schemas.cambioEmail), async (
     if (r.esito === 'email_in_uso') return res.status(409).json({ error: 'Indirizzo gia\' in uso' });
     res.status(202).json({ success: true, message: 'Ti abbiamo scritto al nuovo indirizzo: il cambio vale dopo la conferma' });
   } catch (error) {
-    console.error('Change email error:', error.code || error.message);
+    logErrore('Change email error', error);
     res.status(500).json({ error: 'Errore durante il cambio email' });
   }
 });
@@ -273,7 +274,7 @@ router.post('/email/conferma', validate(schemas.confermaEmail), async (req, res)
     if (r.esito === 'email_in_uso') return res.status(409).json({ error: 'Indirizzo gia\' in uso' });
     res.json({ success: true, message: 'Indirizzo email aggiornato', email: r.email });
   } catch (error) {
-    console.error('Confirm email error:', error.code || error.message);
+    logErrore('Confirm email error', error);
     res.status(500).json({ error: 'Errore durante la conferma dell\'indirizzo' });
   }
 });
@@ -326,7 +327,7 @@ router.get('/dashboard', authCommercialista, async (req, res) => {
       totale_clienti: clienti.rows.length
     });
   } catch (error) {
-    console.error('Dashboard error:', error);
+    logErrore('Dashboard error', error);
     res.status(500).json({ error: 'Errore nel recupero della dashboard' });
   }
 });
@@ -368,9 +369,9 @@ router.post('/collega-cliente', authCommercialista, validate(schemas.collegaClie
         : null
     });
   } catch (error) {
-    console.error('Connect client error:', error);
+    logErrore('Connect client error', error);
     res.status(400).json({
-      error: error.message || 'Errore nel collegamento del cliente'
+      error: messaggioApplicativo(error, 'Errore nel collegamento del cliente')
     });
   }
 });
@@ -408,7 +409,7 @@ router.post('/richieste', authCommercialista, limiteRichieste, validate(schemas.
     // La gara fra richieste concorrenti, che rendeva il 500 un oracolo, e'
     // assorbita dalla 004 (ON CONFLICT DO NOTHING): cio' che arriva qui e' un
     // guasto (database giu', funzione mancante), indipendente dal cliente.
-    console.error('Richiesta collegamento error:', error.message);
+    logErrore('Richiesta collegamento error', error);
     return res.status(500).json({ error: 'Errore nell\'invio della richiesta. Riprova.' });
   }
 });
@@ -430,7 +431,7 @@ router.get('/richieste', authCommercialista, async (req, res) => {
 
     res.json({ success: true, richieste: richieste.rows, totale: richieste.rows.length });
   } catch (error) {
-    console.error('Get richieste error:', error.message);
+    logErrore('Get richieste error', error);
     res.status(500).json({ error: 'Errore nel recupero delle richieste' });
   }
 });
@@ -532,7 +533,7 @@ router.get('/clienti/:userId', authCommercialista, validateQuery(schemas.paginaz
       }
     });
   } catch (error) {
-    console.error('Get client error:', error);
+    logErrore('Get client error', error);
     res.status(500).json({ error: 'Errore nel recupero dei dati del cliente' });
   }
 });
@@ -555,8 +556,8 @@ router.delete('/clienti/:userId', authCommercialista, requireCollegamento('disco
       message: 'Cliente disconnesso con successo'
     });
   } catch (error) {
-    console.error('Disconnect client error:', error);
-    res.status(500).json({ error: error.message || 'Errore nella disconnessione del cliente' });
+    logErrore('Disconnect client error', error);
+    res.status(500).json({ error: messaggioApplicativo(error, 'Errore nella disconnessione del cliente') });
   }
 });
 
@@ -764,7 +765,7 @@ router.post('/clienti/:userId/export', authCommercialista, validate(schemas.expo
     }
 
   } catch (error) {
-    console.error('Export client error:', error);
+    logErrore('Export client error', error);
     res.status(500).json({ error: 'Errore nella generazione dell\'export' });
   }
 });
@@ -951,7 +952,7 @@ function exportToPdf(res, data, metadata, cliente) {
 
     doc.end();
   } catch (error) {
-    console.error('PDF export error:', error);
+    logErrore('PDF export error', error);
     res.status(500).json({ error: 'Errore nella generazione del PDF' });
   }
 }

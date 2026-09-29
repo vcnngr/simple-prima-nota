@@ -9,7 +9,7 @@ uno smoke che fallisce sul codice di prima.
 |---|---|---|---|
 | K1 ✅ | Token | il token dice per quale tabella vale (`tipo`); solo HS256; password di almeno 8 caratteri alla registrazione; registrazione dello studio validata | `scripts/smoke/k1-token.sh` |
 | K2 | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | `scripts/smoke/k2-ip.sh` |
-| K3 | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | da scrivere |
+| K3 | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | `scripts/smoke/k3-errori.sh` |
 | K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | da scrivere |
 | K5 | Deploy | utenti demo `admin`/`demo` con password note creati da `init.sql` anche in produzione; `JWT_SECRET` di esempio accettato in produzione; CSP che ammette `http:`, `https:` e `'unsafe-inline'` | da scrivere |
 
@@ -83,3 +83,37 @@ che un ingress scrive).
 
 Aperti, fuori da K2: il tetto è per IP anche per le richieste autenticate (molti utenti dietro lo
 stesso NAT aziendale condividono i 300); da rivedere con i dati d'uso.
+
+## K3 — Errori e log
+
+**Il problema.** Molte rotte rispondevano con `details: error.message` (export, anteprima, backup,
+conti, eliminazione dell'account) o con `error.message` diretto (collegamento, disconnessione,
+import CSV). Il messaggio di pg cita i valori ricevuti (`invalid input syntax for type integer:
+"..."`), quello di bcrypt il tipo degli argomenti; il gestore globale in sviluppo restituiva
+`err.message` e scriveva lo stack. Nei log: `console.error(..., error)` con l'oggetto intero
+(messaggio, `detail` con le chiavi duplicate, stack), username nell'eliminazione dell'account, nomi
+di categorie, conti e anagrafiche creati, righe del CSV importato, configurazione dell'export.
+
+**Come funziona ora.**
+
+- `backend/utils/errori.js`: `logErrore(contesto, err)` scrive solo contesto, SQLSTATE o codice
+  (o il tipo, `TypeError`), nome del vincolo e file:riga di origine nel backend. Mai il messaggio.
+- Risposte: messaggio generico scritto da noi. Restano i testi nostri: `RAISE EXCEPTION` delle
+  funzioni SQL (SQLSTATE `P0001`, `messaggioApplicativo`), errori applicativi marcati (tipo di file
+  non ammesso, errori dell'import CSV), validazione Joi.
+- Righe rifiutate nell'import di backup e CSV: motivo per famiglia di SQLSTATE (`motivoRiga`:
+  "gia' presente", "dati non validi"...), non il testo del driver.
+- `config/database.js`: nel log degli errori di query SQLSTATE e vincolo, non il messaggio.
+- Gestore globale: errori 4xx dei parser (charset, corpo troppo grande) restano 4xx, con
+  "Richiesta non valida"; `error.log` e console con metodo, percorso senza query string e codice.
+- `DELETE /auth/account` con password non stringa: 400, non 500 di bcrypt.
+- Log applicativi: id al posto di username e nomi; niente righe di debug con i valori del CSV. `routes/backup.js` (non montato) resta com'era.
+
+**Prova**: `scripts/smoke/k3-errori.sh`. Provoca errori veri (id non numerici, filtro dell'export che
+rompe la query, riga di backup e di CSV rifiutate da pg, password non stringa, charset sconosciuto) e
+controlla risposte (niente testo di pg, stack, `details`; i messaggi nostri restano) e la parte di
+log scritta dalla corsa (niente username, email, nomi, valori del corpo, messaggi di pg, stack).
+
+Aperti, fuori da K3: un id non numerico nel percorso produce ancora un 500 (risposta pulita, ma
+dovrebbe essere 400: validazione dei parametri da fare con la UX backend); in sviluppo
+`config/database.js` scrive il testo di ogni query (senza parametri).

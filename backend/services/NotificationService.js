@@ -20,6 +20,7 @@
 
 const nodemailer = require('nodemailer');
 const { query, queryOne, withTransaction } = require('../config/database');
+const { logErrore } = require('../utils/errori');
 
 const cfg = () => ({
   intervalloMs: parseInt(process.env.NOTIFICHE_INTERVALLO_MS, 10) || 30000,
@@ -347,7 +348,7 @@ function avvia() {
     try {
       await giro(trasporto);
     } catch (err) {
-      console.error('Worker notifiche:', err.code || err.message);
+      logErrore('Worker notifiche', err);
     } finally {
       inCorso = false;
     }

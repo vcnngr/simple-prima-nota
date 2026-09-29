@@ -3,6 +3,7 @@ const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 
@@ -65,7 +66,7 @@ router.get('/export', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error exporting conti bancari:', error);
+    logErrore('Error exporting conti bancari', error);
     res.status(500).json({ error: 'Errore durante l\'export dei conti bancari' });
   }
 });
@@ -85,7 +86,7 @@ router.get('/', async (req, res) => {
     
     res.json(conti);
   } catch (error) {
-    console.error('Error fetching conti bancari:', error);
+    logErrore('Error fetching conti bancari', error);
     res.status(500).json({ error: 'Errore durante il caricamento dei conti bancari' });
   }
 });
@@ -104,7 +105,7 @@ router.get('/attivi', async (req, res) => {
     
     res.json(conti);
   } catch (error) {
-    console.error('Error fetching conti attivi:', error);
+    logErrore('Error fetching conti attivi', error);
     res.status(500).json({ error: 'Errore durante il caricamento dei conti attivi' });
   }
 });
@@ -156,10 +157,9 @@ router.get('/dropdown', auth, async (req, res) => {
     res.json(contiFormatted);
     
   } catch (error) {
-    console.error('Error fetching conti for dropdown:', error);
+    logErrore('Error fetching conti for dropdown', error);
     res.status(500).json({ 
-      error: 'Errore durante il caricamento dei conti',
-      details: error.message 
+      error: 'Errore durante il caricamento dei conti'
     });
   }
 });
@@ -186,7 +186,7 @@ router.get('/:id', async (req, res) => {
     
     res.json(conto);
   } catch (error) {
-    console.error('Error fetching conto detail:', error);
+    logErrore('Error fetching conto detail', error);
     res.status(500).json({ error: 'Errore durante il caricamento del conto' });
   }
 });
@@ -222,7 +222,7 @@ router.post('/', validate(schemas.contoBancario), async (req, res) => {
     
     res.status(201).json(newConto);
   } catch (error) {
-    console.error('Error creating conto bancario:', error);
+    logErrore('Error creating conto bancario', error);
     res.status(500).json({ error: 'Errore durante la creazione del conto bancario' });
   }
 });
@@ -283,7 +283,7 @@ router.put('/:id', validate(schemas.contoBancarioUpdate), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error updating conto bancario:', error);
+    logErrore('❌ Error updating conto bancario', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento del conto bancario' });
   }
 });
@@ -323,7 +323,7 @@ router.delete('/:id', async (req, res) => {
     
     res.json({ message: 'Conto bancario eliminato con successo' });
   } catch (error) {
-    console.error('Error deleting conto bancario:', error);
+    logErrore('Error deleting conto bancario', error);
     res.status(500).json({ error: 'Errore durante l\'eliminazione del conto bancario' });
   }
 });
@@ -351,7 +351,7 @@ router.patch('/:id/toggle-stato', async (req, res) => {
       conto: updatedConto
     });
   } catch (error) {
-    console.error('Error toggling conto stato:', error);
+    logErrore('Error toggling conto stato', error);
     res.status(500).json({ error: 'Errore durante il cambio stato del conto' });
   }
 });
@@ -399,7 +399,7 @@ router.get('/:id/saldo-storico', async (req, res) => {
     
     res.json(storicoSaldi);
   } catch (error) {
-    console.error('Error fetching saldo storico:', error);
+    logErrore('Error fetching saldo storico', error);
     res.status(500).json({ error: 'Errore durante il caricamento dello storico saldi' });
   }
 });

@@ -3,6 +3,7 @@ const express = require('express');
 const { queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const moment = require('moment');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 
@@ -268,7 +269,7 @@ router.get('/', async (req, res) => {
 
     res.json(dashboard);
   } catch (error) {
-    console.error('Error fetching dashboard:', error);
+    logErrore('Error fetching dashboard', error);
     res.status(500).json({ error: 'Errore durante il caricamento della dashboard' });
   }
 });
@@ -326,7 +327,7 @@ router.get('/kpi', async (req, res) => {
       calcolato_il: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Error fetching KPI:', error);
+    logErrore('Error fetching KPI', error);
     res.status(500).json({ error: 'Errore durante il caricamento dei KPI' });
   }
 });
@@ -448,7 +449,7 @@ router.get('/alerts', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching alerts:', error);
+    logErrore('Error fetching alerts', error);
     res.status(500).json({ error: 'Errore durante il caricamento degli alerts' });
   }
 });
@@ -469,7 +470,7 @@ router.get('/quick-stats', async (req, res) => {
 
     res.json(quickStats);
   } catch (error) {
-    console.error('Error fetching quick stats:', error);
+    logErrore('Error fetching quick stats', error);
     res.status(500).json({ error: 'Errore durante il caricamento delle statistiche rapide' });
   }
 });

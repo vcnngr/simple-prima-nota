@@ -5,6 +5,7 @@ const { auth } = require('../middleware/auth');
 const { validate, validateQuery, schemas } = require('../middleware/validation');
 const moment = require('moment');
 const UnifiedImportProcessor = require('../services/UnifiedImportProcessor');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 
@@ -208,7 +209,7 @@ router.get('/export', async (req, res) => {
         }
         
       } catch (error) {
-        console.error('Error exporting movimenti:', error);
+        logErrore('Error exporting movimenti', error);
         res.status(500).json({ error: 'Errore durante l\'export dei movimenti' });
       }
 });
@@ -291,7 +292,7 @@ Data;Descrizione;Importo;Tipo;Anagrafica;Tipologia_Anagrafica;Categoria_Anagrafi
     res.send('\uFEFF' + template);
     
   } catch (error) {
-    console.error('Errore generazione template:', error);
+    logErrore('Errore generazione template', error);
     res.status(500).json({ 
       error: 'Errore durante la generazione del template',
       suggestion: 'Riprova tra qualche secondo' 
@@ -423,7 +424,7 @@ router.get('/import/info', (req, res) => {
       ]
     });
   } catch (error) {
-    console.error('Errore info import:', error);
+    logErrore('Errore info import', error);
     res.status(500).json({ 
       error: 'Errore durante il caricamento delle informazioni import' 
     });
@@ -457,13 +458,19 @@ router.post('/import', auth, async (req, res) => {
     const processor = new UnifiedImportProcessor(userId);
     const result = await processor.processCSV(csvData);
     
-    console.log('✅ Import completato con successo per utente:', userId, result.stats);
+    console.log('✅ Import completato con successo per utente:', userId, { ...result.stats, warnings: result.stats?.warnings?.length });
     
     res.json(result);
     
   } catch (error) {
-    console.error('💥 Errore import per utente:', req.user?.id, error.message);
-    
+    logErrore(`💥 Errore import per utente ${req.user?.id}`, error);
+
+    // Solo gli errori scritti da noi (UnifiedImportProcessor, erroreImport)
+    // arrivano al client col loro testo; gli altri sono guasti: messaggio generico.
+    if (!error.applicativo) {
+      return res.status(500).json({ error: 'Errore durante l\'import del CSV' });
+    }
+
     // Analizza tipo errore per suggerimenti specifici
     let suggestions = [];
     let statusCode = 400;
@@ -668,7 +675,7 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
                 totali
               });
             } catch (error) {
-              console.error('Error fetching movimenti:', error);
+              logErrore('Error fetching movimenti', error);
               res.status(500).json({ error: 'Errore durante il caricamento dei movimenti' });
             }
 });
@@ -700,7 +707,7 @@ router.get('/recenti', async (req, res) => {
                 
                 res.json(movimenti);
               } catch (error) {
-                console.error('Error fetching movimenti recenti:', error);
+                logErrore('Error fetching movimenti recenti', error);
                 res.status(500).json({ error: 'Errore durante il caricamento dei movimenti recenti' });
               }
 });
@@ -735,7 +742,7 @@ return res.status(404).json({ error: 'Movimento non trovato' });
                   
                   res.json(movimento);
                 } catch (error) {
-                  console.error('Error fetching movimento detail:', error);
+                  logErrore('Error fetching movimento detail', error);
                   res.status(500).json({ error: 'Errore durante il caricamento del movimento' });
                 }
 });
@@ -812,7 +819,7 @@ req.user.id
 
 res.status(201).json(movimentoCompleto);
                   } catch (error) {
-console.error('Error creating movimento:', error);
+logErrore('Error creating movimento', error);
 res.status(500).json({ error: 'Errore durante la creazione del movimento' });
                   }
 });
@@ -904,7 +911,7 @@ res.json({
 });
 
                   } catch (error) {
-console.error('Error updating movimento:', error);
+logErrore('Error updating movimento', error);
 res.status(500).json({ error: 'Errore durante l\'aggiornamento del movimento' });
                   }
 });
@@ -933,7 +940,7 @@ res.json({
   movimento_eliminato: movimento
 });
                   } catch (error) {
-console.error('Error deleting movimento:', error);
+logErrore('Error deleting movimento', error);
 res.status(500).json({ error: 'Errore durante l\'eliminazione del movimento' });
                   }
 });
@@ -966,7 +973,7 @@ const statistiche = await queryAll(`
   
   res.json(statistiche);
 } catch (error) {
-  console.error('Error fetching statistiche mensili:', error);
+  logErrore('Error fetching statistiche mensili', error);
   res.status(500).json({ error: 'Errore durante il caricamento delle statistiche mensili' });
 }
 });

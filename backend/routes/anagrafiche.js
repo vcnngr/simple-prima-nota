@@ -3,6 +3,7 @@ const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 
@@ -26,7 +27,7 @@ router.get('/tipologie', async (req, res) => {
     
     res.json(tipologie);
   } catch (error) {
-    console.error('Error fetching tipologie:', error);
+    logErrore('Error fetching tipologie', error);
     res.status(500).json({ error: 'Errore durante il caricamento delle tipologie' });
   }
 });
@@ -56,7 +57,7 @@ router.post('/tipologie', validate(schemas.tipologiaAnagrafica), async (req, res
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Error creating tipologia:', error);
+    logErrore('Error creating tipologia', error);
     res.status(500).json({ error: 'Errore durante la creazione della tipologia' });
   }
 });
@@ -79,7 +80,7 @@ router.get('/tipologie/:id', async (req, res) => {
     
     res.json(tipologia);
   } catch (error) {
-    console.error('Error fetching tipologia detail:', error);
+    logErrore('Error fetching tipologia detail', error);
     res.status(500).json({ error: 'Errore durante il caricamento della tipologia' });
   }
 });
@@ -153,7 +154,7 @@ router.put('/tipologie/:id', validate(schemas.tipologiaAnagraficaUpdate), async 
     });
 
   } catch (error) {
-    console.error('❌ Error updating tipologia:', error);
+    logErrore('❌ Error updating tipologia', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento della tipologia' });
   }
 });
@@ -193,7 +194,7 @@ router.delete('/tipologie/:id', async (req, res) => {
     
     res.json({ message: `Tipologia "${tipologia.nome}" eliminata con successo` });
   } catch (error) {
-    console.error('Error deleting tipologia:', error);
+    logErrore('Error deleting tipologia', error);
     res.status(500).json({ error: 'Errore durante l\'eliminazione della tipologia' });
   }
 });
@@ -221,7 +222,7 @@ router.patch('/tipologie/:id/toggle-stato', async (req, res) => {
       tipologia: updatedTipologia
     });
   } catch (error) {
-    console.error('Error toggling tipologia stato:', error);
+    logErrore('Error toggling tipologia stato', error);
     res.status(500).json({ error: 'Errore durante il cambio stato della tipologia' });
   }
 });
@@ -311,7 +312,7 @@ router.get('/export', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error exporting anagrafiche:', error);
+    logErrore('Error exporting anagrafiche', error);
     res.status(500).json({ error: 'Errore durante l\'export delle anagrafiche' });
   }
 });
@@ -370,7 +371,7 @@ router.get('/', async (req, res) => {
     
     res.json(anagrafiche);
   } catch (error) {
-    console.error('Error fetching anagrafiche:', error);
+    logErrore('Error fetching anagrafiche', error);
     res.status(500).json({ error: 'Errore durante il caricamento delle anagrafiche' });
   }
 });
@@ -398,7 +399,7 @@ router.get('/categorie', async (req, res) => {
     
     res.json(categorie);
   } catch (error) {
-    console.error('Error fetching categorie:', error);
+    logErrore('Error fetching categorie', error);
     res.status(500).json({ error: 'Errore durante il caricamento delle categorie' });
   }
 });
@@ -431,7 +432,7 @@ router.get('/attive', async (req, res) => {
     
     res.json(anagrafiche);
   } catch (error) {
-    console.error('Error fetching anagrafiche attive:', error);
+    logErrore('Error fetching anagrafiche attive', error);
     res.status(500).json({ error: 'Errore durante il caricamento delle anagrafiche attive' });
   }
 });
@@ -467,7 +468,7 @@ router.get('/:id', async (req, res) => {
     
     res.json(anagrafica);
   } catch (error) {
-    console.error('Error fetching anagrafica detail:', error);
+    logErrore('Error fetching anagrafica detail', error);
     res.status(500).json({ error: 'Errore durante il caricamento dell\'anagrafica' });
   }
 });
@@ -524,7 +525,7 @@ router.post('/', validate(schemas.anagrafica), async (req, res) => {
     
     res.status(201).json(newAnagrafica);
   } catch (error) {
-    console.error('Error creating anagrafica:', error);
+    logErrore('Error creating anagrafica', error);
     res.status(500).json({ error: 'Errore durante la creazione dell\'anagrafica' });
   }
 });
@@ -584,7 +585,7 @@ router.put('/:id', validate(schemas.anagraficaUpdate), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error updating anagrafica:', error);
+    logErrore('❌ Error updating anagrafica', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento dell\'anagrafica' });
   }
 });
@@ -625,7 +626,7 @@ router.delete('/:id', async (req, res) => {
     
     res.json({ message: `Anagrafica "${anagrafica.nome}" eliminata con successo` });
   } catch (error) {
-    console.error('Error deleting anagrafica:', error);
+    logErrore('Error deleting anagrafica', error);
     res.status(500).json({ error: 'Errore durante l\'eliminazione dell\'anagrafica' });
   }
 });
@@ -653,7 +654,7 @@ router.patch('/:id/toggle-stato', async (req, res) => {
       anagrafica: updatedAnagrafica
     });
   } catch (error) {
-    console.error('Error toggling anagrafica stato:', error);
+    logErrore('Error toggling anagrafica stato', error);
     res.status(500).json({ error: 'Errore durante il cambio stato dell\'anagrafica' });
   }
 });
@@ -700,7 +701,7 @@ router.get('/:id/movimenti', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching anagrafica movimenti:', error);
+    logErrore('Error fetching anagrafica movimenti', error);
     res.status(500).json({ error: 'Errore durante il caricamento dei movimenti' });
   }
 });
@@ -737,7 +738,7 @@ router.get('/:id/statistiche', async (req, res) => {
     
     res.json(statistiche);
   } catch (error) {
-    console.error('Error fetching anagrafica statistiche:', error);
+    logErrore('Error fetching anagrafica statistiche', error);
     res.status(500).json({ error: 'Errore durante il caricamento delle statistiche' });
   }
 });

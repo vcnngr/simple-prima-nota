@@ -12,6 +12,7 @@ const express = require('express');
 const { query, queryOne } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 
@@ -119,7 +120,7 @@ router.post('/genera-token-invito', auth, validate(schemas.tokenInvito), async (
         error: 'Hai gia\' un token di invito attivo. Revocalo prima di generarne un altro.'
       });
     }
-    console.error('Generate token error:', error.message);
+    logErrore('Generate token error', error);
     res.status(500).json({ error: 'Errore nella generazione del token' });
   }
 });
@@ -160,7 +161,7 @@ router.get('/token-inviti', auth, async (req, res) => {
       ha_token_attivo: tokens.rows.some(t => t.stato === 'attivo')
     });
   } catch (error) {
-    console.error('Get tokens error:', error.message);
+    logErrore('Get tokens error', error);
     res.status(500).json({ error: 'Errore nel recupero dei token' });
   }
 });
@@ -203,7 +204,7 @@ router.delete('/token-inviti/:tokenId', auth, async (req, res) => {
       stato: attuale.stato
     });
   } catch (error) {
-    console.error('Revoke token error:', error.message);
+    logErrore('Revoke token error', error);
     res.status(500).json({ error: 'Errore nella revoca del token' });
   }
 });
@@ -237,7 +238,7 @@ router.get('/collegamenti', auth, async (req, res) => {
       in_attesa: collegamenti.rows.filter(c => c.stato === 'in_attesa').length
     });
   } catch (error) {
-    console.error('Get collegamenti error:', error.message);
+    logErrore('Get collegamenti error', error);
     res.status(500).json({ error: 'Errore nel recupero dei collegamenti' });
   }
 });
@@ -285,7 +286,7 @@ router.get('/collegamenti/:id/accessi', auth, async (req, res) => {
       offset
     });
   } catch (error) {
-    console.error('Get accessi error:', error.message);
+    logErrore('Get accessi error', error);
     res.status(500).json({ error: 'Errore nel recupero del registro accessi' });
   }
 });
@@ -346,7 +347,7 @@ router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccet
       collegamento: esito.collegamento
     });
   } catch (error) {
-    console.error('Accetta collegamento error:', error.message);
+    logErrore('Accetta collegamento error', error);
     res.status(500).json({ error: 'Errore nell\'accettazione del collegamento' });
   }
 });
@@ -374,7 +375,7 @@ router.put('/collegamenti/:id/rifiuta', auth, validate(schemas.collegamentoMotiv
 
     res.json({ success: true, message: 'Richiesta rifiutata', collegamento: esito.collegamento });
   } catch (error) {
-    console.error('Rifiuta collegamento error:', error.message);
+    logErrore('Rifiuta collegamento error', error);
     res.status(500).json({ error: 'Errore nel rifiuto della richiesta' });
   }
 });
@@ -406,7 +407,7 @@ router.put('/collegamenti/:id/sospendi', auth, validate(schemas.collegamentoMoti
       collegamento: esito.collegamento
     });
   } catch (error) {
-    console.error('Sospendi collegamento error:', error.message);
+    logErrore('Sospendi collegamento error', error);
     res.status(500).json({ error: 'Errore nella sospensione del collegamento' });
   }
 });
@@ -433,7 +434,7 @@ router.put('/collegamenti/:id/riattiva', auth, async (req, res) => {
 
     res.json({ success: true, message: 'Collegamento riattivato', collegamento: esito.collegamento });
   } catch (error) {
-    console.error('Riattiva collegamento error:', error.message);
+    logErrore('Riattiva collegamento error', error);
     res.status(500).json({ error: 'Errore nella riattivazione del collegamento' });
   }
 });
@@ -461,7 +462,7 @@ router.delete('/collegamenti/:id', auth, validate(schemas.collegamentoMotivo), a
 
     res.json({ success: true, message: 'Collegamento revocato', collegamento: esito.collegamento });
   } catch (error) {
-    console.error('Revoca collegamento error:', error.message);
+    logErrore('Revoca collegamento error', error);
     res.status(500).json({ error: 'Errore nella revoca del collegamento' });
   }
 });
@@ -492,7 +493,7 @@ router.get('/commercialista', auth, async (req, res) => {
       commercialista
     });
   } catch (error) {
-    console.error('Get commercialista error:', error.message);
+    logErrore('Get commercialista error', error);
     res.status(500).json({ error: 'Errore nel recupero delle informazioni del commercialista' });
   }
 });
@@ -513,7 +514,7 @@ router.delete('/commercialista', auth, async (req, res) => {
       revocati: result.rowCount
     });
   } catch (error) {
-    console.error('Disconnect commercialista error:', error.message);
+    logErrore('Disconnect commercialista error', error);
     res.status(500).json({ error: 'Errore nella rimozione del collegamento' });
   }
 });

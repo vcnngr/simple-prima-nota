@@ -6,6 +6,7 @@ const { validateQuery, schemas } = require('../middleware/validation');
 const moment = require('moment');
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 router.use(auth);
@@ -115,7 +116,7 @@ router.post('/generate', validateBody(exportConfigSchema), async (req, res) => {
     const config = req.body;
     const userId = req.user.id;
     
-    console.log('🚀 Generazione export:', config);
+    console.log('🚀 Generazione export:', { tipo: config.export_type, formato: config.formato }); // i filtri possono citare dati
 
     // Ottieni configurazione predefinita o usa quella personalizzata
     let exportConfig;
@@ -166,10 +167,9 @@ router.post('/generate', validateBody(exportConfigSchema), async (req, res) => {
     }
 
   } catch (error) {
-    console.error('❌ Errore generazione export:', error);
+    logErrore('❌ Errore generazione export', error);
     res.status(500).json({ 
-      error: 'Errore durante la generazione dell\'export',
-      details: error.message 
+      error: 'Errore durante la generazione dell\'export'
     });
   }
 });
@@ -559,7 +559,7 @@ async function exportToPdf(res, data, metadata) {
 
     doc.end();
   } catch (error) {
-    console.error('❌ Errore export PDF:', error);
+    logErrore('❌ Errore export PDF', error);
     res.status(500).json({ error: 'Errore durante l\'export PDF' });
   }
 }
@@ -570,7 +570,7 @@ router.post('/preview', validateBody(exportConfigSchema), async (req, res) => {
     const config = { ...req.body, formato: 'json' };
     const userId = req.user.id;
     
-    console.log('🔍 Generazione anteprima:', config);
+    console.log('🔍 Generazione anteprima:', { tipo: config.export_type, formato: config.formato });
 
     // Usa la stessa logica di generate
     let exportConfig;
@@ -614,10 +614,9 @@ router.post('/preview', validateBody(exportConfigSchema), async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Errore anteprima:', error);
+    logErrore('❌ Errore anteprima', error);
     res.status(500).json({ 
-      error: 'Errore durante l\'anteprima',
-      details: error.message 
+      error: 'Errore durante l\'anteprima'
     });
   }
 });

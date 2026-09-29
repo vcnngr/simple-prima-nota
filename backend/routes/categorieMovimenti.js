@@ -7,6 +7,7 @@ const express = require('express');
 const { queryAll, queryOne, execute } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 router.use(auth);
@@ -51,7 +52,7 @@ router.get('/', async (req, res) => {
     console.log(`📋 Categorie movimenti trovate: ${categorie.length} per utente ${userId}`);
     res.json(categorie);
   } catch (error) {
-    console.error('❌ Error fetching categorie movimenti:', error);
+    logErrore('❌ Error fetching categorie movimenti', error);
     res.status(500).json({ error: 'Errore durante il caricamento delle categorie movimenti' });
   }
 });
@@ -102,7 +103,7 @@ router.get('/suggestions', async (req, res) => {
 
     res.json(suggestions);
   } catch (error) {
-    console.error('❌ Error getting movimento suggestions:', error);
+    logErrore('❌ Error getting movimento suggestions', error);
     res.status(500).json({ error: 'Errore durante il caricamento dei suggerimenti' });
   }
 });
@@ -127,7 +128,7 @@ router.get('/:id', async (req, res) => {
 
     res.json(categoria);
   } catch (error) {
-    console.error('❌ Error fetching categoria movimento:', error);
+    logErrore('❌ Error fetching categoria movimento', error);
     res.status(500).json({ error: 'Errore durante il caricamento della categoria movimento' });
   }
 });
@@ -138,7 +139,7 @@ router.post('/', validate(schemas.categoriaMovimento), async (req, res) => {
     const userId = req.user.id;
     const { nome, tipo, descrizione, colore } = req.body;
 
-    console.log(`➕ Creazione categoria movimento: "${nome}" tipo: ${tipo} per utente ${userId}`);
+    console.log(`➕ Creazione categoria movimento tipo: ${tipo} per utente ${userId}`);
 
     const categoria = await queryOne(`
       INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore)
@@ -155,10 +156,10 @@ router.post('/', validate(schemas.categoriaMovimento), async (req, res) => {
     });
   } catch (error) {
     if (error.code === '23505') { // Unique violation
-      console.log(`⚠️ Categoria movimento già esistente: "${req.body.nome}"`);
+      console.log(`⚠️ Categoria movimento già esistente per utente ${req.user?.id}`);
       return res.status(400).json({ error: 'Categoria movimento già esistente' });
     }
-    console.error('❌ Error creating categoria movimento:', error);
+    logErrore('❌ Error creating categoria movimento', error);
     res.status(500).json({ error: 'Errore durante la creazione della categoria movimento' });
   }
 });
@@ -213,7 +214,7 @@ router.put('/:id', validate(schemas.categoriaMovimentoUpdate), async (req, res) 
     if (error.code === '23505') {
       return res.status(400).json({ error: 'Nome categoria movimento già esistente' });
     }
-    console.error('❌ Error updating categoria movimento:', error);
+    logErrore('❌ Error updating categoria movimento', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento della categoria movimento' });
   }
 });
@@ -258,7 +259,7 @@ router.delete('/:id', async (req, res) => {
       message: 'Categoria movimento eliminata con successo'
     });
   } catch (error) {
-    console.error('❌ Error deleting categoria movimento:', error);
+    logErrore('❌ Error deleting categoria movimento', error);
     res.status(500).json({ error: 'Errore durante l\'eliminazione della categoria movimento' });
   }
 });
@@ -287,7 +288,7 @@ router.patch('/:id/toggle', async (req, res) => {
       data: categoria
     });
   } catch (error) {
-    console.error('❌ Error toggling categoria movimento:', error);
+    logErrore('❌ Error toggling categoria movimento', error);
     res.status(500).json({ error: 'Errore durante il cambio stato della categoria movimento' });
   }
 });

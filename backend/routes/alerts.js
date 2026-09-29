@@ -2,6 +2,7 @@
 const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
+const { logErrore } = require('../utils/errori');
 
 const router = express.Router();
 
@@ -45,7 +46,7 @@ router.patch('/:id/read', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error marking alert as read:', error);
+    logErrore('❌ Error marking alert as read', error);
     res.status(500).json({ error: 'Errore durante l\'operazione' });
   }
 });
@@ -84,7 +85,7 @@ router.delete('/:id', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error deleting alert:', error);
+    logErrore('❌ Error deleting alert', error);
     res.status(500).json({ error: 'Errore durante l\'eliminazione dell\'avviso' });
   }
 });
@@ -126,7 +127,7 @@ router.patch('/mark-all-read', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error marking all alerts as read:', error);
+    logErrore('❌ Error marking all alerts as read', error);
     res.status(500).json({ error: 'Errore durante l\'operazione di massa' });
   }
 });
@@ -159,7 +160,7 @@ router.get('/', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching alerts:', error);
+    logErrore('❌ Error fetching alerts', error);
     res.status(500).json({ error: 'Errore durante il caricamento degli avvisi' });
   }
 });

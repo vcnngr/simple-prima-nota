@@ -5,6 +5,16 @@
 // ==============================================================================
 
 const { query, queryOne } = require('../config/database');
+const { logErrore, motivoRiga } = require('../utils/errori');
+
+// Errori dell'import scritti da noi (blocco K3): il testo si puo' mostrare
+// all'utente, che vede i propri dati. Ogni altro errore (driver, bug) resta
+// fuori dalla risposta: se ne mostra solo un motivo generico.
+function erroreImport(messaggio) {
+  const e = new Error(messaggio);
+  e.applicativo = true;
+  return e;
+}
 
 /**
 * Processore unificato per import CSV con creazione automatica entità
@@ -48,7 +58,7 @@ class UnifiedImportProcessor {
       console.log(`📊 Trovate ${rows.length} righe da processare`);
       
       if (rows.length === 0) {
-        throw new Error('Il file CSV non contiene dati da importare');
+        throw erroreImport('Il file CSV non contiene dati da importare');
       }
       
       // 2. Pre-caricamento cache per performance
@@ -71,8 +81,8 @@ class UnifiedImportProcessor {
           
         } catch (error) {
           this.stats.errori++;
-          this.stats.warnings.push(`Riga ${rowNumber}: ${error.message}`);
-          console.error(`❌ Errore riga ${rowNumber}:`, error.message);
+          this.stats.warnings.push(`Riga ${rowNumber}: ${error.applicativo ? error.message : motivoRiga(error)}`);
+          logErrore(`❌ Errore riga ${rowNumber}`, error);
           
           // Continua con le altre righe invece di fermarsi
           // Limite errori per evitare spam log
@@ -83,12 +93,13 @@ class UnifiedImportProcessor {
         }
       }
       
-      console.log('✅ Import completato:', this.stats);
+      console.log('✅ Import completato:', { ...this.stats, warnings: this.stats.warnings.length }); // i warning citano i dati delle righe
       return this.generateReport();
       
     } catch (error) {
-      console.error('💥 Errore generale import:', error);
-      throw new Error(`Errore durante l'import: ${error.message}`);
+      logErrore('💥 Errore generale import', error);
+      if (!error.applicativo) throw error; // la route risponde con un messaggio generico
+      throw erroreImport(`Errore durante l'import: ${error.message}`);
     }
   }
   
@@ -100,7 +111,7 @@ class UnifiedImportProcessor {
     const lines = csvData.split('\n').map(line => line.trim()).filter(line => line);
     
     if (lines.length < 2) {
-      throw new Error('File CSV deve contenere almeno header e una riga dati');
+      throw erroreImport('File CSV deve contenere almeno header e una riga dati');
     }
     
     // Trova header (prima riga non vuota che non inizia con #)
@@ -113,7 +124,7 @@ class UnifiedImportProcessor {
     }
     
     if (headerIndex >= lines.length) {
-      throw new Error('Header CSV non trovato. La prima riga deve contenere i nomi delle colonne');
+      throw erroreImport('Header CSV non trovato. La prima riga deve contenere i nomi delle colonne');
     }
     
     const headers = lines[headerIndex].split(';').map(h => h.trim());
@@ -128,7 +139,7 @@ class UnifiedImportProcessor {
     
     const missingFields = requiredFields.filter(field => !mappedFields.includes(field));
     if (missingFields.length > 0) {
-      throw new Error(`Campi obbligatori mancanti nel CSV: ${missingFields.join(', ')}`);
+      throw erroreImport(`Campi obbligatori mancanti nel CSV: ${missingFields.join(', ')}`);
     }
     
     // Parse righe dati
@@ -142,7 +153,7 @@ class UnifiedImportProcessor {
       const values = line.split(';').map(v => v.trim());
       
       if (values.length !== headers.length) {
-        throw new Error(`Riga ${i + headerIndex + 2}: numero colonne non corrispondente (attese ${headers.length}, trovate ${values.length})`);
+        throw erroreImport(`Riga ${i + headerIndex + 2}: numero colonne non corrispondente (attese ${headers.length}, trovate ${values.length})`);
       }
       
       // Crea oggetto riga mappato
@@ -247,7 +258,7 @@ class UnifiedImportProcessor {
       headers.forEach((header, index) => {
         const mappedField = mapping[header];
         const value = firstRowData[index];
-        console.log(`  ${header} → ${mappedField}: "${value}"`);
+        console.log(`  ${header} → ${mappedField}`); // mai il valore della riga
       });
     }
     
@@ -327,8 +338,8 @@ class UnifiedImportProcessor {
       });
       
     } catch (error) {
-      console.error('❌ Errore pre-caricamento cache:', error);
-      throw new Error(`Errore caricamento dati esistenti: ${error.message}`);
+      logErrore('❌ Errore pre-caricamento cache', error);
+      throw erroreImport('Errore caricamento dati esistenti');
     }
   }
   
@@ -386,12 +397,6 @@ class UnifiedImportProcessor {
       }
     });
     
-    // DEBUG - Aggiungi temporaneamente per vedere cosa succede
-    console.log(`🔍 Debug Riga ${rowNumber}:`);
-    console.log(`  • Tipo originale: "${rowData.tipo}" (length: ${rowData.tipo?.length})`);
-    console.log(`  • Tipo pulito: "${cleanedData.tipo}" (length: ${cleanedData.tipo?.length})`);
-    console.log(`  • Char codes originale:`, rowData.tipo ? Array.from(rowData.tipo).map(c => c.charCodeAt(0)) : 'undefined');
-    console.log(`  • Char codes pulito:`, cleanedData.tipo ? Array.from(cleanedData.tipo).map(c => c.charCodeAt(0)) : 'undefined');
     
     // =====================================================
     // VALIDAZIONE CAMPI OBBLIGATORI (AGGIORNATO)
@@ -428,10 +433,7 @@ class UnifiedImportProcessor {
       
       // Controllo finale con valori esatti
       if (!['Entrata', 'Uscita'].includes(tipoNormalizzato)) {
-        console.log(`❌ Tipo non riconosciuto: "${cleanedData.tipo}" → "${tipoNormalizzato}"`);
         errors.push(`Tipo deve essere "Entrata" o "Uscita" (trovato: "${cleanedData.tipo}")`);
-      } else {
-        console.log(`✅ Tipo valido: "${cleanedData.tipo}" → "${tipoNormalizzato}"`);
       }
     }
     
@@ -452,12 +454,12 @@ class UnifiedImportProcessor {
           errors.push('Importo deve essere maggiore di zero');
         }
       } catch (error) {
-        errors.push(`Importo non valido: ${error.message}`);
+        errors.push(error.applicativo ? `Importo non valido: ${error.message}` : 'Importo non valido');
       }
     }
     
     if (errors.length > 0) {
-      throw new Error(errors.join(', '));
+      throw erroreImport(errors.join(', '));
     }
     
     // =====================================================
@@ -515,11 +517,11 @@ class UnifiedImportProcessor {
       return existing;
     }
   } catch (error) {
-    console.warn('⚠️ Errore ricerca conto esistente:', error.message);
+    logErrore('⚠️ Errore ricerca conto esistente', error);
   }
 
   // Crea nuovo conto con gestione duplicati
-  console.log(`➕ Creazione nuovo conto: ${nomeConto}`);
+  console.log('➕ Creazione nuovo conto');
   
   try {
     const result = await query(`
@@ -540,7 +542,7 @@ class UnifiedImportProcessor {
     
   } catch (error) {
     // Fallback di recupero
-    console.warn('⚠️ Errore creazione conto, tentativo recupero:', error.message);
+    logErrore('⚠️ Errore creazione conto, tentativo recupero', error);
     
     try {
       const fallback = await queryOne(
@@ -553,10 +555,10 @@ class UnifiedImportProcessor {
         return fallback;
       }
     } catch (fallbackError) {
-      console.error('❌ Fallback conto fallito:', fallbackError.message);
+      logErrore('❌ Fallback conto fallito', fallbackError);
     }
     
-    throw new Error(`Impossibile creare/recuperare conto "${nomeConto}": ${error.message}`);
+    throw erroreImport(`Impossibile creare/recuperare conto "${nomeConto}"`);
   }
   }
     
@@ -606,11 +608,11 @@ class UnifiedImportProcessor {
       return existing;
     }
   } catch (error) {
-    console.warn('⚠️ Errore ricerca tipologia esistente:', error.message);
+    logErrore('⚠️ Errore ricerca tipologia esistente', error);
   }
 
   // 3. TERZO: Crea nuova tipologia con ON CONFLICT
-  console.log(`➕ Creazione nuova tipologia: ${nomeTipologia} (${tipoMovimento})`);
+  console.log(`➕ Creazione nuova tipologia (${tipoMovimento})`);
   
   try {
     const result = await query(`
@@ -635,7 +637,7 @@ class UnifiedImportProcessor {
     
   } catch (error) {
     // FALLBACK FINALE: Se anche ON CONFLICT fallisce, cerca nel DB
-    console.warn('⚠️ Errore creazione tipologia, tentativo recupero finale:', error.message);
+    logErrore('⚠️ Errore creazione tipologia, tentativo recupero finale', error);
     
     try {
       const fallback = await queryOne(
@@ -648,11 +650,11 @@ class UnifiedImportProcessor {
         return fallback;
       }
     } catch (fallbackError) {
-      console.error('❌ Fallback tipologia fallito:', fallbackError.message);
+      logErrore('❌ Fallback tipologia fallito', fallbackError);
     }
     
     // Se tutto fallisce, rilancia l'errore originale
-    throw new Error(`Impossibile creare/recuperare tipologia "${nomeTipologia}": ${error.message}`);
+    throw erroreImport(`Impossibile creare/recuperare tipologia "${nomeTipologia}"`);
   }
   }
       
@@ -681,11 +683,11 @@ class UnifiedImportProcessor {
       return existing;
     }
   } catch (error) {
-    console.warn('⚠️ Errore ricerca categoria anagrafica:', error.message);
+    logErrore('⚠️ Errore ricerca categoria anagrafica', error);
   }
 
   // Crea nuova categoria con gestione duplicati
-  console.log(`➕ Creazione nuova categoria anagrafica: ${nomeCategoria}`);
+  console.log('➕ Creazione nuova categoria anagrafica');
   
   try {
     const result = await query(`
@@ -703,7 +705,7 @@ class UnifiedImportProcessor {
     return newCategoria;
     
   } catch (error) {
-    console.warn('⚠️ Errore categoria anagrafica, tentativo recupero:', error.message);
+    logErrore('⚠️ Errore categoria anagrafica, tentativo recupero', error);
     
     try {
       // Fallback recovery
@@ -717,11 +719,11 @@ class UnifiedImportProcessor {
         return fallback;
       }
     } catch (fallbackError) {
-      console.warn('⚠️ Fallback categoria anagrafica fallito:', fallbackError.message);
+      logErrore('⚠️ Fallback categoria anagrafica fallito', fallbackError);
     }
     
     // Categoria opzionale, ritorna null se tutto fallisce
-    console.warn(`⚠️ Impossibile creare categoria anagrafica "${nomeCategoria}", continuo senza`);
+    console.warn('⚠️ Impossibile creare la categoria anagrafica, continuo senza');
     return null;
   }
   }
@@ -767,11 +769,11 @@ class UnifiedImportProcessor {
       return existing;
     }
   } catch (error) {
-    console.warn('⚠️ Errore ricerca categoria movimento:', error.message);
+    logErrore('⚠️ Errore ricerca categoria movimento', error);
   }
 
   // Crea nuova categoria con ON CONFLICT corretto per il tuo schema
-  console.log(`➕ Creazione nuova categoria movimento: ${nomeCategoria} (${tipoMovimento})`);
+  console.log(`➕ Creazione nuova categoria movimento (${tipoMovimento})`);
   
   try {
     const result = await query(`
@@ -791,7 +793,7 @@ class UnifiedImportProcessor {
     return newCategoria;
     
   } catch (error) {
-    console.warn('⚠️ Errore categoria movimento, tentativo recupero:', error.message);
+    logErrore('⚠️ Errore categoria movimento, tentativo recupero', error);
     
     try {
       // Fallback recovery
@@ -805,11 +807,11 @@ class UnifiedImportProcessor {
         return fallback;
       }
     } catch (fallbackError) {
-      console.warn('⚠️ Fallback categoria movimento fallito:', fallbackError.message);
+      logErrore('⚠️ Fallback categoria movimento fallito', fallbackError);
     }
     
     // Categoria opzionale, ritorna null se tutto fallisce
-    console.warn(`⚠️ Impossibile creare categoria movimento "${nomeCategoria}", continuo senza`);
+    console.warn('⚠️ Impossibile creare la categoria movimento, continuo senza');
     return null;
   }
   }
@@ -832,7 +834,7 @@ class UnifiedImportProcessor {
             }
             
             // Crea nuova anagrafica
-            console.log(`➕ Creazione nuova anagrafica: ${nomeAnagrafica} (${tipologia.nome})`);
+            console.log(`➕ Creazione nuova anagrafica (tipologia ${tipologia.id})`);
             const result = await query(`
       INSERT INTO anagrafiche (nome, tipologia_id, categoria, user_id, created_at)
       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
@@ -899,7 +901,7 @@ class UnifiedImportProcessor {
               }
               
               if (!date || isNaN(date.getTime())) {
-                throw new Error(`Data non valida: ${dateString}`);
+                throw erroreImport(`Data non valida: ${dateString}`);
               }
               
               return date.toISOString().split('T')[0];
@@ -925,11 +927,11 @@ class UnifiedImportProcessor {
               const importo = parseFloat(cleaned);
               
               if (isNaN(importo)) {
-                throw new Error(`Formato importo non riconosciuto: ${importoString}`);
+                throw erroreImport(`Formato importo non riconosciuto: ${importoString}`);
               }
               
               if (importo < 0) {
-                throw new Error(`Importo non può essere negativo: ${importoString}`);
+                throw erroreImport(`Importo non può essere negativo: ${importoString}`);
               }
               
               return Math.round(importo * 100) / 100; // Arrotonda a 2 decimali
