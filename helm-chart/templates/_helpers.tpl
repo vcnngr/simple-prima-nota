@@ -157,3 +157,14 @@ senza ReadWriteMany (ReadWriteOnce, ReadWriteOncePod, ReadOnlyMany...).
 {{- $p := .Values.backend.allegati.persistence -}}
 {{- if and $p.enabled (not (has "ReadWriteMany" $p.accessModes)) -}}true{{- end -}}
 {{- end -}}
+
+{{/*
+Tetto del corpo delle richieste in nginx (CLIENT_MAX_BODY_SIZE): il limite degli
+allegati del backend arrotondato al MiB, piu' 1 MiB per l'involucro multipart.
+Con il default di nginx (1 MB) ogni allegato sopra 1 MB finiva in 413 prima di
+arrivare al backend.
+*/}}
+{{- define "prima-nota.nginxMaxBody" -}}
+{{- $b := int64 (default 10485760 .Values.backend.env.ALLEGATI_MAX_BYTES) -}}
+{{- printf "%dm" (add1 (div (add $b 1048575) 1048576)) -}}
+{{- end }}

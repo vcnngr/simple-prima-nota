@@ -3,7 +3,7 @@
 services:
   # Database PostgreSQL
   db:
-    image: docker.io/library/postgres:16.1
+    image: docker.io/library/postgres:16.15
     container_name: prima_nota_db
     environment:
       POSTGRES_DB: prima_nota
@@ -25,7 +25,7 @@ services:
   # applica solo le migrazioni mancanti su uno esistente, poi esce. Il backend
   # parte solo se questo e' uscito con 0.
   migra:
-    image: docker.io/library/postgres:16.1
+    image: docker.io/library/postgres:16.15
     container_name: prima_nota_migra
     environment:
       PGHOST: db
@@ -84,6 +84,11 @@ services:
     environment:
       # L'API sarà servita tramite nginx proxy, quindi usiamo path relativo
       REACT_APP_API_URL: /api
+      # Variabili del modello nginx (frontend/nginx/default.conf.template); questi
+      # sono gia' i default dell'immagine. Allegati piu' grandi di 10 MB: alzare
+      # CLIENT_MAX_BODY_SIZE insieme ad ALLEGATI_MAX_BYTES del backend.
+      BACKEND_UPSTREAM: backend:3001
+      CLIENT_MAX_BODY_SIZE: 11m
     ports:
       - "3000:80"  # Nginx espone sulla porta 80
     depends_on:

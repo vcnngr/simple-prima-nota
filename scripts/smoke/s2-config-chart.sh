@@ -28,7 +28,7 @@ R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$R"
 PFX="pn-s2-$$"
 NET="$PFX-net"
-IMG_PG=docker.io/library/postgres:16.1
+IMG_PG=docker.io/library/postgres:16.15
 IMG_BE="pn-s2-backend:$$"
 T=$(mktemp -d)
 CH=helm-chart

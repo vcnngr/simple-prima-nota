@@ -8,8 +8,8 @@ Ogni blocco è un branch `feat/s…`, con review `pn-gpt` prima della chiusura.
 |---|---|---|---|
 | S1 ✅ | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dalla migration 009 | `scripts/smoke/s1-migrazioni.sh` |
 | S2 ✅ | Configurazione del backend nel chart | `FRONTEND_URL` pubblico, `SMTP_*`/`MAIL_FROM` con password da Secret, `NOTIFICHE_*`, `ALLEGATI_*`, `RESET_*`; PVC degli allegati con `fsGroup`; numeri non più in notazione esponenziale | `scripts/smoke/s2-config-chart.sh` |
-| S3 | Dati e cancellazioni | eliminazione dell'account di uno studio senza perdere i dati dei clienti (migration 010); pulizia dei file degli allegati che nessun allegato nomina | `scripts/smoke/s3-eliminazione-studio.sh` |
-| S4 | Pulizia deploy | `nginx.conf` deploy-neutral, versione di PostgreSQL (README 16, chart standalone 15) | build + `compose config` + `helm template` |
+| S3 ✅ | Dati e cancellazioni | eliminazione dell'account di uno studio senza perdere i dati dei clienti (migration 010); pulizia dei file degli allegati che nessun allegato nomina | `scripts/smoke/s3-eliminazione-studio.sh` |
+| S4 | Pulizia deploy | una sola configurazione nginx per compose, Podman e Helm (modello con variabili d'ambiente); allegati oltre 1 MB non più fermati da nginx nel chart; PostgreSQL 16.15 ovunque | `scripts/smoke/s4-deploy.sh` |
 
 ## S1 — Migrazioni versionate
 
@@ -167,4 +167,53 @@ Aperti, fuori da S3:
   restano nel database; mostrarli in sola lettura è lavoro della fase UX;
 - `DELETE /api/auth/account` (utente) restituisce `details: error.message` e scrive lo username nel
   log (fase «sicurezza»); i file dei suoi allegati vanno via con il trigger della 007, già prima di S3.
+
+## S4 — Pulizia deploy
+
+**Il problema.** Due configurazioni nginx diverse per lo stesso frontend:
+
+- `frontend/nginx.conf` (nell'immagine) aveva scritto dentro il DNS di Podman (`resolver 10.89.0.1`):
+  con Docker ogni chiamata `/api` restava appesa fino al timeout. Tutta la cache era spenta
+  ("during development") e l'`add_header Cache-Control` dentro `location /` annullava le intestazioni
+  di sicurezza del server su ogni pagina;
+- il chart ne aveva una sua, inline nella ConfigMap: senza `client_max_body_size`, quindi ogni
+  allegato della chat sopra 1 MB finiva in `413` in nginx prima di arrivare al backend (lo smoke S2
+  usava un file da 270 KB); `index.html` in cache per un'ora, quindi dopo un rilascio il browser
+  cercava script che non esistono più; nessun riavvio dei pod al cambio della ConfigMap.
+
+PostgreSQL: compose, CloudNativePG e job delle migrazioni su 16.1, database standalone del chart su
+15, README con tutte e due.
+
+**Come funziona ora.**
+
+- Una sola configurazione: `frontend/nginx/default.conf.template`. L'entrypoint di `nginx:alpine`
+  la trasforma all'avvio sostituendo `BACKEND_UPSTREAM`, `CLIENT_MAX_BODY_SIZE` e
+  `NGINX_LOCAL_RESOLVERS` (i DNS di `/etc/resolv.conf`: Docker, Podman e Kubernetes senza indirizzi
+  scritti). Immagine: `backend:3001`, `11m`. Il chart ne monta una copia (`helm-chart/files/nginx/`,
+  `scripts/sincronizza-helm-db.sh`, che ora copia anche questa) in `/etc/nginx/templates` e imposta
+  l'FQDN del Service e il tetto calcolato da `ALLEGATI_MAX_BYTES` (MiB per eccesso + 1). Il montaggio
+  funziona anche con le immagini già pubblicate. Annotazione `checksum/nginx` sui pod del frontend.
+- Cache: `/static/` (nomi con hash) immutabile; `index.html` e le rotte `no-cache`; uno script in
+  `/static/` che non c'è è `404`, non `index.html`. Le intestazioni stanno in un solo punto;
+  `server_tokens off`. Tolto il proxy `/pgadmin/` in nginx: l'ingress instrada `/pgadmin` da sé.
+- Immagine `nginx:1.30-alpine` invece di `nginx:alpine`.
+- PostgreSQL 16.15 ovunque (compose `db` e `migra`, `cloudnativepg.cluster.imageName`,
+  `migrazioni.image.tag`, `postgresql.image.tag`, smoke S1–S3). Dal 16.1 è un cambio di minor: per
+  CloudNativePG un aggiornamento a rotazione delle istanze. **Il database standalone** (`postgresql.enabled`,
+  spento di default) passa da 15 a 16: un volume creato dal 15 non parte con il 16 ("database files are
+  incompatible with server"), i dati restano intatti e con `postgresql.image.tag: "15"` riparte; per
+  passare al 16 serve `pg_dump`/`pg_upgrade`.
+
+**Prova**: `scripts/smoke/s4-deploy.sh`. Costruisce l'immagine del frontend dal checkout e la avvia su
+una rete Docker con un finto backend chiamato `backend`; monta la configurazione e le variabili del
+Deployment renderizzato su `nginx:1.30-alpine` e sull'immagine pubblicata, con il finto backend
+raggiungibile col nome FQDN del Service. Allegati da 5 MB passano, da 12 MB `413`; con
+`ALLEGATI_MAX_BYTES` a 20 MB il tetto diventa `21m`. `migra.sh` su 16.15 vuoto; volume del 15 rifiutato
+dal 16 e di nuovo leggibile dal 15. Non osservato: un cluster Kubernetes reale (il resolver lì è quello
+di `resolv.conf` del pod).
+
+Aperti, fuori da S4 (fase «sicurezza»): la CSP ammette `http:`, `https:` e `'unsafe-inline'`;
+`X-Forwarded-Proto` è quello visto da nginx (`http` dietro un ingress TLS); `X-Forwarded-For` e
+`trust proxy` (vedi S2); immagine di build `node:18` fuori supporto (la ricostruzione del frontend è
+nella fase UX).
 

@@ -8,7 +8,12 @@ postgresql:
   image:
     registry: docker.io
     repository: postgres
-    tag: "15"
+    # Stessa versione di docker-compose, CloudNativePG e job delle migrazioni
+    # (una sola provata dagli smoke). Fino alla 0.5.x qui c'era "15": un volume
+    # creato da PostgreSQL 15 non parte con il 16 ("database files are
+    # incompatible with server"; i dati restano intatti). Per restare sul 15
+    # impostare tag: "15"; per passare al 16 serve pg_dump/pg_upgrade.
+    tag: "16.15"
     pullPolicy: IfNotPresent
   auth:
     database: prima_nota
@@ -40,7 +45,7 @@ cloudnativepg:
     primaryUpdateStrategy: unsupervised
     
     # Immagine PostgreSQL
-    imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+    imageName: ghcr.io/cloudnative-pg/postgresql:16.15
 
     # === SUPERUSER ACCESS ===
     enableSuperuserAccess: true  # Abilitato per permettere accesso diretto al superuser
@@ -173,7 +178,7 @@ migrazioni:
   image:
     registry: docker.io
     repository: postgres
-    tag: "16.1-alpine"
+    tag: "16.15-alpine"
     pullPolicy: IfNotPresent
   # Quanto il job aspetta che il database risponda (al primo install il cluster
   # CloudNativePG impiega qualche minuto).

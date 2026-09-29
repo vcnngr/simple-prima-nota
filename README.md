@@ -44,7 +44,7 @@ prima-nota/
 ### Stack Tecnologico
 - **Frontend**: React.js 18, Tailwind CSS, React Query, Framer Motion
 - **Backend**: Node.js, Express.js, PostgreSQL, JWT Auth
-- **Database**: PostgreSQL 15 con funzioni custom
+- **Database**: PostgreSQL 16 con funzioni custom
 - **DevOps**: Docker, Docker Compose, Nginx
 
 ## 🚀 Quick Start

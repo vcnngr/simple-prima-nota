@@ -1,0 +1,88 @@
+# ==============================================================================
+# nginx del frontend — unica configurazione (blocco S4)
+# ==============================================================================
+# La usano l'immagine (docker compose, podman-compose) e il chart Helm, che ne
+# monta una copia (helm-chart/files/nginx/, scripts/sincronizza-helm-db.sh).
+# L'entrypoint di nginx:alpine la trasforma in /etc/nginx/conf.d/default.conf
+# sostituendo solo le variabili definite nell'ambiente; quelle di nginx ($uri,
+# $host, ...) restano come sono.
+#
+#   BACKEND_UPSTREAM       host:porta del backend. Immagine: backend:3001 (nome del
+#                          servizio in compose); chart: FQDN del Service.
+#   CLIENT_MAX_BODY_SIZE   tetto del corpo su /api/ (allegati della chat). Immagine:
+#                          11m; il chart lo calcola da ALLEGATI_MAX_BYTES. Il limite
+#                          vero lo applica il backend.
+#   NGINX_LOCAL_RESOLVERS  i DNS di /etc/resolv.conf (NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1):
+#                          Docker, Podman e Kubernetes, senza indirizzi scritti qui.
+# ==============================================================================
+
+# Cache: i file in /static/ hanno l'hash nel nome e non cambiano mai; tutto il
+# resto (index.html compreso) si riconvalida, altrimenti dopo un rilascio il
+# browser tiene un index.html che punta a script che non esistono piu'.
+# Le risposte dell'API decidono da sole.
+map $uri $pn_cache_control {
+    ~^/api/                                      "";
+    ~^/static/                                   "public, max-age=31536000, immutable";
+    ~\.(png|jpg|jpeg|gif|ico|svg|webp|woff2?)$   "public, max-age=604800";
+    default                                      "no-cache";
+}
+
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    server_tokens off;
+
+    # Il backend si risolve a ogni richiesta (variabile in proxy_pass): nginx parte
+    # anche se il backend non c'e' ancora e segue i cambi di indirizzo.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_proxied expired no-cache no-store private auth;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
+
+    # Un solo punto per le intestazioni: un add_header dentro una location
+    # annullerebbe tutti quelli del server. (Da rivedere nella fase «sicurezza».)
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+    add_header Cache-Control $pn_cache_control;
+
+    # Un file statico che non c'e' e' un 404, non index.html spacciato per script.
+    location /static/ {
+        try_files $uri =404;
+    }
+
+    # Rotte di React Router.
+    location / {
+        try_files $uri /index.html;
+    }
+
+    location /api/ {
+        set $backend "${BACKEND_UPSTREAM}";
+        proxy_pass http://$backend;
+
+        client_max_body_size ${CLIENT_MAX_BODY_SIZE};
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    location = /health {
+        access_log off;
+        default_type text/plain;
+        return 200 "healthy\n";
+    }
+}

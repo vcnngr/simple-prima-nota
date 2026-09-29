@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test delle migrazioni versionate (blocco S1, database/migra.sh).
 #
-# Crea da se' i database di prova (container postgres:16.1 su una rete docker
+# Crea da se' i database di prova (container postgres:16.15 su una rete docker
 # dedicata) e fa girare le migrazioni come le fanno i deploy: dentro un container
 # postgres, con i file montati. Verifica:
 #   A. database vuoto: init + 001..N, schema identico a quello costruito a mano;
@@ -35,7 +35,7 @@ set -u
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$R"
 NET="pn-s1-net-$$"
-IMG=docker.io/library/postgres:16.1
+IMG=docker.io/library/postgres:16.15
 PFX="pn-s1-$$"
 T=$(mktemp -d)
 ULTIMA=$(ls database/migrations/[0-9][0-9][0-9]_*.sql | grep -v '_down.sql$' | tail -1 | xargs basename | cut -c1-3)
@@ -76,9 +76,10 @@ migra() {
   RC=$?
 }
 # Schema senza il registro e senza righe di servizio: confrontabile fra database.
+# \restrict/\unrestrict: chiave casuale a ogni dump da pg_dump 16.10 in poi (CVE-2025-8714).
 schema() {
   docker exec "$PFX-$1" pg_dump -s -x -O -U postgres -d prima_nota -T schema_migrazioni \
-    | grep -vE '^(--|SET |SELECT pg_catalog.set_config)' | sed '/^$/d'
+    | grep -vE '^(--|SET |SELECT pg_catalog.set_config|\\(un)?restrict )' | sed '/^$/d'
 }
 registro() { q "$1" "SELECT string_agg(versione||':'||origine, ' ' ORDER BY versione) FROM schema_migrazioni"; }
 n_eseguite() { q "$1" "SELECT count(*) FROM schema_migrazioni WHERE origine='eseguita'"; }

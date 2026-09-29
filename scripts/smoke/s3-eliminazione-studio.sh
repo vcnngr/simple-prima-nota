@@ -73,7 +73,7 @@ print(sum(1 for m in d.get('messages',[]) if any(a['Address'].lower()==to for a 
 }
 migra() {
   docker run --rm --network "container:$DB_CONTAINER" -e PGHOST=127.0.0.1 -e PGUSER=postgres -e PGPASSWORD="$DB_PASSWORD" \
-    -e PGDATABASE="$DB_NAME" -v "$R/database:/database:ro" docker.io/library/postgres:16.1 bash /database/migra.sh "$@" > "$T/migra" 2>&1
+    -e PGDATABASE="$DB_NAME" -v "$R/database:/database:ro" docker.io/library/postgres:16.15 bash /database/migra.sh "$@" > "$T/migra" 2>&1
 }
 
 reg_u() { curl -s -X POST "$API/auth/register" "${JSON[@]}" -d "{\"username\":\"$1\",\"email\":\"$1@t.it\",\"password\":\"$PW\"}" | j "['token']"; }
