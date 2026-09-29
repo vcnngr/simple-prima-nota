@@ -17,6 +17,15 @@
 --          quando il token e' stato emesso (un cambio password lo spegne).
 --      Al piu' un token attivo per account e scopo (indice unico parziale).
 --
+--   3. unicita' dell'email senza distinzione di maiuscole (indice unico su
+--      lower(email)), per utenti e per commercialisti. Il vincolo UNIQUE
+--      originale distingue `Mario@x.it` da `mario@x.it`: due conferme di cambio
+--      email concorrenti potevano dare lo stesso indirizzo a due account, e il
+--      reset (che cerca per lower(email)) ne avrebbe scelto uno a caso.
+--      Se nel database ci sono gia' indirizzi che differiscono solo per le
+--      maiuscole, la migration si ferma e dice quanti: vanno risolti a mano
+--      (quale account tiene l'indirizzo e' una scelta, non un automatismo).
+--
 -- Rollback in 008_account_down.sql.
 -- ==============================================================================
 
@@ -52,5 +61,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_token_account_attivo_user
 CREATE UNIQUE INDEX IF NOT EXISTS uq_token_account_attivo_commercialista
   ON token_account (commercialista_id, scopo)
   WHERE commercialista_id IS NOT NULL AND usato_il IS NULL AND annullato_il IS NULL;
+
+DO $$
+DECLARE n_u INTEGER; n_c INTEGER;
+BEGIN
+  SELECT count(*) INTO n_u FROM (SELECT 1 FROM utenti GROUP BY lower(email) HAVING count(*) > 1) d;
+  SELECT count(*) INTO n_c FROM (SELECT 1 FROM commercialisti GROUP BY lower(email) HAVING count(*) > 1) d;
+  IF n_u > 0 OR n_c > 0 THEN
+    RAISE EXCEPTION '008: indirizzi email uguali a meno delle maiuscole (utenti: %, commercialisti: %). Risolverli prima di applicare la migration.', n_u, n_c;
+  END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_utenti_email_lower ON utenti (lower(email));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_commercialisti_email_lower ON commercialisti (lower(email));
 
 COMMIT;

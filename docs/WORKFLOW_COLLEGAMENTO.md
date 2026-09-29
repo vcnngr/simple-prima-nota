@@ -502,7 +502,14 @@ chat è funzionale ma va rifatta nella fase UX.
   l'indirizzo cambia solo con `POST …/email/conferma` (`token`, 24 ore). Alla conferma: avviso al
   vecchio indirizzo e annullamento dei token ancora aperti (un reset chiesto prima andrebbe al vecchio
   indirizzo). Indirizzo già usato → `409`, anche se due account confermano lo stesso indirizzo.
-  L'email non è una credenziale: le sessioni restano aperte.
+  L'email non è una credenziale: le sessioni restano aperte. La password si verifica fuori dal lock,
+  ma sotto il lock si ricontrolla che l'hash sia ancora quello verificato: una richiesta fatta con la
+  vecchia password e rimasta in attesa di un cambio password concorrente riceve `400` e nessun token.
+- **Unicità dell'email senza maiuscole**: la 008 aggiunge indici unici su `lower(email)` per
+  `utenti` e `commercialisti` (il `UNIQUE` originale distingue `Mario@` da `mario@`). Due conferme
+  concorrenti di varianti di maiuscole: una `200`, l'altra `409`; la registrazione con una variante →
+  `400`. Se il database contiene già duplicati di sola maiuscola la 008 si ferma e dice quanti
+  (senza indirizzi): quale account tiene l'indirizzo va deciso a mano.
 - **Profilo studio**: `PUT /commercialisti/profile` (ragione sociale, partita IVA a 11 cifre, telefono).
 - Le mail partono **subito** via SMTP, non dalla coda della 006: il link contiene il token in chiaro
   e la coda lo conserverebbe nel database. Senza `SMTP_HOST` il reset non manda niente (log
@@ -510,7 +517,8 @@ chat è funzionale ma va rifatta nella fase UX.
 - Frontend: "Password dimenticata?" sui due login, pagine `/password-dimenticata`,
   `/reimposta-password`, `/conferma-email` (e le stesse sotto `/commercialista/`), cambio email nel
   profilo utente, dati studio + password + email nel profilo dello studio.
-- Prova: `scripts/smoke/w6-account.sh` (mailpit; 156 controlli, entrambi i tipi di account).
+- Prova: `scripts/smoke/w6-account.sh` (mailpit; 172 controlli, entrambi i tipi di account, sezione M
+  per le due gare trovate in revisione).
 
 Aperto, fuori da W6: con `trust proxy` e il backend esposto direttamente (porta 3001 del compose),
 `X-Forwarded-For` è scelto dal client e il tetto per IP si aggira (resta il tetto per account); la

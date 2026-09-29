@@ -16,7 +16,7 @@ router.post('/register', validate(schemas.user), async (req, res) => {
     
     // Verifica se l'utente esiste già
     const existingUser = await queryOne(
-      'SELECT id FROM utenti WHERE username = $1 OR email = $2',
+      'SELECT id FROM utenti WHERE username = $1 OR lower(email) = lower($2)',
       [username, email]
     );
     
@@ -49,7 +49,10 @@ router.post('/register', validate(schemas.user), async (req, res) => {
       token
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    // 23505: username o email presi fra il controllo e l'INSERT (l'indice
+    // unico su lower(email) della 008 vale anche per le maiuscole).
+    if (error.code === '23505') return res.status(400).json({ error: 'Username o email già in uso' });
+    console.error('Registration error:', error.code || error.message);
     res.status(500).json({ error: 'Errore durante la registrazione' });
   }
 });

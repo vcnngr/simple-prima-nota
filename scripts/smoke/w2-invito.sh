@@ -195,9 +195,11 @@ echo "=== F. omonimi di sola maiuscola (P0-3) ==="
 # `utenti` ha UNIQUE case-sensitive: "Om" e "om" sono due account diversi.
 # Risolvere il cliente con lower(...) ORDER BY id LIMIT 1 apriva il collegamento
 # sul primo dei due per id, cioe' sull'utente sbagliato.
+# Le email sono distinte: dalla 008 due indirizzi uguali a meno delle maiuscole
+# non possono coesistere (indice unico su lower(email)); qui conta lo username.
 C3=$(curl -s -X POST $API/commercialisti/register "${JSON[@]}" -d "{\"username\":\"w2f$SFX\",\"email\":\"w2f$SFX@t.it\",\"password\":\"Password123!\",\"ragione_sociale\":\"Studio Tre\"}" | j "['token']")
-UMAI=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"Om$SFX\",\"email\":\"Om$SFX@t.it\",\"password\":\"Password123!\"}" | j "['token']")
-UMIN=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"om$SFX\",\"email\":\"om$SFX@t.it\",\"password\":\"Password123!\"}" | j "['token']")
+UMAI=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"Om$SFX\",\"email\":\"Om$SFX-mai@t.it\",\"password\":\"Password123!\"}" | j "['token']")
+UMIN=$(curl -s -X POST $API/auth/register "${JSON[@]}" -d "{\"username\":\"om$SFX\",\"email\":\"om$SFX-min@t.it\",\"password\":\"Password123!\"}" | j "['token']")
 ID_MAI=$(curl -s $API/auth/profile -H "Authorization: Bearer $UMAI" | j "['id']")
 ID_MIN=$(curl -s $API/auth/profile -H "Authorization: Bearer $UMIN" | j "['id']")
 C3_ID=$(psql_q -c "SELECT id FROM commercialisti WHERE username='w2f$SFX';")

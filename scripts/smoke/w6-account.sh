@@ -11,7 +11,9 @@
 #   * cambio email: vale solo dopo la conferma dal nuovo indirizzo; avviso al vecchio;
 #     un reset chiesto prima del cambio non vale piu' dopo;
 #   * nel database solo hash; nei log niente token, password o indirizzi;
-#   * tetto per IP sulle richieste di reset.
+#   * tetto per IP sulle richieste di reset;
+#   * gare: cambio email contro cambio password, conferme di indirizzi uguali a
+#     meno delle maiuscole; unicita' di lower(email) nel database.
 #
 # Il backend deve girare con SMTP verso mailpit e attesa breve fra due mail:
 #   SMTP_HOST=127.0.0.1 SMTP_PORT=<smtp> ACCOUNT_MAIL_ATTESA_SEC=3 RESET_PASSWORD_LIMITE=20 \
@@ -339,6 +341,68 @@ for i in $(seq 1 $((RESET_LIMITE + 2))); do
 done
 eq "la richiesta $((RESET_LIMITE + 1)) e' la prima rifiutata" "$((RESET_LIMITE + 1))" "$primo"
 eq "e anche le successive" "2" "$n429"
+
+echo
+echo "=== M. gare (revisione W6) ==="
+# M1: la richiesta di cambio email verifica la vecchia password, poi aspetta il
+# lock dell'account mentre un cambio password (simulato in SQL, lock tenuto 3 s)
+# si chiude. Dopo il lock la password non e' piu' quella: niente token.
+# M2: due conferme concorrenti di indirizzi uguali a meno delle maiuscole, con
+# l'UPDATE dell'email rallentato da un trigger di prova: una sola vince.
+NUOVO_HASH=$(cd "$(dirname "$0")/../../backend" && node -e "require('bcryptjs').hash('CambiataDalTitolare1!',10).then(h=>console.log(h))")
+gare() {
+  imposta_tipo "$1"
+  local P="w6m${1:0:1}$SFX"
+  local UV="${P}v"; local TV; TV=$(registra "$UV"); local IDV; IDV=$(id_account "$UV")
+  local LADRO="ladro.${P}@t.it"
+  docker exec -i "$DB_CONTAINER" psql -q -U postgres -d "$DB_NAME" -c \
+    "BEGIN; UPDATE $TAB SET password_hash='$NUOVO_HASH', versione_credenziali=versione_credenziali+1 WHERE id=$IDV; SELECT pg_sleep(3); COMMIT;" >/dev/null &
+  local LOCKER=$!
+  sleep 0.7
+  local c; c=$(hit -X POST "$BASE/email" -H "Authorization: Bearer $TV" "${JSON[@]}" -d "{\"password\":\"$PW\",\"email\":\"$LADRO\"}")
+  wait $LOCKER
+  eq "[$TIPO] cambio email con la password appena cambiata -> 400" "400" "$c"
+  eq "[$TIPO] nessun token di conferma emesso" "0" "$(psql_q -c "SELECT count(*) FROM token_account WHERE $COL=$IDV AND scopo='conferma_email';")"
+  sleep 1
+  eq "[$TIPO] nessuna mail all'indirizzo dell'attaccante" "0" "$(mail_a "$LADRO")"
+  eq "[$TIPO] email invariata" "$UV@t.it" "$(psql_q -c "SELECT email FROM $TAB WHERE id=$IDV;")"
+
+  local A="${P}a" B="${P}b"; local TA TB; TA=$(registra "$A"); TB=$(registra "$B")
+  local SU="Conteso.${P}@t.it" SL="conteso.${P}@t.it"
+  hit -X POST "$BASE/email" -H "Authorization: Bearer $TA" "${JSON[@]}" -d "{\"password\":\"$PW\",\"email\":\"$SU\"}" >/dev/null
+  hit -X POST "$BASE/email" -H "Authorization: Bearer $TB" "${JSON[@]}" -d "{\"password\":\"$PW\",\"email\":\"$SL\"}" >/dev/null
+  attendi 2 mail_a "$SL" "Conferma" >/dev/null   # mail_a non distingue le maiuscole: 2 mail
+  local KU
+  KU=$(curl -s --max-time 5 "$MAIL_API/api/v1/messages?limit=500" | python3 -c "
+import sys,json,urllib.request,re
+d=json.load(sys.stdin)
+for want in ('$SU','$SL'):
+    m=next(m for m in d['messages'] if any(a['Address']==want for a in m.get('To',[])) and 'Conferma' in m.get('Subject',''))
+    t=json.load(urllib.request.urlopen('$MAIL_API/api/v1/message/'+m['ID']))['Text']
+    print(re.search(r'#token=([0-9a-f]{64})',t).group(1))" | paste -sd' ' -)
+  set -- $KU
+  psql_q -c "CREATE OR REPLACE FUNCTION w6_rallenta() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN PERFORM pg_sleep(2); RETURN NEW; END \$\$;
+             CREATE TRIGGER w6_rallenta BEFORE UPDATE OF email ON $TAB FOR EACH ROW WHEN (OLD.email IS DISTINCT FROM NEW.email) EXECUTE FUNCTION w6_rallenta();" >/dev/null
+  curl -s --max-time 15 -o /dev/null -w "%{http_code}\n" -X POST "$BASE/email/conferma" "${JSON[@]}" -d "{\"token\":\"$1\"}" > /tmp/w6m1.$$ &
+  curl -s --max-time 15 -o /dev/null -w "%{http_code}\n" -X POST "$BASE/email/conferma" "${JSON[@]}" -d "{\"token\":\"$2\"}" > /tmp/w6m2.$$ &
+  wait
+  psql_q -c "DROP TRIGGER w6_rallenta ON $TAB; DROP FUNCTION w6_rallenta();" >/dev/null
+  eq "[$TIPO] conferme concorrenti Conteso/conteso: una 200, una 409" "200 409" "$(cat /tmp/w6m1.$$ /tmp/w6m2.$$ | sort | paste -sd' ' -)"
+  rm -f /tmp/w6m1.$$ /tmp/w6m2.$$
+  eq "[$TIPO] un solo account con quell'indirizzo" "1" "$(psql_q -c "SELECT count(*) FROM $TAB WHERE lower(email)=lower('$SL');")"
+  local R; R=$(echo "$UV" | tr a-z A-Z)
+  eq "[$TIPO] il database rifiuta la variante maiuscola" "23505" \
+    "$(psql_q -c "UPDATE $TAB SET email='$R@T.IT' WHERE username='$A';" 2>&1 | grep -oE 'duplicate key|UPDATE 1' | sed 's/duplicate key/23505/' | head -1)"
+  if [ "$TIPO" = user ]; then
+    assert_http "[$TIPO] registrazione con email che differisce solo per le maiuscole -> 400" 400 \
+      -X POST "$API/auth/register" "${JSON[@]}" -d "{\"username\":\"${P}r\",\"email\":\"$R@T.IT\",\"password\":\"$PW\"}"
+  else
+    assert_http "[$TIPO] registrazione con email che differisce solo per le maiuscole -> 400" 400 \
+      -X POST "$API/commercialisti/register" "${JSON[@]}" -d "{\"username\":\"${P}r\",\"email\":\"$R@T.IT\",\"password\":\"$PW\",\"ragione_sociale\":\"X\"}"
+  fi
+}
+gare user
+gare commercialista
 
 echo
 echo "=== L. nei log niente token, password o indirizzi ==="

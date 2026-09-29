@@ -13,6 +13,8 @@
 
 BEGIN;
 
+DROP INDEX IF EXISTS uq_commercialisti_email_lower;
+DROP INDEX IF EXISTS uq_utenti_email_lower;
 DROP TABLE IF EXISTS token_account;
 ALTER TABLE commercialisti DROP COLUMN IF EXISTS versione_credenziali;
 ALTER TABLE utenti DROP COLUMN IF EXISTS versione_credenziali;

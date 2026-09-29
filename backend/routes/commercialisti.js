@@ -84,7 +84,7 @@ router.post('/register', async (req, res) => {
 
     // Check if username or email already exists
     const existing = await queryOne(
-      'SELECT id FROM commercialisti WHERE username = $1 OR email = $2',
+      'SELECT id FROM commercialisti WHERE username = $1 OR lower(email) = lower($2)',
       [username, email]
     );
 
@@ -115,7 +115,8 @@ router.post('/register', async (req, res) => {
       token
     });
   } catch (error) {
-    console.error('Register error:', error);
+    if (error.code === '23505') return res.status(400).json({ error: 'Username o email già esistente' });
+    console.error('Register error:', error.code || error.message);
     res.status(500).json({ error: 'Errore durante la registrazione' });
   }
 });

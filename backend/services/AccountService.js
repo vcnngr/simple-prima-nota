@@ -40,6 +40,7 @@ const cfg = () => ({
 
 const FIRMA = '\n\n— Simple Prima Nota\nQuesta e\' una mail automatica: non rispondere a questo indirizzo.';
 const TOKEN = /^[0-9a-f]{64}$/;
+const PASSWORD_CAMBIATA = Symbol('password cambiata');
 
 function tipo(t) {
   const d = TIPI[t];
@@ -293,16 +294,21 @@ async function richiediCambioEmail(t, accountId, password, email) {
   );
   if (altro) return { esito: 'email_in_uso' };
 
+  // La password e' stata verificata fuori dal lock. Se nel frattempo e' cambiata
+  // (il titolare l'ha appena cambiata per chiudere fuori chi conosceva la
+  // vecchia), il token non si emette: si confronta l'hash sotto lock con quello
+  // verificato. Senza, la vecchia password sposterebbe l'email dopo il cambio.
   const token = await withTransaction(async (cl) => {
     const r = await cl.query(
-      `SELECT id, versione_credenziali FROM ${tabella} WHERE id = $1 FOR UPDATE`,
+      `SELECT id, password_hash, versione_credenziali FROM ${tabella} WHERE id = $1 FOR UPDATE`,
       [accountId]
     );
-    if (r.rowCount === 0) return null;
+    if (r.rowCount === 0 || r.rows[0].password_hash !== prima.password_hash) return PASSWORD_CAMBIATA;
     return emettiToken(cl, t, r.rows[0], 'conferma_email', c.confermaOre * 3600, nuova);
   });
 
   const etichetta = `cambio email ${t} ${accountId}`;
+  if (token === PASSWORD_CAMBIATA) return { esito: 'password_errata' };
   if (!token) {
     console.log(`${etichetta}: richiesta ravvicinata, nessuna nuova mail`);
     return { esito: 'ok' };
