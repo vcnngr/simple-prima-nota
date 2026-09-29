@@ -319,4 +319,4 @@ function ferma() {
   timer = null;
 }
 
-module.exports = { avvia, ferma, giro, componi, pulisci };
+module.exports = { avvia, ferma, giro, componi, pulisci, creaTrasportoSmtp };

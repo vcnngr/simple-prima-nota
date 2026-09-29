@@ -29,6 +29,7 @@ import Alert from '../../components/UI/Alert';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import Modal from '../../components/UI/Modal';
 import { useForm } from 'react-hook-form';
+import { CambioEmailForm } from '../../components/Account/AccountForms';
 import toast from 'react-hot-toast';
 
 const ProfilePage = () => {
@@ -176,7 +177,7 @@ const ProfilePage = () => {
             transition={{ duration: 0.3 }}
           >
             {activeTab === 'profile' && <ProfileTab profileData={profileData} />}
-            {activeTab === 'security' && <SecurityTab changePassword={changePassword} />}
+            {activeTab === 'security' && <SecurityTab changePassword={changePassword} user={user} />}
             {activeTab === 'preferences' && <PreferencesTab />}
             {activeTab === 'data' && <DataTab />}
           </motion.div>
@@ -291,7 +292,7 @@ const ProfileTab = ({ profileData }) => {
 };
 
 // Tab Sicurezza
-const SecurityTab = ({ changePassword }) => {
+const SecurityTab = ({ changePassword, user }) => {
   const [showPasswords, setShowPasswords] = useState({
     current: false,
     new: false,
@@ -374,8 +375,8 @@ const SecurityTab = ({ changePassword }) => {
                   {...register('newPassword', {
                     required: 'Nuova password è richiesta',
                     minLength: {
-                      value: 6,
-                      message: 'Password deve essere di almeno 6 caratteri'
+                      value: 8,
+                      message: 'Password deve essere di almeno 8 caratteri'
                     }
                   })}
                 />
@@ -449,6 +450,16 @@ const SecurityTab = ({ changePassword }) => {
               </Button>
             </div>
           </form>
+        </Card.Body>
+      </Card>
+
+      {/* Cambio email (W6): vale dopo la conferma dal nuovo indirizzo */}
+      <Card>
+        <Card.Header>
+          <h3 className="text-lg font-semibold text-gray-900">Indirizzo email</h3>
+        </Card.Header>
+        <Card.Body>
+          <CambioEmailForm tipo="user" emailAttuale={user?.email} />
         </Card.Body>
       </Card>
 

@@ -130,6 +130,8 @@ visualizzatore.
 
 ### 2.9 Nessun recupero password
 
+> Risolto in W6 (§3.9): reset via email, cambio password ed email per entrambi i tipi di account.
+
 Né utente né commercialista (`reset|forgot` in `auth.js`: 0 occorrenze). Un commercialista che
 perde la password perde tutti i clienti collegati: non c'è nemmeno un endpoint per cambiarla
 (`commercialisti.js` espone solo `register`, `login`, `profile` in lettura).
@@ -474,6 +476,47 @@ chat è funzionale ma va rifatta nella fase UX.
 - Password: `PUT /commercialisti/password`, `PUT /commercialisti/profile`, e reset via token email
   per entrambi i tipi di account.
 
+**Stato (W6, migration 008).** Realizzato così, identico per utenti (`/api/auth`) e studi
+(`/api/commercialisti`); la logica è una sola, in `services/AccountService.js`:
+
+- **Sessioni legate alla password.** `versione_credenziali` su `utenti` e `commercialisti` entra nel
+  JWT (claim `cv`); i tre middleware (`auth`, `authEither`, `authCommercialista`) la confrontano a ogni
+  richiesta. Cambio o reset della password la incrementano: tutte le altre sessioni ricevono `401`.
+  Chi cambia la password da loggato riceve un token nuovo e resta dentro. I JWT anteriori alla 008
+  non hanno `cv` e valgono come versione 0 finché la password non cambia.
+- **Cambio password**: `POST /auth/change-password`, `PUT /commercialisti/password`
+  (`currentPassword`, `newPassword`). Nuova password 8–72 byte (bcrypt ignora oltre i 72: si rifiuta
+  invece di troncare). Mail di avviso al titolare.
+- **Reset**: `POST …/password-dimenticata` (`identificativo` = username o email) risponde **sempre
+  `202` con lo stesso corpo, prima di cercare l'account**; token e mail si fanno dopo la risposta.
+  Tetto per IP (`RESET_PASSWORD_LIMITE`, 15 min) e per account (una mail ogni
+  `ACCOUNT_MAIL_ATTESA_SEC`). `POST …/password-reimposta` (`token`, `password`).
+- **Token** (`token_account`): 32 byte casuali, nel DB solo SHA-256; nel link stanno dopo `#`
+  (`/reimposta-password#token=…`), quindi non arrivano al server né ai log di nginx, e la pagina li
+  toglie dalla barra degli indirizzi. Monouso, 60 minuti, al più uno attivo per account e scopo
+  (indice unico parziale); valgono solo se la versione delle credenziali è ancora quella di quando
+  sono stati emessi, quindi un cambio password li spegne. Un token di uno studio non vale per un
+  utente, uno di conferma email non vale come reset. Consumo sotto lock (ordine account → token):
+  dieci consumi simultanei, un solo `200`.
+- **Cambio email**: `POST …/email` (`password`, `email`) → `202` e mail al **nuovo** indirizzo;
+  l'indirizzo cambia solo con `POST …/email/conferma` (`token`, 24 ore). Alla conferma: avviso al
+  vecchio indirizzo e annullamento dei token ancora aperti (un reset chiesto prima andrebbe al vecchio
+  indirizzo). Indirizzo già usato → `409`, anche se due account confermano lo stesso indirizzo.
+  L'email non è una credenziale: le sessioni restano aperte.
+- **Profilo studio**: `PUT /commercialisti/profile` (ragione sociale, partita IVA a 11 cifre, telefono).
+- Le mail partono **subito** via SMTP, non dalla coda della 006: il link contiene il token in chiaro
+  e la coda lo conserverebbe nel database. Senza `SMTP_HOST` il reset non manda niente (log
+  `mail non inviata`). Nei log: tipo, id ed esito; mai indirizzi, token o password.
+- Frontend: "Password dimenticata?" sui due login, pagine `/password-dimenticata`,
+  `/reimposta-password`, `/conferma-email` (e le stesse sotto `/commercialista/`), cambio email nel
+  profilo utente, dati studio + password + email nel profilo dello studio.
+- Prova: `scripts/smoke/w6-account.sh` (mailpit; 156 controlli, entrambi i tipi di account).
+
+Aperto, fuori da W6: con `trust proxy` e il backend esposto direttamente (porta 3001 del compose),
+`X-Forwarded-For` è scelto dal client e il tetto per IP si aggira (resta il tetto per account); la
+registrazione accetta ancora password da 6 caratteri; `auth` non controlla `decoded.tipo` (fase
+«sicurezza»). Il chart Helm non ha ancora la 008 (fase «sistema»).
+
 ---
 
 ## 4. Impatto sullo schema
@@ -536,7 +579,7 @@ Rispetta l'ordine ratificato dal titolare: **workflow → sistema → sicurezza 
 | W3 ✅ | Audit + ambito | `accessi_commercialista` (migration 005), scrittura fail-closed in `requireCollegamento`, registro leggibile dal cliente; ambito già applicato dal W1 | `scripts/smoke/w3-accessi.sh` 62/62; su `79599d6` 14/33, i due P0 della revisione falliscono su `fad8fc3` (54/8) |
 | W4 ✅ | Notifiche | outbox + SMTP, sostituzione parziale del polling | email in coda su ogni evento; conteggio richieste per sessione ridotto |
 | W5 ✅ | Chat di lavoro | allegati, `movimento_id`, richieste di chiarimento | upload accettato/rifiutato per MIME e dimensione |
-| W6 | Account | cambio password ed email, reset per entrambi i tipi | ciclo completo di reset via curl |
+| W6 ✅ | Account | cambio password ed email, reset per entrambi i tipi | ciclo completo di reset via curl: `scripts/smoke/w6-account.sh` |
 
 W1 e W2 sono il cuore: da soli chiudono i difetti 2.1, 2.2, 2.5, 2.6, 2.7.
 

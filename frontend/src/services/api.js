@@ -71,6 +71,12 @@ export const authAPI = {
   verifyToken: () => api.get('/auth/verify'),
   getProfile: () => api.get('/auth/profile'),
   changePassword: (passwordData) => api.post('/auth/change-password', passwordData),
+
+  // Account (W6). Il token del link viaggia nel corpo, mai nell'URL.
+  passwordDimenticata: (identificativo) => api.post('/auth/password-dimenticata', { identificativo }),
+  passwordReimposta: (token, password) => api.post('/auth/password-reimposta', { token, password }),
+  cambiaEmail: (password, email) => api.post('/auth/email', { password, email }),
+  confermaEmail: (token) => api.post('/auth/email/conferma', { token }),
   
   // ✅ CORRETTI - Usano api (Axios) invece di apiRequest
   
@@ -273,6 +279,12 @@ export const commercialistiAPI = {
   login: (credentials) => api.post('/commercialisti/login', credentials),
   register: (userData) => api.post('/commercialisti/register', userData),
   getProfile: () => api.get('/commercialisti/profile'),
+  updateProfile: (dati) => api.put('/commercialisti/profile', dati),
+  changePassword: (passwordData) => api.put('/commercialisti/password', passwordData),
+  passwordDimenticata: (identificativo) => api.post('/commercialisti/password-dimenticata', { identificativo }),
+  passwordReimposta: (token, password) => api.post('/commercialisti/password-reimposta', { token, password }),
+  cambiaEmail: (password, email) => api.post('/commercialisti/email', { password, email }),
+  confermaEmail: (token) => api.post('/commercialisti/email/conferma', { token }),
 
   // Dashboard
   getDashboard: () => api.get('/commercialisti/dashboard'),

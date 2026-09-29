@@ -5,6 +5,21 @@
 
 const Joi = require('joi');
 
+// Password nuova (cambio e reset, blocco W6). bcrypt considera solo i primi 72
+// byte: una password piu' lunga verrebbe troncata in silenzio, quindi si rifiuta.
+const passwordNuova = Joi.string().min(8).max(72)
+  .custom((v, helpers) => (Buffer.byteLength(v, 'utf8') > 72 ? helpers.error('string.max') : v))
+  .required()
+  .messages({
+    'string.min': 'La nuova password deve essere di almeno 8 caratteri',
+    'string.max': 'La nuova password e\' troppo lunga (massimo 72 byte)',
+    'any.required': 'La nuova password e\' richiesta'
+  });
+
+// Token di reset o di conferma email: 32 byte in esadecimale.
+const tokenAccount = Joi.string().pattern(/^[0-9a-f]{64}$/).required()
+  .messages({ 'string.pattern.base': 'Link non valido o scaduto', 'any.required': 'Link non valido o scaduto' });
+
 const schemas = {
   // ============================================================================
   // SCHEMA UTENTI E AUTH (INVARIATI)
@@ -307,6 +322,37 @@ const schemas = {
     collegamentoId: Joi.number().integer().positive().optional(),
     stato: Joi.string().valid('aperta', 'risolta').optional()
   }),
+
+  // Account (blocco W6), stessi schemi per utenti e commercialisti
+  passwordDimenticata: Joi.object({
+    identificativo: Joi.string().trim().min(1).max(100).required()
+      .messages({ 'any.required': 'Indica username o email', 'string.empty': 'Indica username o email' })
+  }),
+  passwordReimposta: Joi.object({
+    token: tokenAccount,
+    password: passwordNuova
+  }),
+  cambioPassword: Joi.object({
+    currentPassword: Joi.string().max(200).required()
+      .messages({ 'any.required': 'La password attuale e\' richiesta', 'string.empty': 'La password attuale e\' richiesta' }),
+    newPassword: passwordNuova
+  }),
+  cambioEmail: Joi.object({
+    password: Joi.string().max(200).required()
+      .messages({ 'any.required': 'La password e\' richiesta', 'string.empty': 'La password e\' richiesta' }),
+    email: Joi.string().trim().email().max(100).required()
+      .messages({ 'string.email': 'Email non valida', 'any.required': 'Email richiesta' })
+  }),
+  confermaEmail: Joi.object({
+    token: tokenAccount
+  }),
+  profiloCommercialista: Joi.object({
+    ragione_sociale: Joi.string().trim().max(200).allow('', null).optional(),
+    partita_iva: Joi.string().trim().pattern(/^[0-9]{11}$/).allow('', null).optional()
+      .messages({ 'string.pattern.base': 'La partita IVA ha 11 cifre' }),
+    telefono: Joi.string().trim().max(20).pattern(/^[0-9 +().-]*$/).allow('', null).optional()
+      .messages({ 'string.pattern.base': 'Telefono non valido' })
+  }).min(1),
 
   messaggiQuery: Joi.object({
     userId: Joi.number().integer().positive().optional(),

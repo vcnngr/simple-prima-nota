@@ -182,8 +182,15 @@ export function AuthProvider({ children }) {
   // Cambio password
   const changePassword = async (passwordData) => {
     try {
-      await authAPI.changePassword(passwordData);
-      toast.success('Password cambiata con successo');
+      const response = await authAPI.changePassword(passwordData);
+      // Il cambio chiude tutte le sessioni: questa continua con il token nuovo.
+      if (response.token) {
+        dispatch({
+          type: AuthActionTypes.LOGIN_SUCCESS,
+          payload: { user: state.user, token: response.token },
+        });
+      }
+      toast.success('Password cambiata: le altre sessioni sono state chiuse');
       return { success: true };
     } catch (error) {
       const errorMessage = error.response?.data?.error || 'Errore durante il cambio password';

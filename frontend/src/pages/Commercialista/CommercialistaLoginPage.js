@@ -147,17 +147,22 @@ const CommercialistaLoginPage = () => {
               )}
             </div>
 
-            {/* Remember me */}
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                className="h-4 w-4 text-success-600 focus:ring-success-500 border-gray-300 rounded"
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                Ricordami
-              </label>
+            {/* Remember me & Forgot password */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  className="h-4 w-4 text-success-600 focus:ring-success-500 border-gray-300 rounded"
+                />
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                  Ricordami
+                </label>
+              </div>
+              <Link to="/commercialista/password-dimenticata" className="text-sm text-success-600 hover:text-success-500 font-medium">
+                Password dimenticata?
+              </Link>
             </div>
 
             {/* Submit Button */}

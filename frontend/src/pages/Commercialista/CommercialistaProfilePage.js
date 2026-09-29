@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 import { commercialistiAPI } from '../../services/api';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
+import {
+  CambioEmailForm, CambioPasswordCommercialistaForm, ProfiloStudioForm
+} from '../../components/Account/AccountForms';
 import toast from 'react-hot-toast';
 
 const CommercialistaProfilePage = () => {
@@ -67,7 +70,7 @@ const CommercialistaProfilePage = () => {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h1 className="text-2xl font-bold text-gray-900">Il Tuo Profilo</h1>
         <p className="text-gray-600 mt-1">
-          Visualizza le informazioni del tuo account commercialista
+          Dati dello studio, password ed email di accesso
         </p>
       </div>
 
@@ -172,20 +175,30 @@ const CommercialistaProfilePage = () => {
             )}
           </div>
 
-          {/* Info Notice */}
-          <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-start space-x-3">
-              <Shield className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm text-blue-900 font-medium">Informazioni protette</p>
-                <p className="text-sm text-blue-700 mt-1">
-                  Per modificare le informazioni del tuo profilo, contatta l'amministratore del sistema.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </motion.div>
+
+      {/* Modifica account (W6) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <Briefcase className="h-5 w-5 mr-2 text-gray-500" /> Dati dello studio
+          </h3>
+          <ProfiloStudioForm profilo={profile} onSalvato={(p) => setProfile(prev => ({ ...prev, ...p }))} />
+        </div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <Shield className="h-5 w-5 mr-2 text-gray-500" /> Password
+          </h3>
+          <CambioPasswordCommercialistaForm />
+        </div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <Mail className="h-5 w-5 mr-2 text-gray-500" /> Email
+          </h3>
+          <CambioEmailForm tipo="commercialista" emailAttuale={profile.email} />
+        </div>
+      </div>
 
       {/* Account Stats */}
       <motion.div

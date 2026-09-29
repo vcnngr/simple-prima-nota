@@ -1,6 +1,14 @@
 // middleware/auth.js
 const jwt = require('jsonwebtoken');
 const { queryOne } = require('../config/database');
+const { versioneValida } = require('../services/AccountService');
+
+// La versione delle credenziali serve solo al confronto con il claim `cv`: un
+// cambio o reset della password la incrementa e chiude le altre sessioni.
+function senzaVersione(riga) {
+  const { versione_credenziali, ...resto } = riga;
+  return resto;
+}
 
 const auth = async (req, res, next) => {
   try {
@@ -14,15 +22,15 @@ const auth = async (req, res, next) => {
 
     // Verifica se l'utente esiste ancora
     const user = await queryOne(
-      'SELECT id, username, email FROM utenti WHERE id = $1',
+      'SELECT id, username, email, versione_credenziali FROM utenti WHERE id = $1',
       [decoded.id]
     );
 
-    if (!user) {
+    if (!user || !versioneValida(decoded, user)) {
       return res.status(401).json({ error: 'Token non valido.' });
     }
 
-    req.user = user;
+    req.user = senzaVersione(user);
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
@@ -45,24 +53,24 @@ const authEither = async (req, res, next) => {
     if (decoded.tipo === 'commercialista') {
       // Search only in commercialisti table
       const commercialista = await queryOne(
-        'SELECT id, username, email, ragione_sociale FROM commercialisti WHERE id = $1',
+        'SELECT id, username, email, ragione_sociale, versione_credenziali FROM commercialisti WHERE id = $1',
         [decoded.id]
       );
 
-      if (commercialista) {
-        req.commercialista = commercialista;
+      if (commercialista && versioneValida(decoded, commercialista)) {
+        req.commercialista = senzaVersione(commercialista);
         req.userType = 'commercialista';
         return next();
       }
     } else {
       // Search in utenti table (default for tokens without tipo field)
       const user = await queryOne(
-        'SELECT id, username, email FROM utenti WHERE id = $1',
+        'SELECT id, username, email, versione_credenziali FROM utenti WHERE id = $1',
         [decoded.id]
       );
 
-      if (user) {
-        req.user = user;
+      if (user && versioneValida(decoded, user)) {
+        req.user = senzaVersione(user);
         req.userType = 'user';
         return next();
       }

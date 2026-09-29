@@ -31,6 +31,9 @@ import ProfilePage from './pages/Profile/ProfilePage';
 import CommercialistaManagementPage from './pages/Profile/CommercialistaManagementPage';
 import TipologiePage from './pages/Tipologie/TipologiePage';
 import ChatPage from './pages/Messaggi/ChatPage';
+import {
+  PasswordDimenticataPage, ReimpostaPasswordPage, ConfermaEmailPage
+} from './pages/Account/AccountPages';
 
 // Configurazione React Query
 const queryClient = new QueryClient({
@@ -141,6 +144,15 @@ function App() {
                   </PublicRoute>
                 }
               />
+
+              {/* Account (W6): raggiungibili anche da loggati, perche' il link
+                  di conferma email si apre spesso con la sessione aperta. */}
+              <Route path="/password-dimenticata" element={<PasswordDimenticataPage tipo="user" />} />
+              <Route path="/reimposta-password" element={<ReimpostaPasswordPage tipo="user" />} />
+              <Route path="/conferma-email" element={<ConfermaEmailPage tipo="user" />} />
+              <Route path="/commercialista/password-dimenticata" element={<PasswordDimenticataPage tipo="commercialista" />} />
+              <Route path="/commercialista/reimposta-password" element={<ReimpostaPasswordPage tipo="commercialista" />} />
+              <Route path="/commercialista/conferma-email" element={<ConfermaEmailPage tipo="commercialista" />} />
 
               {/* Route protette commercialista */}
               <Route

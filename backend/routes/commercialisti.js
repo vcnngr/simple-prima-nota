@@ -10,6 +10,9 @@ const {
   completaAccesso, registraAccessiElenco
 } = require('../middleware/collegamento');
 const { validate, validateQuery, schemas } = require('../middleware/validation');
+const account = require('../services/AccountService');
+const { versioneValida } = account;
+const { limiteResetPassword, rispondiResetAccolto } = require('../middleware/account');
 
 const router = express.Router();
 
@@ -48,14 +51,15 @@ const authCommercialista = async (req, res, next) => {
 
     // Verify commercialista exists
     const commercialista = await queryOne(
-      'SELECT id, username, email, ragione_sociale, partita_iva, telefono FROM commercialisti WHERE id = $1',
+      'SELECT id, username, email, ragione_sociale, partita_iva, telefono, versione_credenziali FROM commercialisti WHERE id = $1',
       [decoded.id]
     );
 
-    if (!commercialista || decoded.tipo !== 'commercialista') {
+    if (!commercialista || decoded.tipo !== 'commercialista' || !versioneValida(decoded, commercialista)) {
       return res.status(401).json({ error: 'Token non valido.' });
     }
 
+    delete commercialista.versione_credenziali;
     req.commercialista = commercialista;
     next();
   } catch (error) {
@@ -97,16 +101,12 @@ router.post('/register', async (req, res) => {
     const result = await queryOne(
       `INSERT INTO commercialisti (username, password_hash, email, ragione_sociale, partita_iva, telefono)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, username, email, ragione_sociale, partita_iva, telefono, created_at`,
+       RETURNING id, username, email, ragione_sociale, partita_iva, telefono, created_at, versione_credenziali`,
       [username, password_hash, email, ragione_sociale, partita_iva, telefono]
     );
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: result.id, username: result.username, tipo: 'commercialista' },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = account.firmaJwt('commercialista', result);
+    delete result.versione_credenziali;
 
     res.status(201).json({
       success: true,
@@ -133,7 +133,7 @@ router.post('/login', async (req, res) => {
 
     // Get commercialista
     const commercialista = await queryOne(
-      'SELECT id, username, email, password_hash, ragione_sociale, partita_iva, telefono FROM commercialisti WHERE username = $1',
+      'SELECT id, username, email, password_hash, ragione_sociale, partita_iva, telefono, versione_credenziali FROM commercialisti WHERE username = $1',
       [username]
     );
 
@@ -148,15 +148,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenziali non valide' });
     }
 
-    // Generate token
-    const token = jwt.sign(
-      { id: commercialista.id, username: commercialista.username, tipo: 'commercialista' },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    const token = account.firmaJwt('commercialista', commercialista);
 
     // Remove password_hash from response
     delete commercialista.password_hash;
+    delete commercialista.versione_credenziali;
 
     res.json({
       success: true,
@@ -182,6 +178,83 @@ router.get('/profile', authCommercialista, async (req, res) => {
   } catch (error) {
     console.error('Profile error:', error);
     res.status(500).json({ error: 'Errore nel recupero del profilo' });
+  }
+});
+
+// ==============================================================================
+// Account (blocco W6): profilo, password, email, reset
+// ==============================================================================
+router.put('/profile', authCommercialista, validate(schemas.profiloCommercialista), async (req, res) => {
+  try {
+    const campi = ['ragione_sociale', 'partita_iva', 'telefono'].filter(k => k in req.body);
+    const set = campi.map((k, i) => `${k} = $${i + 2}`).join(', ');
+    const valori = campi.map(k => (req.body[k] === '' ? null : req.body[k]));
+    const r = await queryOne(
+      `UPDATE commercialisti SET ${set}, updated_at = NOW() WHERE id = $1
+       RETURNING id, username, email, ragione_sociale, partita_iva, telefono`,
+      [req.commercialista.id, ...valori]
+    );
+    res.json({ success: true, commercialista: r });
+  } catch (error) {
+    console.error('Update profile error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore nell\'aggiornamento del profilo' });
+  }
+});
+
+router.put('/password', authCommercialista, validate(schemas.cambioPassword), async (req, res) => {
+  try {
+    const r = await account.cambiaPassword('commercialista', req.commercialista.id,
+      req.body.currentPassword, req.body.newPassword);
+    if (r.esito === 'password_errata') {
+      return res.status(400).json({ error: 'Password corrente non corretta' });
+    }
+    if (r.esito === 'conflitto') {
+      return res.status(409).json({ error: 'La password e\' appena cambiata altrove: accedi di nuovo' });
+    }
+    res.json({ success: true, message: 'Password cambiata con successo', token: r.token });
+  } catch (error) {
+    console.error('Change password error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore durante il cambio password' });
+  }
+});
+
+router.post('/password-dimenticata', limiteResetPassword, validate(schemas.passwordDimenticata),
+  rispondiResetAccolto('commercialista'));
+
+router.post('/password-reimposta', validate(schemas.passwordReimposta), async (req, res) => {
+  try {
+    const ok = await account.reimpostaPassword('commercialista', req.body.token, req.body.password);
+    if (!ok) return res.status(400).json({ error: 'Link non valido o scaduto' });
+    res.json({ success: true, message: 'Password reimpostata: accedi con la nuova password' });
+  } catch (error) {
+    console.error('Reset password error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore durante la reimpostazione della password' });
+  }
+});
+
+router.post('/email', authCommercialista, validate(schemas.cambioEmail), async (req, res) => {
+  try {
+    const r = await account.richiediCambioEmail('commercialista', req.commercialista.id,
+      req.body.password, req.body.email);
+    if (r.esito === 'password_errata') return res.status(400).json({ error: 'Password non corretta' });
+    if (r.esito === 'stessa_email') return res.status(400).json({ error: 'E\' gia\' il tuo indirizzo' });
+    if (r.esito === 'email_in_uso') return res.status(409).json({ error: 'Indirizzo gia\' in uso' });
+    res.status(202).json({ success: true, message: 'Ti abbiamo scritto al nuovo indirizzo: il cambio vale dopo la conferma' });
+  } catch (error) {
+    console.error('Change email error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore durante il cambio email' });
+  }
+});
+
+router.post('/email/conferma', validate(schemas.confermaEmail), async (req, res) => {
+  try {
+    const r = await account.confermaEmail('commercialista', req.body.token);
+    if (r.esito === 'non_valido') return res.status(400).json({ error: 'Link non valido o scaduto' });
+    if (r.esito === 'email_in_uso') return res.status(409).json({ error: 'Indirizzo gia\' in uso' });
+    res.json({ success: true, message: 'Indirizzo email aggiornato', email: r.email });
+  } catch (error) {
+    console.error('Confirm email error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore durante la conferma dell\'indirizzo' });
   }
 });
 

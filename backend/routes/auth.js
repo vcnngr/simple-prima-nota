@@ -1,10 +1,11 @@
 // routes/auth.js
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { query, queryOne } = require('../config/database');
 const { validate, schemas } = require('../middleware/validation');
 const { auth } = require('../middleware/auth');
+const account = require('../services/AccountService');
+const { limiteResetPassword, rispondiResetAccolto } = require('../middleware/account');
 
 const router = express.Router();
 
@@ -29,18 +30,13 @@ router.post('/register', validate(schemas.user), async (req, res) => {
     
     // Inserimento utente
     const result = await query(
-      'INSERT INTO utenti (username, password_hash, email) VALUES ($1, $2, $3) RETURNING id, username, email',
+      'INSERT INTO utenti (username, password_hash, email) VALUES ($1, $2, $3) RETURNING id, username, email, versione_credenziali',
       [username, hashedPassword, email]
     );
     
     const user = result.rows[0];
     
-    // Generazione token JWT
-    const token = jwt.sign(
-      { id: user.id, username: user.username },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = account.firmaJwt('user', user);
     
     res.status(201).json({
       success: true,
@@ -65,7 +61,7 @@ router.post('/login', validate(schemas.login), async (req, res) => {
     
     // Trova l'utente
     const user = await queryOne(
-      'SELECT id, username, email, password_hash FROM utenti WHERE username = $1',
+      'SELECT id, username, email, password_hash, versione_credenziali FROM utenti WHERE username = $1',
       [username]
     );
     
@@ -79,12 +75,7 @@ router.post('/login', validate(schemas.login), async (req, res) => {
       return res.status(400).json({ error: 'Credenziali non valide' });
     }
     
-    // Generazione token JWT
-    const token = jwt.sign(
-      { id: user.id, username: user.username },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = account.firmaJwt('user', user);
     
     res.json({
       success: true,
@@ -134,44 +125,63 @@ router.get('/profile', auth, async (req, res) => {
   }
 });
 
-// Cambio password
-router.post('/change-password', auth, async (req, res) => {
+// Cambio password. Chiude le altre sessioni (versione delle credenziali) e
+// restituisce un token nuovo per questa.
+router.post('/change-password', auth, validate(schemas.cambioPassword), async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body;
-    
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ error: 'Password corrente e nuova password sono richieste' });
-    }
-    
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'La nuova password deve essere di almeno 6 caratteri' });
-    }
-    
-    // Verifica password corrente
-    const user = await queryOne(
-      'SELECT password_hash FROM utenti WHERE id = $1',
-      [req.user.id]
-    );
-    
-    const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!isMatch) {
+    const r = await account.cambiaPassword('user', req.user.id, req.body.currentPassword, req.body.newPassword);
+    if (r.esito === 'password_errata') {
       return res.status(400).json({ error: 'Password corrente non corretta' });
     }
-    
-    // Hash nuova password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(newPassword, salt);
-    
-    // Aggiorna password
-    await query(
-      'UPDATE utenti SET password_hash = $1 WHERE id = $2',
-      [hashedPassword, req.user.id]
-    );
-    
-    res.json({ message: 'Password cambiata con successo' });
+    if (r.esito === 'conflitto') {
+      return res.status(409).json({ error: 'La password e\' appena cambiata altrove: accedi di nuovo' });
+    }
+    res.json({ message: 'Password cambiata con successo', token: r.token });
   } catch (error) {
-    console.error('Change password error:', error);
+    console.error('Change password error:', error.code || error.message);
     res.status(500).json({ error: 'Errore durante il cambio password' });
+  }
+});
+
+// Password dimenticata: risposta identica che l'account esista o no, data
+// prima di cercarlo. Il lavoro (token e mail) si fa dopo.
+router.post('/password-dimenticata', limiteResetPassword, validate(schemas.passwordDimenticata),
+  rispondiResetAccolto('user'));
+
+router.post('/password-reimposta', validate(schemas.passwordReimposta), async (req, res) => {
+  try {
+    const ok = await account.reimpostaPassword('user', req.body.token, req.body.password);
+    if (!ok) return res.status(400).json({ error: 'Link non valido o scaduto' });
+    res.json({ success: true, message: 'Password reimpostata: accedi con la nuova password' });
+  } catch (error) {
+    console.error('Reset password error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore durante la reimpostazione della password' });
+  }
+});
+
+// Cambio email: serve la password; il nuovo indirizzo vale dopo la conferma.
+router.post('/email', auth, validate(schemas.cambioEmail), async (req, res) => {
+  try {
+    const r = await account.richiediCambioEmail('user', req.user.id, req.body.password, req.body.email);
+    if (r.esito === 'password_errata') return res.status(400).json({ error: 'Password non corretta' });
+    if (r.esito === 'stessa_email') return res.status(400).json({ error: 'E\' gia\' il tuo indirizzo' });
+    if (r.esito === 'email_in_uso') return res.status(409).json({ error: 'Indirizzo gia\' in uso' });
+    res.status(202).json({ success: true, message: 'Ti abbiamo scritto al nuovo indirizzo: il cambio vale dopo la conferma' });
+  } catch (error) {
+    console.error('Change email error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore durante il cambio email' });
+  }
+});
+
+router.post('/email/conferma', validate(schemas.confermaEmail), async (req, res) => {
+  try {
+    const r = await account.confermaEmail('user', req.body.token);
+    if (r.esito === 'non_valido') return res.status(400).json({ error: 'Link non valido o scaduto' });
+    if (r.esito === 'email_in_uso') return res.status(409).json({ error: 'Indirizzo gia\' in uso' });
+    res.json({ success: true, message: 'Indirizzo email aggiornato', email: r.email });
+  } catch (error) {
+    console.error('Confirm email error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore durante la conferma dell\'indirizzo' });
   }
 });
 
