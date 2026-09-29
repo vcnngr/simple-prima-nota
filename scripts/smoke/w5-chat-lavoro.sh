@@ -66,9 +66,9 @@ printf 'PK\x03\x04 zip qualunque' > $T/archivio.zip
 # Non e' uno zip: solo la firma e i due nomi che un xlsx ha in directory centrale.
 printf 'PK\x03\x04 xl/workbook.xml [Content_Types].xml' > $T/finto.xlsx
 (cd "$(dirname "$0")/../../backend" && node -e "
-const X=require('xlsx');const wb=X.utils.book_new();
-X.utils.book_append_sheet(wb,X.utils.aoa_to_sheet([['data','importo'],['2025-06-01',100]]),'F');
-X.writeFile(wb,'$T/foglio.xlsx');")
+// K4: niente piu' SheetJS; il foglio vero lo scrive utils/xlsx.js.
+const { cartellaXlsx } = require('./utils/xlsx');
+require('fs').writeFileSync('$T/foglio.xlsx', cartellaXlsx([{ nome: 'F', righe: [{ data: '2025-06-01', importo: 100 }] }]));")
 # Zip validi ma non fogli di lavoro: due voci vuote dai nomi giusti piu' un
 # eseguibile; un xlsx vero con un eseguibile accanto; un xlsx con macro.
 python3 - "$T" <<'PY2'

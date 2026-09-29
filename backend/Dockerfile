@@ -1,5 +1,5 @@
 # Backend Dockerfile
-FROM docker.io/library/node:18-alpine
+FROM docker.io/library/node:24-alpine
 
 # Imposta la directory di lavoro
 WORKDIR /app

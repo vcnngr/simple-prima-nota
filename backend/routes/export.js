@@ -4,7 +4,7 @@ const { queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validateQuery, schemas } = require('../middleware/validation');
 const moment = require('moment');
-const XLSX = require('xlsx');
+const { cartellaXlsx } = require('../utils/xlsx');
 const PDFDocument = require('pdfkit');
 const { logErrore } = require('../utils/errori');
 
@@ -455,40 +455,11 @@ async function exportToXlsx(res, data, metadata) {
     return res.status(400).json({ error: 'Nessun dato da esportare' });
   }
 
-  // Crea workbook
-  const wb = XLSX.utils.book_new();
-  
-  // Sheet principale con i dati
-  const ws = XLSX.utils.json_to_sheet(data);
-  
-  // Formattazione colonne (larghezza automatica)
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  const colWidths = [];
-  
-  for (let c = range.s.c; c <= range.e.c; c++) {
-    const header = data.length > 0 ? Object.keys(data[0])[c] : '';
-    let maxWidth = header ? header.length : 10;
-    
-    for (let r = 0; r < Math.min(data.length, 100); r++) {
-      const value = Object.values(data[r])[c];
-      if (value) {
-        maxWidth = Math.max(maxWidth, value.toString().length);
-      }
-    }
-    
-    colWidths.push({ width: Math.min(maxWidth + 2, 50) });
-  }
-  
-  ws['!cols'] = colWidths;
-  
-  // Aggiungi sheet al workbook
-  XLSX.utils.book_append_sheet(wb, ws, 'Export');
-  
-  // Crea sheet metadati
-  const metaWs = XLSX.utils.json_to_sheet([metadata]);
-  XLSX.utils.book_append_sheet(wb, metaWs, 'Informazioni');
-
-  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  // Foglio dei dati (larghezza delle colonne sul contenuto) e foglio dei metadati
+  const buffer = cartellaXlsx([
+    { nome: 'Export', righe: data, larghezze: true },
+    { nome: 'Informazioni', righe: [metadata] }
+  ]);
   const filename = `${metadata.tipo_export}_${moment().format('YYYY-MM-DD')}.xlsx`;
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

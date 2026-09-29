@@ -8,7 +8,8 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const XLSX = require('xlsx');
+const zlib = require('zlib');
+const { crc32 } = require('../utils/xlsx');
 const { query, withTransaction } = require('../config/database');
 
 const cfg = () => ({
@@ -91,12 +92,12 @@ function vociZip(buf) {
   if (dim === SENTINELLA32 || inizioCen === SENTINELLA32) return null;  // zip64
   if (inizioCen + dim !== fine) return null;           // niente fra directory ed EOCD
 
-  const voci = new Set();
+  const voci = new Map();                             // nome -> dove stanno i dati
   const locali = [];
   let p = inizioCen;
   for (let k = 0; k < n; k++) {
     if (p + 46 > fine || buf.readUInt32LE(p) !== CEN) return null;
-    const flag = buf.readUInt16LE(p + 8);
+    const flag = buf.readUInt16LE(p + 8), metodo = buf.readUInt16LE(p + 10);
     const compresso = buf.readUInt32LE(p + 20), originale = buf.readUInt32LE(p + 24);
     const lNome = buf.readUInt16LE(p + 28), lExtra = buf.readUInt16LE(p + 30), lComm = buf.readUInt16LE(p + 32);
     const disco = buf.readUInt16LE(p + 34);
@@ -131,7 +132,9 @@ function vociZip(buf) {
     if (fineLoc > inizioCen) return null;
     locali.push([locale, fineLoc]);
 
-    voci.add(nome.toString('utf8'));
+    const chiave = nome.toString('utf8');
+    if (voci.has(chiave)) return null;                 // due voci con lo stesso nome
+    voci.set(chiave, { dati: locale + 30 + lNomeLoc + lExtraLoc, compresso, originale, metodo, crc: buf.readUInt32LE(p + 16) });
     p += 46 + lNome + lExtra;
   }
   if (p !== fine) return null;                         // i record consumano esattamente `dim`
@@ -152,19 +155,37 @@ function vociZip(buf) {
 // file estranei (un eseguibile accanto al workbook) ne' macro (xlsm).
 const RADICI_XLSX = ['[Content_Types].xml', '_rels/', 'docProps/', 'xl/', 'customXml/'];
 
+// Contenuto di una voce (stored o deflate), al piu' `max` byte, con CRC
+// verificato. null se non si legge.
+const MAX_WORKBOOK = 1024 * 1024;
+function contenutoVoce(buf, v, max) {
+  if (v.originale > max) return null;
+  const dati = buf.subarray(v.dati, v.dati + v.compresso);
+  let out;
+  try {
+    if (v.metodo === 0) out = dati;
+    else if (v.metodo === 8) out = zlib.inflateRawSync(dati, { maxOutputLength: max });
+    else return null;
+  } catch (_) {
+    return null;
+  }
+  if (out.length !== v.originale || crc32(out) !== v.crc) return null;
+  return out;
+}
+
 function cartellaDiLavoro(buf, voci) {
-  for (const v of voci) {
+  for (const v of voci.keys()) {
     if (!RADICI_XLSX.some(r => (r.endsWith('/') ? v.startsWith(r) : v === r))) return false;
     if (v.includes('..') || v.includes('\\') || /vbaProject\.bin$/i.test(v)) return false;
   }
-  // Il parser gia' usato dall'import legge solo la struttura del workbook
-  // (nomi dei fogli), senza celle ne' formule: se non la trova, non e' un xlsx.
-  try {
-    const wb = XLSX.read(buf, { type: 'buffer', bookSheets: true, bookVBA: false });
-    return Array.isArray(wb.SheetNames) && wb.SheetNames.length > 0;
-  } catch (_) {
-    return false;
-  }
+  // Struttura del workbook letta da noi (K4: niente piu' parser xlsx sui file
+  // caricati): xl/workbook.xml deve dichiarare almeno un foglio con un nome.
+  // Nessuna cella, formula o relazione viene interpretata.
+  const wb = contenutoVoce(buf, voci.get('xl/workbook.xml'), MAX_WORKBOOK);
+  if (!wb) return false;
+  const xml = wb.toString('utf8');
+  const fogli = xml.match(/<(?:[A-Za-z_][\w.-]*:)?sheets\b[^>]*>([\s\S]*?)<\/(?:[A-Za-z_][\w.-]*:)?sheets>/);
+  return !!fogli && /<(?:[A-Za-z_][\w.-]*:)?sheet\b[^>]*\bname\s*=\s*("[^"]+"|'[^']+')/.test(fogli[1]);
 }
 
 // Riconosce il tipo dal contenuto. null = non ammesso.

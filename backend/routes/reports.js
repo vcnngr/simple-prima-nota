@@ -5,9 +5,9 @@ const { auth } = require('../middleware/auth');
 const { validateQuery, schemas } = require('../middleware/validation');
 const moment = require('moment');
 const csv = require('csv-writer');
-const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
 const { logErrore } = require('../utils/errori');
+const { cartellaXlsx } = require('../utils/xlsx');
 
 const router = express.Router();
 router.use(auth);
@@ -607,11 +607,7 @@ async function exportToXlsx(res, data, filename) {
       return res.status(400).json({ error: 'Nessun dato da esportare' });
     }
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Report');
-
-    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const buffer = cartellaXlsx([{ nome: 'Report', righe: data }]);
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);

@@ -1,5 +1,5 @@
 # Frontend Dockerfile per produzione
-FROM docker.io/library/node:18-alpine AS build
+FROM docker.io/library/node:24-alpine AS build
 
 # Imposta la directory di lavoro
 WORKDIR /app

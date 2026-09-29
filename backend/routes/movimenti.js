@@ -6,6 +6,7 @@ const { validate, validateQuery, schemas } = require('../middleware/validation')
 const moment = require('moment');
 const UnifiedImportProcessor = require('../services/UnifiedImportProcessor');
 const { logErrore } = require('../utils/errori');
+const { cartellaXlsx } = require('../utils/xlsx');
 
 const router = express.Router();
 
@@ -118,8 +119,8 @@ router.get('/export', async (req, res) => {
       LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
       WHERE ${whereConditions.join(' AND ')}
       ORDER BY m.data ASC, m.created_at ASC
-      LIMIT ${paramIndex}
-    `, [...params, parseInt(limit)]);
+      LIMIT $${paramIndex}
+    `, [...params, Math.min(Math.max(parseInt(limit, 10) || 5000, 1), 5000)]); // era "LIMIT ${paramIndex}": export sempre in errore (08P01)
       
       // Calcola saldo progressivo (INVARIATO)
       let saldoProgressivo = 0;
@@ -147,7 +148,6 @@ router.get('/export', async (req, res) => {
         });
         
         if (formato === 'xlsx') {
-          const XLSX = require('xlsx');
           
           // Prepara dati per Excel (AGGIORNATO CON TIPOLOGIA)
           const excelData = movimentiConSaldo.map(m => ({
@@ -163,11 +163,7 @@ router.get('/export', async (req, res) => {
             'Note': m.note
           }));
           
-          const ws = XLSX.utils.json_to_sheet(excelData);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, 'Prima Nota');
-          
-          const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+          const buffer = cartellaXlsx([{ nome: 'Prima Nota', righe: excelData }]);
           
           res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
           res.setHeader('Content-Disposition', `attachment; filename="prima_nota_${new Date().toISOString().split('T')[0]}.xlsx"`);

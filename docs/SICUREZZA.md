@@ -10,7 +10,7 @@ uno smoke che fallisce sul codice di prima.
 | K1 ✅ | Token | il token dice per quale tabella vale (`tipo`); solo HS256; password di almeno 8 caratteri alla registrazione; registrazione dello studio validata | `scripts/smoke/k1-token.sh` |
 | K2 ✅ | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | `scripts/smoke/k2-ip.sh` |
 | K3 | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | `scripts/smoke/k3-errori.sh` |
-| K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | da scrivere |
+| K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | `scripts/smoke/k4-dipendenze.sh` |
 | K5 | Deploy | utenti demo `admin`/`demo` con password note creati da `init.sql` anche in produzione; `JWT_SECRET` di esempio accettato in produzione; CSP che ammette `http:`, `https:` e `'unsafe-inline'` | da scrivere |
 
 ## K1 — Token
@@ -120,3 +120,48 @@ log scritta dalla corsa (niente username, email, nomi, valori del corpo, messagg
 Aperti, fuori da K3: un id non numerico nel percorso produce ancora un 500 (risposta pulita, ma
 dovrebbe essere 400: validazione dei parametri da fare con la UX backend); in sviluppo
 `config/database.js` scrive il testo di ogni query (senza parametri).
+
+## K4 — Dipendenze
+
+**Il problema.**
+
+- `xlsx@0.18.5` (SheetJS): vulnerabilità high (prototype pollution in lettura, ReDoS), nessuna
+  versione corretta sul registro npm. Il backend la usava per scrivere 6 esportazioni e, peggio, per
+  **leggere i file .xlsx caricati come allegati della chat**: un file scelto da un utente passava dal
+  parser vulnerabile.
+- `nodemailer@6`: vulnerabilità high (DoS nell'`addressparser`), corretta solo dalla 10.0.12, che
+  richiede Node ≥ 20.
+- Immagini su `node:18-alpine`: Node 18 è fuori supporto da aprile 2025.
+- Frontend: `npm audit` 62 avvisi (2 critical, 33 high).
+- `GET /movimenti/export` (bug preesistente, trovato dallo smoke): `LIMIT ${n}` senza `$` nella
+  query, ogni export dei movimenti falliva con 500 (08P01).
+
+**Come funziona ora.**
+
+- `backend/utils/xlsx.js`: scrittura .xlsx senza dipendenze (SpreadsheetML + zip con `zlib`), stessa
+  forma di `json_to_sheet`: intestazioni dalle chiavi, numeri, booleani, date come date, il resto
+  testo in linea (mai formule), larghezze delle colonne dove c'erano. Usato dalle 6 esportazioni.
+- Allegati .xlsx: nessun parser di terzi. Oltre ai controlli strutturali già presenti (S3/W5) si
+  legge solo `xl/workbook.xml` (al più 1 MB, CRC verificato) e si pretende almeno un `<sheet name>`.
+  Voci con lo stesso nome nell'archivio: rifiutato.
+- `nodemailer` `^10.0.12`; `engines.node >= 20`; immagini backend e frontend su `node:24-alpine`.
+- Frontend: `npm audit fix` (solo aggiornamenti compatibili nel lockfile): da 62 a 30 avvisi, 0
+  critical, build ok.
+- Export movimenti: `LIMIT $n`, con limite fra 1 e 5000.
+
+**Prova**: `scripts/smoke/k4-dipendenze.sh`. Dipendenze e `npm audit` (backend 0; frontend 0
+critical e nessuna dipendenza diretta vulnerabile oltre a quelle sotto); file scritti dal nostro
+codice riaperti con openpyxl (lettore indipendente); controllo degli allegati su zip costruiti ad
+hoc (deflate, stored, namespace da accettare; senza fogli, CRC sbagliato, enorme, voci doppie, macro
+da rifiutare); le 6 esportazioni xlsx via HTTP aperte con openpyxl, un export ricaricato in chat;
+una mail vera attraverso nodemailer 10.
+
+Aperti, fuori da K4 (tutti chiusi dalla ricostruzione del frontend con Vite, fase UX):
+
+- `react-scripts` 5 porta 28 degli avvisi restanti: sono strumenti di build e di sviluppo, non
+  finiscono nel bundle servito.
+- `react-router-dom` 6: due avvisi moderate corretti solo nella 7 (open redirect con percorsi con
+  backslash in `<Link>`/`useNavigate`; iniezione in idratazione SSR). Qui non si applicano: nessuna
+  destinazione di navigazione viene da input dell'utente e non c'è SSR.
+- `backend/.dockerignore` non esclude `node_modules`: la build copia quelli della macchina prima di
+  `npm install` (da sistemare con K5).

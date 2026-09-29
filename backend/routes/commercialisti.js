@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const { query, queryOne } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { logErrore, messaggioApplicativo } = require('../utils/errori');
+const { cartellaXlsx } = require('../utils/xlsx');
 const {
   requireCollegamento, clausolaAmbito, contoNellAmbito,
   completaAccesso, registraAccessiElenco
@@ -589,7 +590,7 @@ router.post('/clienti/:userId/export', authCommercialista, validate(schemas.expo
     // Import export logic from export.js
     const { queryAll } = require('../config/database');
     const moment = require('moment');
-    const XLSX = require('xlsx');
+
     const PDFDocument = require('pdfkit');
 
     // Export configurations
@@ -820,34 +821,6 @@ function exportToXlsx(res, data, metadata, cliente) {
   }
 
   const moment = require('moment');
-  const XLSX = require('xlsx');
-
-  const wb = XLSX.utils.book_new();
-
-  // Sheet principale con i dati
-  const ws = XLSX.utils.json_to_sheet(data);
-
-  // Formattazione colonne (larghezza automatica)
-  const range = XLSX.utils.decode_range(ws['!ref']);
-  const colWidths = [];
-
-  for (let c = range.s.c; c <= range.e.c; c++) {
-    const header = data.length > 0 ? Object.keys(data[0])[c] : '';
-    let maxWidth = header ? header.length : 10;
-
-    for (let r = 0; r < Math.min(data.length, 100); r++) {
-      const value = Object.values(data[r])[c];
-      if (value) {
-        maxWidth = Math.max(maxWidth, value.toString().length);
-      }
-    }
-
-    colWidths.push({ width: Math.min(maxWidth + 2, 50) });
-  }
-
-  ws['!cols'] = colWidths;
-  XLSX.utils.book_append_sheet(wb, ws, 'Movimenti');
-
   // Sheet metadati
   const metaData = {
     'Cliente': metadata.cliente,
@@ -858,10 +831,10 @@ function exportToXlsx(res, data, metadata, cliente) {
     'Generato da': metadata.generato_da,
     'Filtri': metadata.filtri_applicati
   };
-  const metaWs = XLSX.utils.json_to_sheet([metaData]);
-  XLSX.utils.book_append_sheet(wb, metaWs, 'Informazioni');
-
-  const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  const buffer = cartellaXlsx([
+    { nome: 'Movimenti', righe: data, larghezze: true },
+    { nome: 'Informazioni', righe: [metaData] }
+  ]);
   const filename = `${cliente.username}_${metadata.tipo_export}_${moment().format('YYYY-MM-DD')}.xlsx`;
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

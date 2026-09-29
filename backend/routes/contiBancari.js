@@ -4,6 +4,7 @@ const { query, queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 const { logErrore } = require('../utils/errori');
+const { cartellaXlsx } = require('../utils/xlsx');
 
 const router = express.Router();
 
@@ -33,12 +34,7 @@ router.get('/export', async (req, res) => {
     `, [userId]);
 
     if (formato === 'xlsx') {
-      const XLSX = require('xlsx');
-      const ws = XLSX.utils.json_to_sheet(conti);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Conti Bancari');
-
-      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const buffer = cartellaXlsx([{ nome: 'Conti Bancari', righe: conti }]);
       
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="conti_bancari_${new Date().toISOString().split('T')[0]}.xlsx"`);
