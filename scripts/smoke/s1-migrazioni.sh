@@ -84,7 +84,8 @@ schema() {
 registro() { q "$1" "SELECT string_agg(versione||':'||origine, ' ' ORDER BY versione) FROM schema_migrazioni"; }
 n_eseguite() { q "$1" "SELECT count(*) FROM schema_migrazioni WHERE origine='eseguita'"; }
 versione() { q "$1" "SELECT max(versione) FROM schema_migrazioni"; }
-impronta_dati() { q "$1" "SELECT md5(string_agg(username||email||password_hash, ',' ORDER BY id)) FROM utenti"; }
+# Senza admin e demo di init.sql: la 011 (K5) cambia apposta le loro password.
+impronta_dati() { q "$1" "SELECT md5(string_agg(username||email||password_hash, ',' ORDER BY id)) FROM utenti WHERE username NOT IN ('admin','demo')"; }
 semina_utenti() {  # due utenti non demo, per vedere che i dati sopravvivono
   q "$1" "INSERT INTO utenti (username, password_hash, email) VALUES
           ('s1uno', '\$2b\$10\$abcdefghijklmnopqrstuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu', 's1uno@t.it'),

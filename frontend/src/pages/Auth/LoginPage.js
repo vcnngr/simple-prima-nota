@@ -170,15 +170,6 @@ const LoginPage = () => {
             </Button>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 mb-2 font-medium">Credenziali demo:</p>
-            <div className="text-xs text-gray-500 space-y-1">
-              <p><strong>Username:</strong> demo</p>
-              <p><strong>Password:</strong> password</p>
-            </div>
-          </div>
-
           {/* Register Link */}
           <div className="text-center">
             <p className="text-sm text-gray-600">

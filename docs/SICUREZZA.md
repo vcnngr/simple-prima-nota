@@ -11,7 +11,7 @@ uno smoke che fallisce sul codice di prima.
 | K2 ✅ | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | `scripts/smoke/k2-ip.sh` |
 | K3 ✅ | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | `scripts/smoke/k3-errori.sh` |
 | K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | `scripts/smoke/k4-dipendenze.sh` |
-| K5 | Deploy | `JWT_SECRET` di esempio o debole rifiutato in produzione; compose senza segreto nel file; CSP senza `http:`/`https:` generici né script in linea; immagini senza `.env`, `node_modules` e mappe dei sorgenti. Utenti demo `admin`/`demo` di `init.sql`: **in attesa di decisione** | `scripts/smoke/k5-deploy.sh` |
+| K5 | Deploy | `JWT_SECRET` di esempio o debole rifiutato in produzione; compose senza segreto nel file; CSP senza `http:`/`https:` generici né script in linea; immagini senza `.env`, `node_modules` e mappe dei sorgenti. Utenti demo `admin`/`demo` di `init.sql` bloccati dalla migrazione 011 | `scripts/smoke/k5-deploy.sh`, `scripts/smoke/k5-account-demo.sh` |
 
 ## K1 — Token
 
@@ -204,14 +204,23 @@ pubbliche e la console non riporta violazioni della CSP, con una controprova a C
 le violazioni si vedono. Non osservato: le pagine dopo il login con Chrome (servono backend e
 database); stessa CSP e stesso bundle, le chiamate API sono verso `'self'`.
 
-**In attesa di decisione del titolare: utenti demo.** `init.sql` crea `admin` / `password123` e
-`demo` / `password` su ogni installazione nuova, produzione compresa. `init.sql` non si può cambiare
-(migra.sh ne controlla l'impronta) e una migration che cambia quelle password toglierebbe l'accesso a
-chi oggi usa quegli account. Opzioni:
+**Utenti demo (migrazione 011, scelta 1 del titolare, 29/09/2026).** `init.sql` crea `admin` e
+`demo` su ogni installazione nuova, produzione compresa, con password pubblicate nel repo: `demo` /
+`password` e `admin` / `admin123` (il NOTICE di `init.sql` dice `password123`, ma l'hash è di
+`admin123`). La pagina di login mostrava anche le credenziali demo. `init.sql` non si può cambiare
+(migra.sh ne controlla l'impronta), quindi:
 
-1. migration che, solo se la password è ancora quella pubblicata, la sostituisce con una casuale e
-   invalida i token: chi usa quegli account perde l'accesso (le email sono `@example.com`, il reset
-   per mail non arriva);
-2. in produzione il login con la password pubblicata è rifiutato con un messaggio: l'account resta,
-   serve un cambio password da SQL o da una procedura da scrivere;
-3. solo un avviso nei log all'avvio se esistono account con la password pubblicata.
+- `011_account_demo_bloccati.sql`: un account `admin` o `demo` con ancora una password pubblicata
+  (hash di `init.sql`, oppure `password`/`admin123`/`password123` su un hash rigenerato, controllate
+  con `crypt()` di pgcrypto) riceve una password casuale; `versione_credenziali` + 1 (token emessi
+  rifiutati); link di reset e conferma aperti annullati. Chi aveva già messo una password sua non è
+  toccato. Vale anche sulle installazioni nuove (init + 011).
+- `account_demo_bloccati` registra hash precedente e hash di blocco: il `_down` rimette il primo solo
+  se c'è ancora il secondo.
+- Tolto il riquadro «Credenziali demo» dalla pagina di login e dal README.
+- Per riusare quegli account serve una password impostata da SQL: il reset per mail non arriva
+  (email `@example.com`). In sviluppo si usa un account registrato.
+
+**Prova**: `scripts/smoke/k5-account-demo.sh` (database e backend propri): installazione nuova,
+rollback, installazione esistente con token e link aperti e `demo` con una password sua, hash
+rigenerato della password pubblicata, pagina di login, copia nel chart.

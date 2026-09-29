@@ -69,11 +69,10 @@ docker-compose ps
 - **Backend API**: http://localhost:3001/api
 - **Database Admin**: http://localhost:8080 (Adminer)
 
-### 4. Credenziali Demo
-```
-Username: demo
-Password: password
-```
+### 4. Primo accesso
+Registra un account da http://localhost:3000/register. Gli account `admin` e `demo`
+creati da `init.sql` vengono bloccati dalla migrazione 011 (password casuale): le loro
+password sono pubbliche nel repository.
 
 ## 🛠️ Sviluppo Locale
 

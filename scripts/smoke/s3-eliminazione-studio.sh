@@ -236,6 +236,9 @@ hit -X POST "$API/messaggi/allegati?collegamentoId=$COLL4" -H "Authorization: Be
 K2=$(q "SELECT a.chiave FROM allegati_messaggio a JOIN messaggi_commercialista m ON m.id=a.messaggio_id WHERE m.collegamento_id=$COLL4")
 eq "secondo allegato su disco" "1" "$(su_disco "$K2")"
 touch -t "$VECCHIO" "$ALLEGATI_DIR/$K2"
+# Prima le migration successive alla 010 (si annulla solo l'ultima), poi 010..007.
+ULTIMA=$(q "SELECT max(versione) FROM schema_migrazioni")
+for v in $(q "SELECT string_agg(versione, ' ' ORDER BY versione DESC) FROM schema_migrazioni WHERE versione > '010'"); do migra annulla $v; done
 rc=""; for v in 010 009 008 007; do migra annulla $v; rc="$rc$?"; done
 eq "annulla 010, 009, 008, 007: exit 0" "0000" "$rc"
 [ "$rc" = 0000 ] || tail -3 "$T/migra"
@@ -248,7 +251,7 @@ if [ -n "$BACKEND_LOG" ]; then
   eq "e lo scrive nel log" "1" "$([ "$(grep -c 'pulizia allegati orfani: 42P01' "$BACKEND_LOG")" -gt 0 ] && echo 1 || echo 0)"
 fi
 migra; eq "riapplicate: exit 0" "0" "$?"
-eq "registro alla 010" "010" "$(q "SELECT max(versione) FROM schema_migrazioni")"
+eq "registro di nuovo all'ultima ($ULTIMA)" "$ULTIMA" "$(q "SELECT max(versione) FROM schema_migrazioni")"
 eq "lo studio torna eliminato" "||1" "$(q "SELECT coalesce(username,'')||'|'||coalesce(email,'')||'|'||(eliminato_il IS NOT NULL)::int FROM commercialisti WHERE id=$CID")"
 eq "FK di nuovo RESTRICT" "r" "$(q "SELECT confdeltype FROM pg_constraint WHERE conname='collegamenti_commercialista_commercialista_id_fkey'")"
 file_k() { echo "$(su_disco "$CHIAVE")|$(su_disco "$K2")"; }
