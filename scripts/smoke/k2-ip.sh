@@ -71,8 +71,9 @@ const f = p.trustProxy("2"), z = p.trustProxy("0"), l = p.trustProxy("10.0.0.0/8
 const r = [f("127.0.0.1",0), f("10.1.2.3",1), f("10.1.2.3",2), f("203.0.113.5",0),
   f("::ffff:192.168.65.1",0), z, l("10.9.9.9",0), l("172.16.0.1",0)];
 let e = "ok"; try { p.trustProxy("non-un-ip"); e = "accettato"; } catch (_) {}
+for (const v of [",", " , ,"]) { try { p.trustProxy(v); e = "vuoto accettato"; } catch (_) {} }
 console.log(r.join(",") + "|" + e);' 2>&1)
-eq "hop privati si', oltre N no, pubblico no, 0 = nessuno, elenco rispettato; elenco non valido fermo" \
+eq "hop privati si', oltre N no, pubblico no, 0 = nessuno, elenco rispettato; elenco non valido o vuoto fermo" \
   "true,true,false,false,true,false,true,false|ok" "$A"
 
 # ------------------------------------------------------------------------------

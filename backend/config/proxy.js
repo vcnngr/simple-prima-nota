@@ -29,7 +29,10 @@ function trustProxy(valore = process.env.TRUST_PROXY) {
     return (addr, i) => i < n && RETI_INTERNE(addr, i);
   }
   // Un elenco non valido deve fermare l'avvio, non degradare in silenzio.
-  return proxyaddr.compile(v.split(',').map(s => s.trim()).filter(Boolean));
+  // Anche uno vuoto (",", " , "): sarebbe "nessun proxy" senza dirlo.
+  const elenco = v.split(',').map(s => s.trim()).filter(Boolean);
+  if (elenco.length === 0) throw new Error(`TRUST_PROXY non valido: elenco vuoto (${JSON.stringify(v)})`);
+  return proxyaddr.compile(elenco);
 }
 
 // Tetto generale delle API. In produzione 300 richieste ogni 15 minuti per IP se

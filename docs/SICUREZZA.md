@@ -8,7 +8,7 @@ uno smoke che fallisce sul codice di prima.
 | # | Blocco | Contenuto | Prova |
 |---|---|---|---|
 | K1 ✅ | Token | il token dice per quale tabella vale (`tipo`); solo HS256; password di almeno 8 caratteri alla registrazione; registrazione dello studio validata | `scripts/smoke/k1-token.sh` |
-| K2 | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | `scripts/smoke/k2-ip.sh` |
+| K2 ✅ | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | `scripts/smoke/k2-ip.sh` |
 | K3 | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | `scripts/smoke/k3-errori.sh` |
 | K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | da scrivere |
 | K5 | Deploy | utenti demo `admin`/`demo` con password note creati da `init.sql` anche in produzione; `JWT_SECRET` di esempio accettato in produzione; CSP che ammette `http:`, `https:` e `'unsafe-inline'` | da scrivere |
@@ -80,6 +80,9 @@ tetto e il log sono del client, non dell'ingress; l'indirizzo inventato non cont
 (`TRUST_PROXY=0`); nginx del frontend vero davanti al backend; `X-Forwarded-Proto`; render del
 chart e `compose config`. Non osservato: un ingress reale (la catena è simulata con le intestazioni
 che un ingress scrive).
+
+Review `t_01d8af50` GREEN su `e24eca6`. P1 segnalato e corretto dopo (branch K4): `TRUST_PROXY=","` era
+accettato come elenco vuoto; ora ferma l'avvio (caso aggiunto alla sezione A dello smoke, 20/1 senza la correzione).
 
 Aperti, fuori da K2: il tetto è per IP anche per le richieste autenticate (molti utenti dietro lo
 stesso NAT aziendale condividono i 300); da rivedere con i dati d'uso.
