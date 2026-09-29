@@ -157,6 +157,41 @@ NID=$(psql_q -c "INSERT INTO notifiche (collegamento_id, destinatario_tipo, even
 eq "la riga superata viene annullata" "annullata" "$(attendi annullata stato_notifica "$NID")"
 eq "e il cliente non riceve una seconda richiesta" "1" "$(mail_a "$U@t.it" "chiede di collegarsi")"
 
+# Transizioni accumulate prima che il worker passi (stessa transazione): parte
+# solo l'ultima. Prima del fix "ha accettato" partiva anche dopo la revoca.
+# Cliente e studi propri: le mail di questa sezione non toccano i conteggi delle altre.
+U3="w4k$SFX"; UT3=$(registra_utente "$U3")
+C3="w4s$SFX"; CT3=$(registra_studio "$C3" "Studio Superato $SFX")
+richiedi "$CT3" "$U3" >/dev/null
+COLL3=$(collegamento_aperto "$C3" "$U3")
+psql_q -c "BEGIN;
+  UPDATE collegamenti_commercialista SET stato='attiva', data_accettazione=NOW() WHERE id=$COLL3;
+  UPDATE collegamenti_commercialista SET stato='revocata', data_revoca=NOW(), revocato_da='user' WHERE id=$COLL3;
+  COMMIT;" >/dev/null
+eq "accetta -> revoca: la revoca arriva allo studio" "1" "$(attendi 1 mail_a "$C3@t.it" "ha revocato")"
+eq "l'accettazione superata viene annullata" "annullata" \
+  "$(attendi annullata psql_q -c "SELECT stato FROM notifiche WHERE collegamento_id=$COLL3 AND evento='richiesta_accettata';")"
+eq "e lo studio non riceve \"ha accettato\"" "0" "$(mail_a "$C3@t.it" "ha accettato")"
+
+C4="w4t$SFX"; CT4=$(registra_studio "$C4" "Studio Altalena $SFX")
+richiedi "$CT4" "$U3" >/dev/null
+COLL4=$(collegamento_aperto "$C4" "$U3")
+curl -s -X PUT "$API/utenti/collegamenti/$COLL4/accetta" -H "Authorization: Bearer $UT3" "${JSON[@]}" -d '{}' >/dev/null
+attendi 1 mail_a "$C4@t.it" "ha accettato" >/dev/null
+psql_q -c "BEGIN;
+  UPDATE collegamenti_commercialista SET stato='sospesa' WHERE id=$COLL4;
+  UPDATE collegamenti_commercialista SET stato='attiva' WHERE id=$COLL4;
+  UPDATE collegamenti_commercialista SET stato='sospesa' WHERE id=$COLL4;
+  COMMIT;" >/dev/null
+eq "sospendi -> riattiva -> sospendi: una sola sospensione spedita" "1" \
+  "$(attendi 1 psql_q -c "SELECT count(*) FROM notifiche WHERE collegamento_id=$COLL4 AND evento='collegamento_sospeso' AND stato='inviata';")"
+eq "la prima sospensione e la riattivazione annullate" "2" \
+  "$(attendi 2 psql_q -c "SELECT count(*) FROM notifiche WHERE collegamento_id=$COLL4 AND evento IN ('collegamento_sospeso','collegamento_riattivato') AND stato='annullata';")"
+# Revoca senza autore: due righe gemelle, nessuna supera l'altra.
+psql_q -c "UPDATE collegamenti_commercialista SET stato='revocata', data_revoca=NOW(), revocato_da=NULL WHERE id=$COLL4;" >/dev/null
+eq "revoca senza autore: arrivano entrambe" "2" \
+  "$(attendi 2 psql_q -c "SELECT count(*) FROM notifiche WHERE collegamento_id=$COLL4 AND evento='collegamento_revocato' AND stato='inviata';")"
+
 echo
 echo "=== F. revoche -> mail al lato che non ha revocato ==="
 assert_http "il cliente revoca" 200 -X DELETE "$API/utenti/collegamenti/$COLL" -H "Authorization: Bearer $UT" "${JSON[@]}" -d '{}'

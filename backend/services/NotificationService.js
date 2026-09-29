@@ -170,6 +170,15 @@ async function carica(id) {
             u.username AS user_username, u.email AS user_email,
             com.username AS commercialista_username, com.email AS commercialista_email,
             com.ragione_sociale,
+            -- Una transizione successiva sullo stesso collegamento supera questa:
+            -- "ha accettato" non si spedisce se nel frattempo e' arrivata la revoca.
+            -- Le righe gemelle dello stesso evento (revoca senza autore, due
+            -- destinatari) non si superano a vicenda; i promemoria non superano nulla.
+            EXISTS (SELECT 1 FROM notifiche n2
+                     WHERE n2.collegamento_id = n.collegamento_id
+                       AND n2.id > n.id
+                       AND n2.evento <> n.evento
+                       AND n2.evento <> 'messaggi_non_letti') AS superata,
             (SELECT count(*)::int FROM messaggi_commercialista m
               WHERE m.collegamento_id = c.id
                 AND m.letto = FALSE
@@ -186,11 +195,26 @@ async function carica(id) {
 
 // L'evento e' ancora vero? Una mail che annuncia qualcosa di gia' superato
 // confonde: "ti chiede di collegarsi" quando il cliente ha gia' risposto.
+//
+// Ogni evento ha lo stato del collegamento in cui e' ancora vero; un evento senza
+// stato noto non si spedisce (fail-closed). Lo stato da solo non basta:
+// sospeso -> riattivato -> sospeso torna nello stesso stato, ma la prima
+// sospensione e' superata dalle transizioni successive (campo `superata`).
+const STATO_PER_EVENTO = {
+  richiesta_ricevuta: 'in_attesa',
+  richiesta_accettata: 'attiva',
+  richiesta_rifiutata: 'rifiutata',
+  collegamento_sospeso: 'sospesa',
+  collegamento_riattivato: 'attiva',
+  collegamento_revocato: 'revocata',
+  messaggi_non_letti: 'attiva'
+};
+
 function ancoraAttuale(n) {
-  if (n.evento === 'richiesta_ricevuta') return n.stato_collegamento === 'in_attesa';
-  if (n.evento === 'messaggi_non_letti') return n.stato_collegamento === 'attiva' && n.non_letti > 0;
-  if (n.evento === 'collegamento_sospeso') return n.stato_collegamento === 'sospesa';
-  return true;
+  const stato = STATO_PER_EVENTO[n.evento];
+  if (!stato || n.stato_collegamento !== stato) return false;
+  if (n.evento === 'messaggi_non_letti') return n.non_letti > 0;
+  return !n.superata;
 }
 
 async function chiudi(id, stato, errore = null) {

@@ -381,10 +381,16 @@ misurato (≈150 richieste per 15 minuti per scheda aperta, contro un limite di 
   Riporta **quanti** messaggi, mai il testo.
 - Consegna: `services/NotificationService.js`, un worker nel backend che prende lotti con un lease
   (`FOR UPDATE SKIP LOCKED`: più backend non spediscono la stessa riga), ricontrolla che l'evento
-  sia ancora vero (una richiesta già accettata non si annuncia: riga `annullata`), compone il testo
+  sia ancora vero, compone il testo
   **all'invio** (solo testo semplice, nomi ripuliti da a capo e caratteri di controllo) e spedisce
   via SMTP. In errore ritenta con attesa crescente; dopo `NOTIFICHE_MAX_TENTATIVI` la riga è
   `fallita`. Consegna *almeno una volta*.
+- Attualità dell'evento, controllata all'invio: ogni evento ha lo stato in cui è ancora vero
+  (richiesta → `in_attesa`, accettata/riattivata → `attiva`, rifiutata, sospesa, revocata) **e** non
+  deve esistere una transizione successiva sullo stesso collegamento. Se le transizioni si
+  accumulano prima del giro del worker parte solo l'ultima: `accetta → revoca` non spedisce
+  "ha accettato"; `sospendi → riattiva → sospendi` spedisce una sola sospensione. Le righe gemelle
+  (revoca senza autore, due destinatari) non si annullano a vicenda. Evento sconosciuto: annullato.
 - Nei log: id della notifica ed esito. Mai indirizzi, testi o messaggi del server SMTP.
 - Senza `SMTP_HOST` il worker non parte e le notifiche restano in coda. In sviluppo
   `docker-compose.yml` avvia **mailpit** (http://localhost:8025): nessuna mail esce davvero.
