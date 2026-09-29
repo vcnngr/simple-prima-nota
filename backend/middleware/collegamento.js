@@ -144,14 +144,18 @@ async function completaAccesso(accessoId, numeroRecord) {
  * Per la chat: la pagina interroga i messaggi ogni pochi secondi, e una riga per
  * interrogazione seppellirebbe gli accessi che contano (export, dettaglio).
  */
+// I parametri sono tipizzati a mano: $1 e $4 compaiono due volte, una nella
+// SELECT (dove PostgreSQL li dedurrebbe come text) e una nel confronto con
+// colonne integer/varchar. Senza cast la deduzione e' incoerente e la query
+// fallisce con 42P08 — e la chat del commercialista con lei.
 async function registraAccessoOrario({ collegamentoId, commercialistaId, userId, tipo, dettagli }) {
   await queryOne(
     `INSERT INTO accessi_commercialista
        (collegamento_id, commercialista_id, user_id, tipo_accesso, dettagli)
-     SELECT $1, $2, $3, $4, $5::jsonb
+     SELECT $1::int, $2::int, $3::int, $4::varchar, $5::jsonb
      WHERE NOT EXISTS (
        SELECT 1 FROM accessi_commercialista
-       WHERE collegamento_id = $1 AND tipo_accesso = $4
+       WHERE collegamento_id = $1::int AND tipo_accesso = $4::varchar
          AND created_at > NOW() - INTERVAL '1 hour'
      )
      RETURNING id`,

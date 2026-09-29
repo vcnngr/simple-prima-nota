@@ -65,6 +65,12 @@ assert_http "dettaglio in attesa -> 403" 403 "$API/commercialisti/clienti/$CLI" 
 eq "l'accesso negato non lascia righe" "0" "$(totale)"
 curl -s -X PUT "$API/utenti/collegamenti/$COLL/accetta" -H "Authorization: Bearer $UT" "${JSON[@]}" \
   -d "{\"conti_ammessi\":[$CONTO_OK]}" >/dev/null
+# Secondo studio, collegamento distinto: serve a provare da solo l'unread-count,
+# senza che la deduplica oraria della chat del primo studio lo mascheri.
+C2=$(curl -s -X POST $API/commercialisti/register "${JSON[@]}" -d "{\"username\":\"w3d$SFX\",\"email\":\"w3d$SFX@t.it\",\"password\":\"Password123!\",\"ragione_sociale\":\"Studio W3 bis\"}" | j "['token']")
+curl -s -X POST $API/commercialisti/richieste -H "Authorization: Bearer $C2" "${JSON[@]}" -d "{\"identificativo_cliente\":\"w3u$SFX\"}" >/dev/null
+COLL2=$(psql_q -c "SELECT c.id FROM collegamenti_commercialista c JOIN commercialisti k ON k.id=c.commercialista_id WHERE k.username='w3d$SFX';")
+curl -s -X PUT "$API/utenti/collegamenti/$COLL2/accetta" -H "Authorization: Bearer $UT" "${JSON[@]}" -d '{}' >/dev/null
 assert_http "il cliente legge il proprio registro" 200 "$API/utenti/collegamenti/$COLL/accessi" -H "Authorization: Bearer $UT"
 eq "registro vuoto dopo l'accettazione" "0" "$(j "['totale']" < /tmp/w3body)"
 
@@ -106,9 +112,19 @@ echo
 echo "=== D. dashboard e chat: una riga all'ora ==="
 for i in 1 2 3; do curl -s $API/commercialisti/dashboard -H "Authorization: Bearer $CT" -o /dev/null; done
 eq "tre dashboard, una riga lista_clienti" "1" "$(righe lista_clienti)"
-for i in 1 2 3; do curl -s "$API/messaggi?userId=$CLI" -H "Authorization: Bearer $CT" -o /dev/null; done
-curl -s "$API/messaggi/clients-overview" -H "Authorization: Bearer $CT" -o /dev/null
+# Ogni lettura deve RIUSCIRE: una GET in 500 non scrive righe, e la riga attesa
+# arrivava comunque dall'anteprima. Cosi' la chat rotta passava per verde.
+assert_http "lettura chat del commercialista -> 200" 200 "$API/messaggi?userId=$CLI" -H "Authorization: Bearer $CT"
+eq "la lettura chat, da sola, scrive la riga" "1" "$(righe chat)"
+for i in 2 3; do assert_http "lettura chat $i -> 200" 200 "$API/messaggi?userId=$CLI" -H "Authorization: Bearer $CT"; done
+assert_http "anteprima chat -> 200" 200 "$API/messaggi/clients-overview" -H "Authorization: Bearer $CT"
 eq "tre letture chat e un'anteprima, una riga chat" "1" "$(righe chat)"
+righe2() { psql_q -c "SELECT count(*) FROM accessi_commercialista WHERE collegamento_id=$COLL2 AND tipo_accesso='chat';"; }
+eq "il secondo studio non ha ancora righe chat" "0" "$(righe2)"
+assert_http "unread-count del commercialista -> 200" 200 "$API/messaggi/unread-count" -H "Authorization: Bearer $C2"
+eq "l'unread-count, da solo, scrive la riga chat" "1" "$(righe2)"
+curl -s "$API/messaggi/unread-count" -H "Authorization: Bearer $C2" -o /dev/null
+eq "e la deduplica oraria vale anche qui" "1" "$(righe2)"
 curl -s "$API/messaggi?collegamentoId=$COLL" -H "Authorization: Bearer $UT" -o /dev/null
 eq "il cliente che legge la propria chat non si registra" "1" "$(righe chat)"
 
@@ -144,6 +160,12 @@ assert_http "export con registro non scrivibile -> 500" 500 -X POST "$API/commer
   -d '{"export_type":"semplice","formato":"json","tutto_storico":true}'
 if grep -q "W3-A" /tmp/w3body; then ko "e nessun dato esportato" "nessun W3-A" "$(body)"; else ok "e nessun dato esportato"; fi
 assert_http "dashboard con registro non scrivibile -> 500" 500 "$API/commercialisti/dashboard" -H "Authorization: Bearer $CT"
+assert_http "chat con registro non scrivibile -> 500" 500 "$API/messaggi?userId=$CLI" -H "Authorization: Bearer $CT"
+if grep -q '"messaggi"' /tmp/w3body; then ko "e nessun messaggio nella risposta" "nessun messaggi" "$(body)"; else ok "e nessun messaggio nella risposta"; fi
+assert_http "anteprima chat con registro non scrivibile -> 500" 500 "$API/messaggi/clients-overview" -H "Authorization: Bearer $CT"
+assert_http "unread-count con registro non scrivibile -> 500" 500 "$API/messaggi/unread-count" -H "Authorization: Bearer $C2"
+if grep -q 'unread_count' /tmp/w3body; then ko "e nessun conteggio nella risposta" "nessun unread_count" "$(body)"; else ok "e nessun conteggio nella risposta"; fi
+assert_http "il cliente legge il proprio conteggio anche col registro giu'" 200 "$API/messaggi/unread-count" -H "Authorization: Bearer $UT"
 psql_q -c "ALTER TABLE accessi_commercialista_guasta RENAME TO accessi_commercialista;" >/dev/null
 assert_http "registro ripristinato -> 200" 200 "$API/commercialisti/clienti/$CLI" -H "Authorization: Bearer $CT"
 

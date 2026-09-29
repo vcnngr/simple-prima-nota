@@ -326,7 +326,11 @@ che rende il collegamento accettabile a chi è diffidente nel dare i propri cont
   valorizza a export generato, prima dell'invio. Un export respinto dopo il controllo (conto
   fuori ambito) resta come tentativo con `numero_record` vuoto, mostrato come "nessun dato uscito".
 - Dashboard (`lista_clienti`) e chat interrogano di continuo: **una riga all'ora** per
-  collegamento e tipo. Il cliente che legge la propria chat non si registra.
+  collegamento e tipo. Il cliente che legge la propria chat non si registra. Conta come accesso
+  alla chat ogni risposta che porta contenuto o segnali della chat del cliente: la lettura dei
+  messaggi, l'anteprima (`/messaggi/clients-overview`) e il contatore dei non letti
+  (`/messaggi/unread-count`), che rivela quando un cliente ha scritto. Tutte e tre sono
+  fail-closed: registro giù, `500` e nessun dato.
 - Il database tiene tre invarianti: FK composta `(collegamento_id, commercialista_id, user_id)`
   sul collegamento, nessun UPDATE salvo `numero_record` una volta da NULL, nessun DELETE diretto
   (le righe spariscono solo in cascata con l'account).

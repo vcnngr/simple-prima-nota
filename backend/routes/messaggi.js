@@ -245,7 +245,11 @@ router.get('/unread-count', authEither, async (req, res) => {
       );
       unreadCount = parseInt(result?.count || 0);
     } else if (req.commercialista) {
-      // Commercialista: count unread messages from all their users
+      // Il conteggio dice al commercialista che un cliente gli ha scritto: e' un
+      // accesso alla chat come l'anteprima, e come lei si registra prima di
+      // leggere. Se il registro non si scrive, il conteggio non esce.
+      await registraAccessiElenco(req.commercialista.id, 'chat');
+
       const result = await queryOne(
         `SELECT COUNT(*) as count
          FROM messaggi_commercialista m
