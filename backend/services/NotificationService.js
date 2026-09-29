@@ -19,7 +19,7 @@
 // messaggio d'errore del server SMTP (che di solito cita l'indirizzo).
 
 const nodemailer = require('nodemailer');
-const { query, queryOne } = require('../config/database');
+const { query, queryOne, withTransaction } = require('../config/database');
 
 const cfg = () => ({
   intervalloMs: parseInt(process.env.NOTIFICHE_INTERVALLO_MS, 10) || 30000,
@@ -163,8 +163,8 @@ async function prendiLotto(c) {
 }
 
 // Tutto cio' che serve per decidere e comporre, letto adesso.
-async function carica(id) {
-  return queryOne(
+async function carica(db, id) {
+  const r = await db.query(
     `SELECT n.id, n.evento, n.destinatario_tipo, n.tentativi,
             c.stato AS stato_collegamento,
             u.username AS user_username, u.email AS user_email,
@@ -191,6 +191,7 @@ async function carica(id) {
      WHERE n.id = $1`,
     [id]
   );
+  return r.rows[0] || null;
 }
 
 // L'evento e' ancora vero? Una mail che annuncia qualcosa di gia' superato
@@ -217,31 +218,33 @@ function ancoraAttuale(n) {
   return !n.superata;
 }
 
-async function chiudi(id, stato, errore = null) {
+async function chiudi(db, id, stato, errore = null) {
   // Tipi espliciti: lo stesso parametro compare come valore di colonna e in un
   // confronto, e senza cast PostgreSQL rifiuta la query (42P08). Qui l'errore non
   // era innocuo: la riga restava in coda e la mail, gia' spedita, ripartiva.
-  await query(
+  // Solo una riga ancora in coda: una notifica annullata nel frattempo (studio
+  // eliminato) non torna 'inviata'.
+  await db.query(
     `UPDATE notifiche
      SET stato = $2::varchar, in_lavorazione_fino = NULL,
          inviata_at = CASE WHEN $2::varchar = 'inviata' THEN NOW() ELSE inviata_at END,
          ultimo_errore = $3::varchar
-     WHERE id = $1`,
+     WHERE id = $1 AND stato = 'in_coda'`,
     [id, stato, errore]
   );
 }
 
-async function rimanda(id, tentativi, c, codice) {
+async function rimanda(db, id, tentativi, c, codice) {
   if (tentativi >= c.maxTentativi) {
-    return chiudi(id, 'fallita', codice);
+    return chiudi(db, id, 'fallita', codice);
   }
   // Attesa crescente: backoff, 2x, 4x, ...
   const attesaMs = c.backoffMs * Math.pow(2, Math.max(0, tentativi - 1));
-  await query(
+  await db.query(
     `UPDATE notifiche
      SET in_lavorazione_fino = NULL, ultimo_errore = $2::varchar,
          prossimo_tentativo = NOW() + make_interval(secs => $3::double precision)
-     WHERE id = $1`,
+     WHERE id = $1 AND stato = 'in_coda'`,
     [id, codice, attesaMs / 1000]
   );
 }
@@ -254,39 +257,71 @@ async function send(trasporto, c, n) {
   await trasporto.sendMail({ from: c.from, to, subject: msg.subject, text: msg.text });
 }
 
+// Consegna di una notifica gia' presa in lease.
+//
+// Tutto in una transazione che tiene la riga dello studio in FOR SHARE dalla
+// lettura del destinatario fino alla chiusura della notifica, invio compreso.
+// L'eliminazione dello studio (elimina_account_commercialista, migration 010)
+// prende la stessa riga in FOR UPDATE: o finisce prima, e qui si legge un
+// indirizzo gia' tolto, o aspetta che la mail sia partita. Senza, un'eliminazione
+// committata fra la lettura e l'invio lasciava partire la mail al vecchio
+// indirizzo, e la notifica annullata tornava 'inviata'.
+// Ordine dei lock: studio, poi notifica, come nell'eliminazione (niente deadlock).
+// Costo: un'eliminazione puo' attendere la durata di un invio SMTP (timeout 20 s).
+async function consegna(trasporto, c, id) {
+  return withTransaction(async (db) => {
+    const s = await db.query(
+      `SELECT c.commercialista_id FROM notifiche n
+       JOIN collegamenti_commercialista c ON c.id = n.collegamento_id
+       WHERE n.id = $1`,
+      [id]
+    );
+    if (s.rowCount === 0) return 'sparita'; // cancellata in cascata nel frattempo
+    await db.query('SELECT 1 FROM commercialisti WHERE id = $1 FOR SHARE', [s.rows[0].commercialista_id]);
+    const l = await db.query(
+      "SELECT 1 FROM notifiche WHERE id = $1 AND stato = 'in_coda' FOR UPDATE",
+      [id]
+    );
+    if (l.rowCount === 0) return 'chiusa'; // annullata o chiusa da altri nel frattempo
+
+    const n = await carica(db, id);
+    if (!n) return 'sparita';
+    if (!ancoraAttuale(n)) {
+      await chiudi(db, id, 'annullata');
+      console.log(`notifica ${id}: annullata (evento superato)`);
+      return 'annullata';
+    }
+    // Destinatario senza indirizzo (studio eliminato, migration 010): non c'e'
+    // nessuno a cui scrivere e riprovare non cambia nulla.
+    if (!(n.destinatario_tipo === 'user' ? n.user_email : n.commercialista_email)) {
+      await chiudi(db, id, 'annullata', 'EDESTINATARIO');
+      console.log(`notifica ${id}: annullata (destinatario senza indirizzo)`);
+      return 'annullata';
+    }
+    try {
+      await send(trasporto, c, n);
+    } catch (err) {
+      const codice = String(err.code || err.responseCode || 'ERRORE').replace(/[^A-Za-z0-9_]/g, '').slice(0, 60);
+      await rimanda(db, id, n.tentativi, c, codice);
+      console.error(`notifica ${id}: invio non riuscito (${codice}), tentativo ${n.tentativi}`);
+      return 'rimandata';
+    }
+    // La mail e' partita: da qui in poi un errore NON e' un invio fallito e non
+    // deve far ripartire la mail. Se anche questo aggiornamento non riesce, la
+    // riga torna disponibile solo alla scadenza del lease (almeno-una-volta).
+    await chiudi(db, id, 'inviata');
+    console.log(`notifica ${id}: inviata`);
+    return 'inviata';
+  });
+}
+
 async function giro(trasporto) {
   const c = cfg();
   await queryOne('SELECT accoda_promemoria_non_letti($1) AS n', [c.oreNonLetti]);
 
   const ids = await prendiLotto(c);
   for (const id of ids) {
-    const n = await carica(id);
-    if (!n) continue; // cancellata in cascata nel frattempo
-    if (!ancoraAttuale(n)) {
-      await chiudi(id, 'annullata');
-      console.log(`notifica ${id}: annullata (evento superato)`);
-      continue;
-    }
-    // Destinatario senza indirizzo (studio eliminato, migration 010): non c'e'
-    // nessuno a cui scrivere e riprovare non cambia nulla.
-    if (!(n.destinatario_tipo === 'user' ? n.user_email : n.commercialista_email)) {
-      await chiudi(id, 'annullata', 'EDESTINATARIO');
-      console.log(`notifica ${id}: annullata (destinatario senza indirizzo)`);
-      continue;
-    }
-    try {
-      await send(trasporto, c, n);
-    } catch (err) {
-      const codice = String(err.code || err.responseCode || 'ERRORE').replace(/[^A-Za-z0-9_]/g, '').slice(0, 60);
-      await rimanda(id, n.tentativi, c, codice);
-      console.error(`notifica ${id}: invio non riuscito (${codice}), tentativo ${n.tentativi}`);
-      continue;
-    }
-    // La mail e' partita: da qui in poi un errore NON e' un invio fallito e non
-    // deve far ripartire la mail. Se anche questo aggiornamento non riesce, la
-    // riga torna disponibile solo alla scadenza del lease (almeno-una-volta).
-    await chiudi(id, 'inviata');
-    console.log(`notifica ${id}: inviata`);
+    await consegna(trasporto, c, id);
   }
   return ids.length;
 }
@@ -326,4 +361,4 @@ function ferma() {
   timer = null;
 }
 
-module.exports = { avvia, ferma, giro, componi, pulisci, creaTrasportoSmtp };
+module.exports = { avvia, ferma, giro, consegna, cfg, componi, pulisci, creaTrasportoSmtp };

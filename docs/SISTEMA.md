@@ -152,6 +152,14 @@ simultanee (una sola `200`), password cambiata mentre la richiesta aspetta il lo
 fisico rifiutato, file orfani (solo quelli giusti), rollback 010→007 e riapplicazione con
 `migra.sh` (i file lasciati dal down della 007 spariscono dopo).
 
+**Gara con le notifiche (fix1, review pn-gpt).** Il worker delle notifiche legge il destinatario e
+spedisce dentro una transazione che tiene la riga dello studio in `FOR SHARE`; l'eliminazione la
+prende in `FOR UPDATE`. O l'eliminazione finisce prima (il worker trova l'indirizzo già tolto e
+annulla), o aspetta che la mail sia partita: nessuna mail esce dopo il commit dell'eliminazione, e una
+notifica annullata non torna `inviata` (`chiudi` aggiorna solo righe `in_coda`). Ordine dei lock
+studio → notifica in entrambi i percorsi. Costo: un'eliminazione può attendere un invio SMTP (al più
+il timeout di 20 s). Prova: sezione L dello smoke, `scripts/smoke/s3-gara-notifiche.js`.
+
 Aperti, fuori da S3:
 
 - la chat di un collegamento non più attivo non si legge dall'app (`getCollegamentoId` è

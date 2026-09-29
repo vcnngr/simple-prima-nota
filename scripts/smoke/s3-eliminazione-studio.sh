@@ -14,6 +14,8 @@
 #   H.   DELETE fisico di uno studio con collegamenti: rifiutato dal database;
 #   I.   file orfani: rimossi solo i nomi generati dal backend, vecchi, senza
 #        allegato; i file vivi, recenti o estranei restano;
+#   L.   gara consegna/eliminazione (s3-gara-notifiche.js): nessuna mail allo
+#        studio dopo il commit dell'eliminazione;
 #   K.   rollback 010..007 e riapplicazione con migra.sh: senza tabelle la pulizia
 #        non cancella nulla; dopo, i file degli allegati tolti dal down della 007
 #        spariscono; lo studio eliminato torna eliminato.
@@ -251,6 +253,21 @@ eq "lo studio torna eliminato" "||1" "$(q "SELECT coalesce(username,'')||'|'||co
 eq "FK di nuovo RESTRICT" "r" "$(q "SELECT confdeltype FROM pg_constraint WHERE conname='collegamenti_commercialista_commercialista_id_fkey'")"
 file_k() { echo "$(su_disco "$CHIAVE")|$(su_disco "$K2")"; }
 eq "i file degli allegati tolti dal down della 007 spariscono" "0|0" "$(attendi "0|0" file_k)"
+
+echo
+echo "=== L. gara: consegna di una notifica ed eliminazione dello studio ==="
+# scripts/smoke/s3-gara-notifiche.js con il codice del checkout, sulla stessa base.
+# 1) eliminazione lanciata mentre la mail e' in spedizione: deve aspettare;
+# 2) eliminazione con il lock gia' preso quando la consegna comincia: nessuna mail.
+DBP=$(docker port "$DB_CONTAINER" 5432 2>/dev/null | head -1 | sed 's/.*://')
+G=$(cd "$R/backend" && DB_HOST=127.0.0.1 DB_PORT="$DBP" DB_NAME="$DB_NAME" DB_USER=postgres DB_PASSWORD="$DB_PASSWORD" \
+  perl -e 'alarm 60; exec @ARGV' node "$R/scripts/smoke/s3-gara-notifiche.js" 2>/dev/null | grep '^{' | tail -1)
+gj() { printf '%s' "$G" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d$1)" 2>/dev/null || echo "-"; }
+eq "notifiche accodate per i due casi" "True|True" "$(gj "['caso1']['notifica_accodata']")|$(gj "['caso2']['notifica_accodata']")"
+eq "caso 1: la mail parte a studio ancora vivo" "['studio']|False" "$(gj "['caso1']['mail']")|$(gj "['caso1']['eliminato_prima_di_inviare']")"
+eq "caso 1: l'eliminazione non committa durante l'invio" "False" "$(gj "['caso1']['eliminato_durante_invio']")"
+eq "caso 1: poi l'eliminazione riesce" "True|inviata" "$(gj "['caso1']['eliminato_alla_fine']")|$(gj "['caso1']['stato_notifica']")"
+eq "caso 2: nessuna mail, notifica annullata" "[]|annullata" "$(gj "['caso2']['mail']")|$(gj "['caso2']['stato_notifica']")"
 
 echo
 echo "================================================"
