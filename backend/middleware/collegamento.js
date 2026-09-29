@@ -37,10 +37,12 @@ function estraiUserId(req) {
 /**
  * Middleware factory.
  *
- * @param {string} tipoAccesso  lista_clienti | dettaglio_cliente | export | chat
- *                              (registrato su req; l'audit arriva con il blocco W3)
+ * @param {string}   tipoAccesso  dettaglio_cliente | export | chat | disconnessione
+ * @param {function} [dettagli]   (req) => oggetto da registrare con l'accesso
+ *                                (pagina, formato, filtri). Solo parametri: mai
+ *                                valori che il commercialista non ha scelto.
  */
-function requireCollegamento(tipoAccesso) {
+function requireCollegamento(tipoAccesso, dettagli) {
   return async (req, res, next) => {
     try {
       // Fail-closed: questo middleware vale solo dopo un'autenticazione commercialista.
@@ -87,12 +89,86 @@ function requireCollegamento(tipoAccesso) {
         conti: collegamento.conti_ammessi
       };
 
+      // Audit PRIMA dei dati. Se la riga non si scrive, l'accesso non avviene:
+      // un registro che perde gli accessi quando qualcosa va storto e' un
+      // registro di cui il cliente non si puo' fidare.
+      req.accessoId = await registraAccesso({
+        collegamentoId: collegamento.id,
+        commercialistaId: req.commercialista.id,
+        userId,
+        tipo: tipoAccesso,
+        dettagli: {
+          ...(dettagli ? dettagli(req) : {}),
+          ambito: req.ambito
+        }
+      });
+
       next();
     } catch (error) {
       console.error('requireCollegamento error:', error.message);
       res.status(500).json({ error: 'Errore nella verifica del collegamento' });
     }
   };
+}
+
+/**
+ * Scrive una riga nel registro degli accessi e ne restituisce l'id.
+ * Lancia se la scrittura fallisce: chi chiama deve fermarsi (fail-closed).
+ */
+async function registraAccesso({ collegamentoId, commercialistaId, userId, tipo, dettagli }) {
+  const riga = await queryOne(
+    `INSERT INTO accessi_commercialista
+       (collegamento_id, commercialista_id, user_id, tipo_accesso, dettagli)
+     VALUES ($1, $2, $3, $4, $5::jsonb)
+     RETURNING id`,
+    [collegamentoId, commercialistaId, userId, tipo, JSON.stringify(dettagli || {})]
+  );
+  return riga.id;
+}
+
+/**
+ * Completa la riga di un export con il numero di record effettivamente usciti.
+ * Il trigger della 005 consente questo solo aggiornamento, una volta.
+ */
+async function completaAccesso(accessoId, numeroRecord) {
+  await queryOne(
+    `UPDATE accessi_commercialista SET numero_record = $1
+     WHERE id = $2 AND numero_record IS NULL
+     RETURNING id`,
+    [numeroRecord, accessoId]
+  );
+}
+
+/**
+ * Come registraAccesso, ma al massimo una riga all'ora per collegamento e tipo.
+ * Per la chat: la pagina interroga i messaggi ogni pochi secondi, e una riga per
+ * interrogazione seppellirebbe gli accessi che contano (export, dettaglio).
+ */
+async function registraAccessoOrario({ collegamentoId, commercialistaId, userId, tipo, dettagli }) {
+  await queryOne(
+    `INSERT INTO accessi_commercialista
+       (collegamento_id, commercialista_id, user_id, tipo_accesso, dettagli)
+     SELECT $1, $2, $3, $4, $5::jsonb
+     WHERE NOT EXISTS (
+       SELECT 1 FROM accessi_commercialista
+       WHERE collegamento_id = $1 AND tipo_accesso = $4
+         AND created_at > NOW() - INTERVAL '1 hour'
+     )
+     RETURNING id`,
+    [collegamentoId, commercialistaId, userId, tipo, JSON.stringify(dettagli || {})]
+  );
+}
+
+/**
+ * Accessi "di elenco" (dashboard, anteprima chat): una riga per cliente attivo,
+ * al massimo una all'ora per tipo. Vedi registra_accessi_elenco nella 005.
+ */
+async function registraAccessiElenco(commercialistaId, tipo) {
+  const r = await queryOne(
+    'SELECT registra_accessi_elenco($1, $2) AS n',
+    [commercialistaId, tipo]
+  );
+  return r.n;
 }
 
 /**
@@ -161,6 +237,10 @@ function contoNellAmbito(ambito, contoId) {
 
 module.exports = {
   requireCollegamento,
+  registraAccesso,
+  completaAccesso,
+  registraAccessoOrario,
+  registraAccessiElenco,
   collegamentoDiUtente,
   clausolaAmbito,
   contoNellAmbito,

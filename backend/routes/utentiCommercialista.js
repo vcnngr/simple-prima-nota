@@ -242,6 +242,54 @@ router.get('/collegamenti', auth, async (req, res) => {
 });
 
 // ==============================================================================
+// GET /api/utenti/collegamenti/:id/accessi - cosa ha visto il commercialista
+// ==============================================================================
+// Il registro e' del cliente: lo legge per qualunque suo collegamento, anche
+// revocato (e' proprio dopo una revoca che serve sapere cosa e' stato visto).
+// Solo lettura: nessuna route lo modifica, e il trigger della 005 lo impedisce
+// comunque a livello di database.
+router.get('/collegamenti/:id/accessi', auth, async (req, res) => {
+  try {
+    const collegamento = await caricaCollegamento(req.user.id, req.params.id);
+    if (!collegamento) {
+      return res.status(404).json({ error: 'Collegamento non trovato' });
+    }
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+    const accessi = await query(
+      `SELECT id, tipo_accesso, dettagli, numero_record, created_at
+       FROM accessi_commercialista
+       WHERE collegamento_id = $1 AND user_id = $2
+       ORDER BY created_at DESC, id DESC
+       LIMIT $3 OFFSET $4`,
+      [collegamento.id, req.user.id, limit, offset]
+    );
+
+    const riepilogo = await query(
+      `SELECT tipo_accesso, COUNT(*)::int AS totale, MAX(created_at) AS ultimo
+       FROM accessi_commercialista
+       WHERE collegamento_id = $1 AND user_id = $2
+       GROUP BY tipo_accesso`,
+      [collegamento.id, req.user.id]
+    );
+
+    res.json({
+      success: true,
+      accessi: accessi.rows,
+      riepilogo: riepilogo.rows,
+      totale: riepilogo.rows.reduce((n, r) => n + r.totale, 0),
+      limit,
+      offset
+    });
+  } catch (error) {
+    console.error('Get accessi error:', error.message);
+    res.status(500).json({ error: 'Errore nel recupero del registro accessi' });
+  }
+});
+
+// ==============================================================================
 // PUT /api/utenti/collegamenti/:id/accetta - consenso esplicito, con ambito
 // ==============================================================================
 router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccetta), async (req, res) => {

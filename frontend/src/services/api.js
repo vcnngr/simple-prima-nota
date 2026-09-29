@@ -339,6 +339,7 @@ export const utentiCommercialistaAPI = {
   sospendiCollegamento: (id, motivo) => api.put(`/utenti/collegamenti/${id}/sospendi`, { motivo }),
   riattivaCollegamento: (id) => api.put(`/utenti/collegamenti/${id}/riattiva`),
   revocaCollegamento: (id, motivo) => api.delete(`/utenti/collegamenti/${id}`, { data: { motivo } }),
+  getAccessiCollegamento: (id, params = {}) => api.get(`/utenti/collegamenti/${id}/accessi`, { params }),
 
   // Get user's tokens
   getTokenInviti: () => api.get('/utenti/token-inviti'),

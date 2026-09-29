@@ -3,7 +3,9 @@
 const express = require('express');
 const { query, queryOne } = require('../config/database');
 const { authEither } = require('../middleware/auth');
-const { MOTIVO_PER_STATO } = require('../middleware/collegamento');
+const {
+  MOTIVO_PER_STATO, registraAccessoOrario, registraAccessiElenco
+} = require('../middleware/collegamento');
 const { validate, validateQuery, schemas } = require('../middleware/validation');
 
 const router = express.Router();
@@ -75,6 +77,7 @@ const getCollegamentoId = async (req, res, next) => {
     }
 
     req.collegamento_id = collegamento.id;
+    req.cliente_id = req.commercialista ? parseInt(req.query.userId, 10) : null;
     next();
   } catch (error) {
     console.error('Get collegamento error:', error.message);
@@ -88,6 +91,17 @@ const getCollegamentoId = async (req, res, next) => {
 router.get('/', authEither, validateQuery(schemas.messaggiQuery), getCollegamentoId, async (req, res) => {
   try {
     const { limit = 50, offset = 0 } = req.query;
+
+    // Il commercialista che legge la chat accede a dati del cliente: si registra,
+    // una volta all'ora per collegamento (la pagina interroga ogni pochi secondi).
+    if (req.commercialista) {
+      await registraAccessoOrario({
+        collegamentoId: req.collegamento_id,
+        commercialistaId: req.commercialista.id,
+        userId: req.cliente_id,
+        tipo: 'chat'
+      });
+    }
 
     const messaggi = await query(
       `SELECT id, mittente_tipo, mittente_id, messaggio, letto,
@@ -264,6 +278,9 @@ router.get('/clients-overview', authEither, async (req, res) => {
     if (!req.commercialista) {
       return res.status(403).json({ error: 'Accesso riservato ai commercialisti' });
     }
+
+    // L'anteprima mostra l'ultimo messaggio di ogni cliente: accesso alla chat.
+    await registraAccessiElenco(req.commercialista.id, 'chat');
 
     const clientsOverview = await query(
       `SELECT

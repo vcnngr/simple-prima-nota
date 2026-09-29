@@ -315,6 +315,29 @@ i filtri e il numero di record. Scritta da un middleware, non a mano in ogni rou
 Ricaduta diretta sull'utente: una sezione *"cosa ha visto il mio commercialista"*, che è la cosa
 che rende il collegamento accettabile a chi è diffidente nel dare i propri conti a un portale web.
 
+**Come è fatto (W3, migration 005).**
+
+- La riga si scrive **prima** di servire i dati, dentro `requireCollegamento(tipo, dettagli)`.
+  Se l'INSERT fallisce la route risponde `500` e i dati non escono (fail-closed): un registro che
+  perde gli accessi quando qualcosa va storto non vale niente per il cliente.
+- Si registrano solo gli accessi **concessi**. Richieste malformate (la validazione ora precede
+  il controllo del collegamento) e accessi negati per stato non lasciano righe.
+- Export: la riga porta formato, tipo, filtri e la fotografia dell'ambito; `numero_record` si
+  valorizza a export generato, prima dell'invio. Un export respinto dopo il controllo (conto
+  fuori ambito) resta come tentativo con `numero_record` vuoto, mostrato come "nessun dato uscito".
+- Dashboard (`lista_clienti`) e chat interrogano di continuo: **una riga all'ora** per
+  collegamento e tipo. Il cliente che legge la propria chat non si registra.
+- Il database tiene tre invarianti: FK composta `(collegamento_id, commercialista_id, user_id)`
+  sul collegamento, nessun UPDATE salvo `numero_record` una volta da NULL, nessun DELETE diretto
+  (le righe spariscono solo in cascata con l'account).
+- L'utente legge il registro con `GET /api/utenti/collegamenti/:id/accessi`, anche dopo la revoca.
+  In UI: "Cosa ha visto" su ogni collegamento in `Profile/CommercialistaManagementPage.js`.
+
+Residui dichiarati: l'eliminazione dell'account del **commercialista** cancella in cascata i suoi
+collegamenti e quindi anche il registro che il cliente vedeva (FK della 001, da rivedere nella
+fase «sistema»); finché `middleware/auth.js` accetta un token commercialista sulle route utente
+(fase «sicurezza») la lettura del registro eredita quel difetto.
+
 ### 3.6 Un solo punto di controllo accesso
 
 Tutte le route del commercialista che toccano dati del cliente devono passare da **un** middleware:
@@ -414,7 +437,7 @@ Rispetta l'ordine ratificato dal titolare: **workflow → sistema → sicurezza 
 |---|---|---|---|
 | W1 ✅ | Macchina a stati | migration 002 + rollback, `requireCollegamento`, rimozione `utenti.commercialista_id` | migration applicata e annullata su DB di prova; curl su ogni transizione |
 | W2 ✅ | Invito irrigidito | hash, 1 token attivo, 7 gg, richiesta diretta + accettazione; migration 004: richieste idempotenti e risoluzione senza scelta arbitraria | `scripts/smoke/w2-invito.sh` 54/54 e `w2-concorrenza.py` 7/7; le fixture di W2 falliscono su `8793b25`, quelle dei tre P0 della revisione falliscono su `5b57ba0` |
-| W3 | Audit + ambito | `accessi_commercialista`, `ambito_*`, applicazione nel middleware | export fuori ambito → dati filtrati; riga di audit presente |
+| W3 ✅ | Audit + ambito | `accessi_commercialista` (migration 005), scrittura fail-closed in `requireCollegamento`, registro leggibile dal cliente; ambito già applicato dal W1 | `scripts/smoke/w3-accessi.sh` 47/47; su `79599d6` 14/33 |
 | W4 | Notifiche | outbox + SMTP, sostituzione parziale del polling | email in coda su ogni evento; conteggio richieste per sessione ridotto |
 | W5 | Chat di lavoro | allegati, `movimento_id`, richieste di chiarimento | upload accettato/rifiutato per MIME e dimensione |
 | W6 | Account | cambio password ed email, reset per entrambi i tipi | ciclo completo di reset via curl |

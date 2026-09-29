@@ -16,6 +16,7 @@ services:
       - ./database/migrations/002_workflow_collegamento.sql:/docker-entrypoint-initdb.d/03-workflow-collegamento.sql
       - ./database/migrations/003_invito_irrigidito.sql:/docker-entrypoint-initdb.d/04-invito-irrigidito.sql
       - ./database/migrations/004_richieste_idempotenti.sql:/docker-entrypoint-initdb.d/05-richieste-idempotenti.sql
+      - ./database/migrations/005_accessi_commercialista.sql:/docker-entrypoint-initdb.d/06-accessi-commercialista.sql
     ports:
       - "5432:5432"
     networks:

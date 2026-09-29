@@ -5,7 +5,10 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query, queryOne } = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { requireCollegamento, clausolaAmbito, contoNellAmbito } = require('../middleware/collegamento');
+const {
+  requireCollegamento, clausolaAmbito, contoNellAmbito,
+  completaAccesso, registraAccessiElenco
+} = require('../middleware/collegamento');
 const { validate, validateQuery, schemas } = require('../middleware/validation');
 
 const router = express.Router();
@@ -187,6 +190,10 @@ router.get('/profile', authCommercialista, async (req, res) => {
 // ==============================================================================
 router.get('/dashboard', authCommercialista, async (req, res) => {
   try {
+    // La dashboard mostra saldi e conteggi di ogni cliente attivo: e' un accesso
+    // ai loro dati e va registrato, prima di leggerli (fail-closed).
+    await registraAccessiElenco(req.commercialista.id, 'lista_clienti');
+
     // Get clients summary using database function
     const clienti = await query(
       'SELECT * FROM get_commercialista_clients_summary($1)',
@@ -338,7 +345,8 @@ router.get('/richieste', authCommercialista, async (req, res) => {
 // ==============================================================================
 // GET /api/commercialisti/clienti/:userId - Get client details
 // ==============================================================================
-router.get('/clienti/:userId', authCommercialista, requireCollegamento('dettaglio_cliente'), validateQuery(schemas.paginazione), async (req, res) => {
+router.get('/clienti/:userId', authCommercialista, validateQuery(schemas.paginazione),
+  requireCollegamento('dettaglio_cliente', req => ({ page: req.query.page, limit: req.query.limit })), async (req, res) => {
   try {
     const userId = req.clienteId;
 
@@ -439,7 +447,7 @@ router.get('/clienti/:userId', authCommercialista, requireCollegamento('dettagli
 // ==============================================================================
 // DELETE /api/commercialisti/clienti/:userId - Disconnect client
 // ==============================================================================
-router.delete('/clienti/:userId', authCommercialista, requireCollegamento('dettaglio_cliente'), async (req, res) => {
+router.delete('/clienti/:userId', authCommercialista, requireCollegamento('disconnessione'), async (req, res) => {
   try {
     const userId = req.clienteId;
     const motivo = typeof req.body?.motivo === 'string' ? req.body.motivo.slice(0, 500) : null;
@@ -462,7 +470,18 @@ router.delete('/clienti/:userId', authCommercialista, requireCollegamento('detta
 // ==============================================================================
 // POST /api/commercialisti/clienti/:userId/export - Generate export for client
 // ==============================================================================
-router.post('/clienti/:userId/export', authCommercialista, requireCollegamento('export'), validate(schemas.exportCommercialista), async (req, res) => {
+// La validazione precede il controllo del collegamento: l'audit registra i
+// parametri gia' validati, e una richiesta malformata non lascia righe.
+router.post('/clienti/:userId/export', authCommercialista, validate(schemas.exportCommercialista),
+  requireCollegamento('export', req => ({
+    export_type: req.body.export_type,
+    formato: req.body.formato,
+    campi: req.body.campi_personalizzati || null,
+    conto_id: req.body.conto_id || null,
+    data_inizio: req.body.data_inizio || null,
+    data_fine: req.body.data_fine || null,
+    tutto_storico: req.body.tutto_storico
+  })), async (req, res) => {
   try {
     const userId = req.clienteId;
     const config = req.body;
@@ -616,6 +635,10 @@ router.post('/clienti/:userId/export', authCommercialista, requireCollegamento('
       });
       return formatted;
     });
+
+    // Il registro dice quanti record sono usciti, non solo che l'export c'e' stato.
+    // Prima di inviare: se non si scrive, l'export non parte.
+    await completaAccesso(req.accessoId, formattedData.length);
 
     // Metadata
     const metadata = {

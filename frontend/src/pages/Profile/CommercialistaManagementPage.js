@@ -20,6 +20,78 @@ const ETICHETTE_TOKEN = {
   scaduto:  { testo: 'SCADUTO', classe: 'bg-red-600' }
 };
 
+const ETICHETTE_ACCESSO = {
+  lista_clienti: 'Ha aperto l\'elenco clienti (saldi e totali)',
+  dettaglio_cliente: 'Ha consultato conti e movimenti',
+  export: 'Ha esportato i movimenti',
+  chat: 'Ha letto la chat',
+  disconnessione: 'Si e\' disconnesso'
+};
+
+// "Cosa ha visto il mio commercialista": il registro scritto dal backend a ogni
+// accesso ai dati. Si carica solo quando l'utente lo apre.
+const RegistroAccessi = ({ collegamentoId }) => {
+  const [aperto, setAperto] = useState(false);
+  const [stato, setStato] = useState({ caricamento: false, accessi: [], totale: 0, errore: null });
+
+  const apri = async () => {
+    const prossimo = !aperto;
+    setAperto(prossimo);
+    if (!prossimo) return;
+    setStato(s => ({ ...s, caricamento: true, errore: null }));
+    try {
+      const res = await utentiCommercialistaAPI.getAccessiCollegamento(collegamentoId, { limit: 50 });
+      setStato({ caricamento: false, accessi: res.data.accessi || [], totale: res.data.totale || 0, errore: null });
+    } catch (e) {
+      setStato({ caricamento: false, accessi: [], totale: 0, errore: 'Impossibile caricare il registro' });
+    }
+  };
+
+  const dettaglio = (a) => {
+    if (a.tipo_accesso !== 'export') return null;
+    const d = a.dettagli || {};
+    const parti = [(d.formato || '').toUpperCase()];
+    if (a.numero_record === null || a.numero_record === undefined) parti.push('nessun dato uscito');
+    else parti.push(`${a.numero_record} movimenti`);
+    return parti.filter(Boolean).join(' · ');
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-200">
+      <button type="button" onClick={apri} className="text-sm font-medium text-primary-600 hover:underline">
+        {aperto ? 'Nascondi cosa ha visto' : 'Cosa ha visto'}
+      </button>
+      {aperto && (
+        <div className="mt-3 text-sm">
+          {stato.caricamento && <div className="text-gray-500">Caricamento…</div>}
+          {stato.errore && <div className="text-red-600">{stato.errore}</div>}
+          {!stato.caricamento && !stato.errore && stato.accessi.length === 0 && (
+            <div className="text-gray-500">Nessun accesso ai tuoi dati.</div>
+          )}
+          {stato.accessi.length > 0 && (
+            <>
+              <div className="text-gray-500 mb-2">
+                {stato.totale} accessi registrati{stato.totale > stato.accessi.length ? `, ultimi ${stato.accessi.length}` : ''}
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {stato.accessi.map(a => (
+                  <li key={a.id} className="py-2">
+                    <div className="text-gray-900">{ETICHETTE_ACCESSO[a.tipo_accesso] || a.tipo_accesso}</div>
+                    <div className="text-gray-500 text-xs">
+                      {new Date(a.created_at).toLocaleString('it-IT')}
+                      {dettaglio(a) && <> · {dettaglio(a)}</>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const CommercialistaManagementPage = () => {
   const [data, setData] = useState({
     collegamenti: [],
@@ -253,6 +325,10 @@ const CommercialistaManagementPage = () => {
                     <div className="mt-4 text-sm text-gray-600">
                       Motivo: {c.motivo_revoca}
                     </div>
+                  )}
+
+                  {c.stato !== 'in_attesa' && c.stato !== 'rifiutata' && (
+                    <RegistroAccessi collegamentoId={c.id} />
                   )}
                 </div>
               );
