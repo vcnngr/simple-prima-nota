@@ -1,0 +1,57 @@
+{{- if .Values.migrazioni.enabled }}
+# Applica lo schema e le migrazioni mancanti (database/migra.sh).
+#   post-install: al primo install il database nasce vuoto -> init + tutte;
+#   pre-upgrade:  lo schema si aggiorna PRIMA che parta il backend nuovo.
+# Se il job fallisce, l'upgrade si ferma e il backend resta quello di prima.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-migrazioni
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrazioni
+  annotations:
+    "helm.sh/hook": post-install,pre-upgrade
+    "helm.sh/hook-weight": "1"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrazioni.backoffLimit }}
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "prima-nota.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrazioni
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: migrazioni
+        image: "{{ .Values.migrazioni.image.registry }}/{{ .Values.migrazioni.image.repository }}:{{ .Values.migrazioni.image.tag }}"
+        imagePullPolicy: {{ .Values.migrazioni.image.pullPolicy }}
+        command: ["bash", "/database/migra.sh", "applica"]
+        env:
+        - name: MIGRA_DIR
+          value: /database
+        - name: MIGRA_ATTESA_SEC
+          value: {{ .Values.migrazioni.attesaSec | quote }}
+        {{- include "prima-nota.dbEnv" . | nindent 8 }}
+        resources:
+          {{- toYaml .Values.migrazioni.resources | nindent 10 }}
+        volumeMounts:
+        - name: database
+          mountPath: /database
+          readOnly: true
+      volumes:
+      - name: database
+        configMap:
+          name: {{ include "prima-nota.fullname" . }}-migrazioni
+          items:
+          - key: init.sql
+            path: init.sql
+          - key: migra.sh
+            path: migra.sh
+          {{- range $path, $_ := .Files.Glob "files/database/migrations/*.sql" }}
+          - key: {{ base $path }}
+            path: migrations/{{ base $path }}
+          {{- end }}
+{{- end }}

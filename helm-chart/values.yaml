@@ -59,8 +59,8 @@ cloudnativepg:
       localeCType: ""    # es: 'it_IT.utf8'
       secret:
         name: ""  # Se vuoto, usa lo stesso del superuserSecret
-      initSql:
-        enabled: true
+      # Lo schema non si crea qui: lo crea e lo aggiorna il job delle migrazioni
+      # (sezione `migrazioni`), per tutti e tre i tipi di database.
  
     # PostgreSQL parameters
     postgresql:
@@ -163,6 +163,29 @@ cloudnativepg:
     #   schedule: "0 0 */4 * * 1-5"  # Ogni 4 ore nei giorni lavorativi
     #   suspend: false
     #   immediateCheckpoint: false
+
+# Migrazioni dello schema: un job (hook post-install e pre-upgrade) esegue
+# database/migra.sh con i file in helm-chart/files/database/. Crea lo schema su
+# un database vuoto, applica solo le migrazioni mancanti su uno esistente e
+# riconosce i database creati prima del registro `schema_migrazioni`.
+migrazioni:
+  enabled: true
+  image:
+    registry: docker.io
+    repository: postgres
+    tag: "16.1-alpine"
+    pullPolicy: IfNotPresent
+  # Quanto il job aspetta che il database risponda (al primo install il cluster
+  # CloudNativePG impiega qualche minuto).
+  attesaSec: 900
+  backoffLimit: 3
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
 
 # Database Esterno (per casi avanzati)
 externalDatabase:

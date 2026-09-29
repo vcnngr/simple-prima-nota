@@ -1,0 +1,20 @@
+{{- if .Values.migrazioni.enabled }}
+# Schema e migrazioni per il job delle migrazioni. E' un hook come il job: in un
+# pre-upgrade le risorse normali della release non sono ancora aggiornate, e il
+# job leggerebbe le migrazioni della versione precedente.
+# I file vengono da helm-chart/files/database/ (copia di database/, vedi
+# scripts/sincronizza-helm-db.sh).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-migrazioni
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrazioni
+  annotations:
+    "helm.sh/hook": post-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  {{- (.Files.Glob "files/database/**").AsConfig | nindent 2 }}
+{{- end }}

@@ -571,8 +571,9 @@ ALTER TABLE messaggi_commercialista
 ALTER TABLE utenti DROP COLUMN commercialista_id;
 ```
 
-Vincolo di processo, oggi non rispettato: lo schema va replicato in `database/init.sql` **e** in
-`helm-chart/templates/db-init-job.yaml`, altrimenti il deploy Helm produce un'app rotta.
+~~Vincolo di processo: lo schema va replicato in `database/init.sql` **e** in
+`helm-chart/templates/db-init-job.yaml`.~~ Superato in S1 (`docs/SISTEMA.md`): le migration le
+applica `database/migra.sh`, lo stesso per docker-compose e Helm.
 
 ---
 
@@ -601,5 +602,5 @@ Ogni blocco è un branch `feat/...` separato, con review `pn-gpt` prima della ch
   utente) — **fase 3**, ma va detto chiaramente: finché non è chiuso, nessuna parte di questo
   workflow è efficace, perché il controllo di accesso si aggira a monte.
 - ~~Rimozione del `console.log` che stampa la password in chiaro al login~~ — fatto in W2: era il login **utente** (`routes/auth.js`); quello commercialista non la stampa. Prova: `scripts/smoke/log-credenziali.sh`.
-- Allineamento `init.sql` / `db-init-job.yaml` e ripristino di `nginx.conf` deploy-neutral — fase 2.
+- Allineamento `init.sql` / `db-init-job.yaml` e ripristino di `nginx.conf` deploy-neutral — fase 2 (`docs/SISTEMA.md`: S1 fatto, nginx in S4).
 - Ridisegno UX mobile-first — fase 4.

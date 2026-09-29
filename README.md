@@ -96,7 +96,8 @@ npm start
 ```bash
 # Crea database PostgreSQL locale
 createdb prima_nota
-psql prima_nota < database/init.sql
+# schema e migrazioni: crea tutto su un database vuoto, aggiorna uno esistente
+PGDATABASE=prima_nota ./database/migra.sh
 ```
 
 ## 📊 Schema Database

@@ -68,22 +68,6 @@ spec:
     {{- end }}
   {{- end }}
 
-  {{- if .Values.cloudnativepg.cluster.bootstrap.initSql.enabled }}
-  # === VOLUME PER SCRIPT SQL INIT ===
-  additionalVolumes:
-    - name: init-sql-scripts
-      configMap:
-        name: {{ include "prima-nota.fullname" . }}-config
-        items:
-        - key: init.sql
-          path: init.sql
-          mode: 0644
-  
-  additionalVolumeMounts:
-    - name: init-sql-scripts
-      mountPath: /docker-entrypoint-initdb.d
-      readOnly: true
-  {{- end }}
   
   # === STORAGE CONFIGURATION ===
   storage:

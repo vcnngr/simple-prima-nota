@@ -11,14 +11,6 @@ services:
       POSTGRES_PASSWORD: password123
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
-      - ./database/migrations/001_commercialisti_system.sql:/docker-entrypoint-initdb.d/02-commercialisti.sql
-      - ./database/migrations/002_workflow_collegamento.sql:/docker-entrypoint-initdb.d/03-workflow-collegamento.sql
-      - ./database/migrations/003_invito_irrigidito.sql:/docker-entrypoint-initdb.d/04-invito-irrigidito.sql
-      - ./database/migrations/004_richieste_idempotenti.sql:/docker-entrypoint-initdb.d/05-richieste-idempotenti.sql
-      - ./database/migrations/005_accessi_commercialista.sql:/docker-entrypoint-initdb.d/06-accessi-commercialista.sql
-      - ./database/migrations/006_notifiche.sql:/docker-entrypoint-initdb.d/07-notifiche.sql
-      - ./database/migrations/007_chat_lavoro.sql:/docker-entrypoint-initdb.d/08-chat-lavoro.sql
     ports:
       - "5432:5432"
     networks:
@@ -28,6 +20,26 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Schema e migrazioni (database/migra.sh): crea lo schema su un volume vuoto,
+  # applica solo le migrazioni mancanti su uno esistente, poi esce. Il backend
+  # parte solo se questo e' uscito con 0.
+  migra:
+    image: docker.io/library/postgres:16.1
+    container_name: prima_nota_migra
+    environment:
+      PGHOST: db
+      PGDATABASE: prima_nota
+      PGUSER: postgres
+      PGPASSWORD: password123
+    volumes:
+      - ./database:/database:ro
+    command: ["bash", "/database/migra.sh", "applica"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - prima_nota_network
 
   # Backend API
   backend:
@@ -58,6 +70,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migra:
+        condition: service_completed_successfully
     networks:
       - prima_nota_network
 
