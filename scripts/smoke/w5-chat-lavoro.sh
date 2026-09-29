@@ -98,6 +98,35 @@ o = d[:cen] + loc + d[cen:]; struct.pack_into('<I', o, len(o) - 6, cen + len(loc
 open(t + '/nascosta.xlsx', 'wb').write(o)
 c = bytearray(open(t + '/foglio.xlsx', 'rb').read()); struct.pack_into('<H', c, len(c) - 2, 6)
 open(t + '/commento.xlsx', 'wb').write(c + b'MZ\x90\x00XX')
+# Zip64 (revisione W5-fix3). Sull'ultima voce per offset, in locale e in centrale:
+#  - dimensione originale = sentinella 0xFFFFFFFF + blocco extra 0x0001 (zip64 valido);
+#  - solo il blocco extra 0x0001, dimensioni a 32 bit intatte;
+# e un'intestazione locale con dimensione originale diversa dalla directory.
+def voci_cen(b):
+    e = len(b) - 22; p = struct.unpack_from('<I', b, e + 16)[0]; r = []
+    while p < e:
+        nl, xl, cl = struct.unpack_from('<HHH', b, p + 28)
+        r.append((p, struct.unpack_from('<I', b, p + 42)[0], nl, xl)); p += 46 + nl + xl + cl
+    return r
+def zip64(dst, sentinella):
+    b = bytearray(open(t + '/foglio.xlsx', 'rb').read()); e = len(b) - 22
+    cen, dim = struct.unpack_from('<I', b, e + 16)[0], struct.unpack_from('<I', b, e + 12)[0]
+    cp, lp, cnl, cxl = max(voci_cen(b), key=lambda r: r[1])
+    x = struct.pack('<HHQ', 1, 8, struct.unpack_from('<I', b, cp + 24)[0])
+    lnl, lxl = struct.unpack_from('<HH', b, lp + 26); i = lp + 30 + lnl + lxl
+    b[i:i] = x; struct.pack_into('<H', b, lp + 28, lxl + len(x))
+    if sentinella: struct.pack_into('<I', b, lp + 22, 0xFFFFFFFF)
+    cen += len(x); e += len(x); cp += len(x)
+    i = cp + 46 + cnl + cxl; b[i:i] = x; struct.pack_into('<H', b, cp + 30, cxl + len(x))
+    if sentinella: struct.pack_into('<I', b, cp + 24, 0xFFFFFFFF)
+    e += len(x); struct.pack_into('<II', b, e + 12, dim + len(x), cen)
+    open(t + '/' + dst, 'wb').write(b)
+zip64('zip64.xlsx', True)
+zip64('zip64extra.xlsx', False)
+b = bytearray(open(t + '/foglio.xlsx', 'rb').read())
+cp, lp, _, _ = max(voci_cen(b), key=lambda r: r[1])
+struct.pack_into('<I', b, lp + 22, struct.unpack_from('<I', b, lp + 22)[0] + 1)
+open(t + '/locale.xlsx', 'wb').write(b)
 PY2
 head -c 11534336 /dev/zero | tr '\0' 'a' > $T/grande.csv       # 11 MB
 { printf '%%PDF-1.4\n'; head -c 1258291 /dev/zero; } > $T/medio.pdf   # 1,2 MB
@@ -170,6 +199,9 @@ assert_http "xlsx con macro -> 415" 415 up "$UT" "$QU" $T/macro.xlsx macro.xlsx
 assert_http "eseguibile oltre il conteggio dell'EOCD -> 415" 415 up "$UT" "$QU" $T/eocd.xlsx eocd.xlsx
 assert_http "voce locale che la directory non nomina -> 415" 415 up "$UT" "$QU" $T/nascosta.xlsx nascosta.xlsx
 assert_http "byte in coda nel commento dell'EOCD -> 415" 415 up "$UT" "$QU" $T/commento.xlsx commento.xlsx
+assert_http "zip64 valido (sentinella + extra 0x0001) -> 415" 415 up "$UT" "$QU" $T/zip64.xlsx zip64.xlsx
+assert_http "blocco extra zip64 con dimensioni a 32 bit -> 415" 415 up "$UT" "$QU" $T/zip64extra.xlsx zip64extra.xlsx
+assert_http "intestazione locale diversa dalla directory -> 415" 415 up "$UT" "$QU" $T/locale.xlsx locale.xlsx
 assert_http "jpg con estensione .png -> 415" 415 up "$UT" "$QU" $T/img.jpg foto.png
 assert_http "pdf con estensione .exe -> 415" 415 up "$UT" "$QU" $T/doc.pdf doc.exe
 assert_http "11 MB -> 413" 413 up "$UT" "$QU" $T/grande.csv

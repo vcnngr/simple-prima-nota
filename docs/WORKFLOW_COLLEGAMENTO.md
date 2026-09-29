@@ -430,7 +430,8 @@ e il chart non ha ancora le variabili SMTP.
   il nome scelto da chi carica è solo un'etichetta ripulita e non tocca mai il filesystem.
   - Tipo riconosciuto **dal contenuto** (firma PDF/PNG/JPEG, xlsx = zip spiegato byte per byte:
     voci locali contigue da 0, directory centrale di esattamente la dimensione dichiarata, EOCD
-    senza commento, niente zip64 né multi-disco, ogni record con la sua voce locale dallo stesso nome;
+    senza commento, niente zip64 (nessun campo a `0xFFFFFFFF`/`0xFFFF`, nessun blocco extra `0x0001`)
+    né multi-disco, ogni record con la sua voce locale dallo stesso nome e dalle stesse dimensioni;
     sole voci OOXML (`[Content_Types].xml`, `_rels/`, `docProps/`, `xl/`, `customXml/`), niente
     `vbaProject.bin`, e workbook letto dal parser `xlsx` con almeno un foglio;
     CSV = UTF-8 senza byte nulli e senza `<` iniziale) **e** coerente con l'estensione; il tipo

@@ -55,7 +55,25 @@ function testoUtf8(buf) {
 // record nomina, resterebbero fuori dai controlli pur essendo estraibili. Per
 // questo si pretende che il file sia tutto spiegato, byte per byte:
 //   [voci locali contigue da 0] [directory centrale di esattamente `dim` byte] [EOCD]
-// senza zip64, archivi multi-disco ne' commenti.
+// senza zip64 (ne' sentinelle ne' blocchi extra 0x0001), archivi multi-disco ne'
+// commenti, e con intestazioni locali coerenti con la directory.
+// Campi extra di una voce: blocchi [id 2 byte][lunghezza 2 byte][dati]. false se
+// i blocchi non riempiono esattamente lo spazio dichiarato o se c'e' il blocco
+// zip64 (0x0001), che rimpiazza dimensioni e offset con valori a 64 bit.
+function extraAmmessi(buf, da, lunghezza) {
+  const a = da + lunghezza;
+  let q = da;
+  while (q < a) {
+    if (q + 4 > a) return false;
+    const id = buf.readUInt16LE(q), l = buf.readUInt16LE(q + 2);
+    if (id === 0x0001 || q + 4 + l > a) return false;
+    q += 4 + l;
+  }
+  return q === a;
+}
+
+const SENTINELLA32 = 0xffffffff, SENTINELLA16 = 0xffff;
+
 function vociZip(buf) {
   const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50, DESCR = 0x08074b50;
   if (buf.length < 22) return null;
@@ -63,9 +81,10 @@ function vociZip(buf) {
   if (buf.readUInt32LE(fine) !== EOCD || buf.readUInt16LE(fine + 20) !== 0) return null;
   if (buf.readUInt16LE(fine + 4) !== 0 || buf.readUInt16LE(fine + 6) !== 0) return null; // un solo disco
   const n = buf.readUInt16LE(fine + 10);
-  if (n === 0 || buf.readUInt16LE(fine + 8) !== n) return null;
+  if (n === 0 || n === SENTINELLA16 || buf.readUInt16LE(fine + 8) !== n) return null;
   const dim = buf.readUInt32LE(fine + 12);
   const inizioCen = buf.readUInt32LE(fine + 16);
+  if (dim === SENTINELLA32 || inizioCen === SENTINELLA32) return null;  // zip64
   if (inizioCen + dim !== fine) return null;           // niente fra directory ed EOCD
 
   const voci = new Set();
@@ -74,17 +93,33 @@ function vociZip(buf) {
   for (let k = 0; k < n; k++) {
     if (p + 46 > fine || buf.readUInt32LE(p) !== CEN) return null;
     const flag = buf.readUInt16LE(p + 8);
-    const compresso = buf.readUInt32LE(p + 20);
+    const compresso = buf.readUInt32LE(p + 20), originale = buf.readUInt32LE(p + 24);
     const lNome = buf.readUInt16LE(p + 28), lExtra = buf.readUInt16LE(p + 30), lComm = buf.readUInt16LE(p + 32);
+    const disco = buf.readUInt16LE(p + 34);
     const locale = buf.readUInt32LE(p + 42);
-    if (compresso === 0xffffffff || locale === 0xffffffff || lComm !== 0) return null; // zip64, commenti
+    // Zip64 e' escluso del tutto: nessun campo con il valore sentinella, nessun
+    // blocco extra 0x0001. Basta che uno solo dei campi rimandi al blocco a 64
+    // bit perche' dimensioni e offset letti qui non siano piu' quelli veri.
+    if (compresso === SENTINELLA32 || originale === SENTINELLA32 || locale === SENTINELLA32) return null;
+    if (disco !== 0 || lComm !== 0) return null;         // un solo disco, niente commenti
     if (p + 46 + lNome + lExtra > fine) return null;
+    if (!extraAmmessi(buf, p + 46 + lNome, lExtra)) return null;
     const nome = buf.subarray(p + 46, p + 46 + lNome);
 
     // La voce locale deve esistere, avere lo stesso nome e finire dove dice il record.
     if (locale + 30 > inizioCen || buf.readUInt32LE(locale) !== LOC) return null;
+    const flagLoc = buf.readUInt16LE(locale + 6);
+    const compressoLoc = buf.readUInt32LE(locale + 18), originaleLoc = buf.readUInt32LE(locale + 22);
     const lNomeLoc = buf.readUInt16LE(locale + 26), lExtraLoc = buf.readUInt16LE(locale + 28);
     if (lNomeLoc !== lNome || !buf.subarray(locale + 30, locale + 30 + lNome).equals(nome)) return null;
+    if (locale + 30 + lNome + lExtraLoc > inizioCen) return null;
+    if (compressoLoc === SENTINELLA32 || originaleLoc === SENTINELLA32) return null;
+    if (!extraAmmessi(buf, locale + 30 + lNome, lExtraLoc)) return null;
+    // Senza data descriptor le dimensioni stanno nell'intestazione locale e
+    // devono essere quelle del record centrale: due letture diverse dello
+    // stesso archivio sono esattamente cio' che un parser sfrutta.
+    if ((flagLoc & 0x08) !== (flag & 0x08)) return null;
+    if (!(flag & 0x08) && (compressoLoc !== compresso || originaleLoc !== originale)) return null;
     let fineLoc = locale + 30 + lNomeLoc + lExtraLoc + compresso;
     if (flag & 0x08) {                                   // data descriptor dopo i dati
       fineLoc += fineLoc + 4 <= inizioCen && buf.readUInt32LE(fineLoc) === DESCR ? 16 : 12;
