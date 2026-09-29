@@ -1,6 +1,6 @@
 {{- if .Values.backend.enabled }}
 {{- $p := .Values.backend.allegati.persistence }}
-{{- if and (gt (int .Values.backend.replicaCount) 1) (or (not $p.enabled) (include "prima-nota.allegatiRWO" .)) }}
+{{- if and (gt (int .Values.backend.replicaCount) 1) (not (and $p.enabled (has "ReadWriteMany" $p.accessModes))) }}
 {{- fail "backend.replicaCount > 1 richiede backend.allegati.persistence con accessModes [ReadWriteMany]: ogni replica deve vedere gli stessi file degli allegati" }}
 {{- end }}
 apiVersion: apps/v1
@@ -12,9 +12,10 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   replicas: {{ .Values.backend.replicaCount }}
-  {{- if include "prima-nota.allegatiRWO" . }}
-  # Volume ReadWriteOnce: il pod nuovo parte dopo che il vecchio ha lasciato il
-  # volume (con RollingUpdate resterebbe in attesa se finisce su un altro nodo).
+  {{- if include "prima-nota.allegatiEsclusivo" . }}
+  # Volume senza ReadWriteMany: il pod nuovo parte dopo che il vecchio ha lasciato
+  # il volume (con RollingUpdate resterebbe in attesa: con ReadWriteOnce se finisce
+  # su un altro nodo, con ReadWriteOncePod sempre).
   strategy:
     type: Recreate
   {{- end }}

@@ -9,7 +9,8 @@
 #      C. i numeri dei values arrivano interi (10485760, non "1.048576e+07");
 #      D. SMTP: host e porta dai values, password solo da Secret;
 #      E. allegati: PVC (tenuto dopo uninstall), mount, fsGroup, Recreate con
-#         ReadWriteOnce; piu' repliche solo con ReadWriteMany;
+#         ogni modo senza ReadWriteMany; piu' repliche solo con ReadWriteMany
+#         (rifiutate con ReadWriteOnce, ReadWriteOncePod, ReadOnlyMany);
 #   2. esecuzione (F): l'immagine del backend di questo checkout parte con
 #      l'ambiente e i volumi del Deployment renderizzato (valori dei Secret
 #      sostituiti, PVC simulato come lo prepara kubelet: radice root:root 755,
@@ -139,6 +140,15 @@ eq "ReadWriteOnce -> strategia Recreate" "Recreate" "$(dep "$T/e.yaml" "dep['spe
 render "$T/e.yaml" --set backend.replicaCount=2
 eq "due repliche con ReadWriteOnce -> rifiutato" "1" "$([ "$RC" != 0 ] && echo 1 || echo 0)"
 eq "  dice perche'" "1" "$(grep -c 'ReadWriteMany' "$T/e.yaml.err")"
+for M in ReadWriteOncePod ReadOnlyMany; do
+  render "$T/e.yaml" --set backend.replicaCount=2 --set "backend.allegati.persistence.accessModes={$M}"
+  eq "due repliche con $M -> rifiutato" "1" "$([ "$RC" != 0 ] && echo 1 || echo 0)"
+  eq "  dice perche'" "1" "$(grep -c 'ReadWriteMany' "$T/e.yaml.err")"
+  render "$T/e.yaml" --set "backend.allegati.persistence.accessModes={$M}"
+  eq "una replica con $M -> Recreate" "0|Recreate" "$RC|$(dep "$T/e.yaml" "dep['spec'].get('strategy',{}).get('type')")"
+done
+render "$T/e.yaml" --set backend.replicaCount=2 --set 'backend.allegati.persistence.accessModes={ReadWriteOnce,ReadWriteMany}'
+eq "due repliche con ReadWriteOnce+ReadWriteMany: ok, niente Recreate" "0|None" "$RC|$(dep "$T/e.yaml" "dep['spec'].get('strategy',{}).get('type')")"
 render "$T/e.yaml" --set backend.replicaCount=2 --set 'backend.allegati.persistence.accessModes={ReadWriteMany}'
 eq "due repliche con ReadWriteMany: ok, niente Recreate" "0|None" "$RC|$(dep "$T/e.yaml" "dep['spec'].get('strategy',{}).get('type')")"
 render "$T/e.yaml" --set backend.allegati.persistence.existingClaim=miei-allegati

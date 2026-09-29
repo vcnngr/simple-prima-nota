@@ -150,9 +150,10 @@ senza conversione 10485760 diventa "1.048576e+07", che parseInt legge come 1.
 {{- end -}}
 
 {{/*
-Volume degli allegati: una sola scrittura alla volta se ReadWriteOnce.
+Volume degli allegati montabile da un solo pod alla volta: persistenza attiva
+senza ReadWriteMany (ReadWriteOnce, ReadWriteOncePod, ReadOnlyMany...).
 */}}
-{{- define "prima-nota.allegatiRWO" -}}
+{{- define "prima-nota.allegatiEsclusivo" -}}
 {{- $p := .Values.backend.allegati.persistence -}}
-{{- if and $p.enabled (has "ReadWriteOnce" $p.accessModes) (not (has "ReadWriteMany" $p.accessModes)) -}}true{{- end -}}
+{{- if and $p.enabled (not (has "ReadWriteMany" $p.accessModes)) -}}true{{- end -}}
 {{- end -}}
