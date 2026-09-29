@@ -220,8 +220,15 @@ stata salvata: rispondere `202 success:true` la confermerebbe al commercialista,
 rivedrebbe mai. Una prima versione rispondeva `202` anche in errore, per timore dell'oracolo; ma il
 `500` che rivelava i clienti veri nasceva dalla gara fra richieste concorrenti, che la 004 assorbe
 con `ON CONFLICT DO NOTHING`. Ciò che arriva al `catch` oggi è un guasto (database giù, funzione
-mancante), indipendente dall'esistenza del cliente. La sezione H di `scripts/smoke/w2-invito.sh`
-rinomina la funzione nel DB di prova e verifica `500` senza `success`.
+mancante). La sezione H di `scripts/smoke/w2-invito.sh` rinomina la funzione nel DB di prova e
+verifica `500` senza `success`.
+
+Il `500` **non** è però indipendente dall'esistenza del cliente in ogni caso: un guasto che colpisce
+solo l'`INSERT` (tabella in sola lettura, vincolo o trigger rotto) lascia passare i clienti
+inesistenti, che non arrivano all'`INSERT`, e fa fallire solo quelli veri — per tutta la durata del
+guasto l'endpoint torna a distinguerli (riprodotto in revisione con un trigger di prova). Si accetta:
+serve un guasto in corso e un commercialista autenticato sotto tetto orario, e l'alternativa
+(`202` in errore) è il falso successo, peggiore. Il guasto è comunque nei log.
 
 Residuo: il ciclo di `richiedi_collegamento_interno` alza un'eccezione dopo 5 conflitti di fila, e
 solo per clienti esistenti. Richiede che il cliente revochi ripetutamente dentro la stessa finestra
@@ -241,6 +248,10 @@ Stessa regola per gli altri due punti dove un corpo di richiesta arrivava ai log
 Joi (`middleware/validation.js`) registra solo campo e tipo di errore, mai il valore né il messaggio
 di Joi, che per alcune regole lo cita; il gestore d'errori di `server.js` risponde `400` a un JSON
 malformato senza stamparne il messaggio, che da Node 20 include un estratto del corpo.
+Lo stesso vale per le password: il login utente (`routes/auth.js`) stampava l'intero `req.body`.
+`scripts/smoke/log-credenziali.sh` chiama ogni route che riceve una password — registrazione,
+login, cambio password, eliminazione account, lato utente e commercialista, rami validi e
+d'errore, JSON malformato — con password sentinella, e le cerca nei log veri.
 La sezione G di `scripts/smoke/w2-invito.sh` lo verifica leggendo i log veri, e **fallisce** se non
 le si indica dove sono (`BACKEND_LOG` o `BACKEND_CONTAINER`): una prova sui log che non legge i log
 passerebbe sempre.
@@ -419,6 +430,6 @@ Ogni blocco è un branch `feat/...` separato, con review `pn-gpt` prima della ch
 - Fix di sicurezza su `backend/middleware/auth.js` (token commercialista accettato dalle route
   utente) — **fase 3**, ma va detto chiaramente: finché non è chiuso, nessuna parte di questo
   workflow è efficace, perché il controllo di accesso si aggira a monte.
-- Rimozione del `console.log` che stampa la password in chiaro al login commercialista — fase 3.
+- ~~Rimozione del `console.log` che stampa la password in chiaro al login~~ — fatto in W2: era il login **utente** (`routes/auth.js`); quello commercialista non la stampa. Prova: `scripts/smoke/log-credenziali.sh`.
 - Allineamento `init.sql` / `db-init-job.yaml` e ripristino di `nginx.conf` deploy-neutral — fase 2.
 - Ridisegno UX mobile-first — fase 4.

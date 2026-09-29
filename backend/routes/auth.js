@@ -61,11 +61,6 @@ router.post('/register', validate(schemas.user), async (req, res) => {
 // Login utente
 router.post('/login', validate(schemas.login), async (req, res) => {
   try {
-    console.log('🔍 LOGIN REQUEST:', {
-      body: req.body,
-      contentType: req.get('Content-Type'),
-      origin: req.get('Origin')
-    });
     const { username, password } = req.body;
     
     // Trova l'utente
