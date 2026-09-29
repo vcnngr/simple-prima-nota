@@ -63,6 +63,8 @@ printf 'MZ\x90\x00\x03\x00\x00\x00 finto eseguibile' > $T/malevolo.exe
 printf '<html><script>alert(1)</script></html>\n' > $T/pagina.html
 printf 'a;b\x00c\n' > $T/binario.csv
 printf 'PK\x03\x04 zip qualunque' > $T/archivio.zip
+# Non e' uno zip: solo la firma e i due nomi che un xlsx ha in directory centrale.
+printf 'PK\x03\x04 xl/workbook.xml [Content_Types].xml' > $T/finto.xlsx
 (cd "$(dirname "$0")/../../backend" && node -e "
 const X=require('xlsx');const wb=X.utils.book_new();
 X.utils.book_append_sheet(wb,X.utils.aoa_to_sheet([['data','importo'],['2025-06-01',100]]),'F');
@@ -131,6 +133,7 @@ assert_http "eseguibile dichiarato application/pdf -> 415" 415 \
 assert_http "html rinominato .csv -> 415" 415 up "$UT" "$QU" $T/pagina.html pagina.csv
 assert_http "csv con byte nulli -> 415" 415 up "$UT" "$QU" $T/binario.csv
 assert_http "zip qualunque rinominato .xlsx -> 415" 415 up "$UT" "$QU" $T/archivio.zip archivio.xlsx
+assert_http "firma zip + nomi xlsx senza struttura zip -> 415" 415 up "$UT" "$QU" $T/finto.xlsx finto.xlsx
 assert_http "jpg con estensione .png -> 415" 415 up "$UT" "$QU" $T/img.jpg foto.png
 assert_http "pdf con estensione .exe -> 415" 415 up "$UT" "$QU" $T/doc.pdf doc.exe
 assert_http "11 MB -> 413" 413 up "$UT" "$QU" $T/grande.csv

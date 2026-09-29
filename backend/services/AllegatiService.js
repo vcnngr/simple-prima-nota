@@ -48,15 +48,44 @@ function testoUtf8(buf) {
   }
 }
 
+// Nomi delle voci di uno zip, letti dalla directory centrale. null se la
+// struttura non torna: record di fine assente, directory fuori dal file, voce
+// che non punta a un'intestazione locale.
+function vociZip(buf) {
+  const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50;
+  const min = Math.max(0, buf.length - 22 - 0xffff);
+  let fine = -1;
+  for (let i = buf.length - 22; i >= min; i--) {
+    if (buf.readUInt32LE(i) === EOCD && i + 22 + buf.readUInt16LE(i + 20) === buf.length) { fine = i; break; }
+  }
+  if (fine < 0) return null;
+  const n = buf.readUInt16LE(fine + 10);
+  const dim = buf.readUInt32LE(fine + 12);
+  let p = buf.readUInt32LE(fine + 16);
+  if (n === 0 || p + dim > fine) return null;
+  const voci = new Set();
+  for (let k = 0; k < n; k++) {
+    if (p + 46 > fine || buf.readUInt32LE(p) !== CEN) return null;
+    const lNome = buf.readUInt16LE(p + 28), lExtra = buf.readUInt16LE(p + 30), lComm = buf.readUInt16LE(p + 32);
+    const locale = buf.readUInt32LE(p + 42);
+    if (locale + 30 > buf.length || buf.readUInt32LE(locale) !== LOC) return null;
+    if (p + 46 + lNome > fine) return null;
+    voci.add(buf.subarray(p + 46, p + 46 + lNome).toString('utf8'));
+    p += 46 + lNome + lExtra + lComm;
+  }
+  return voci;
+}
+
 // Riconosce il tipo dal contenuto. null = non ammesso.
 function riconosci(buf) {
   if (iniziaCon(buf, [0x25, 0x50, 0x44, 0x46, 0x2d])) return 'pdf';            // %PDF-
   if (iniziaCon(buf, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'png';
   if (iniziaCon(buf, [0xff, 0xd8, 0xff])) return 'jpeg';
   if (iniziaCon(buf, [0x50, 0x4b, 0x03, 0x04])) {
-    // Uno zip qualunque non basta: la directory centrale di un xlsx nomina il
-    // foglio di lavoro in chiaro.
-    return buf.includes('xl/workbook.xml') && buf.includes('[Content_Types].xml') ? 'xlsx' : null;
+    // Uno zip qualunque non basta, e nemmeno le due stringhe cercate nei byte:
+    // si legge la directory centrale e si pretendono le due voci di un xlsx.
+    const voci = vociZip(buf);
+    return voci && voci.has('xl/workbook.xml') && voci.has('[Content_Types].xml') ? 'xlsx' : null;
   }
   if (testoUtf8(buf)) {
     // Un file di testo che si apre come pagina web non e' un CSV.
