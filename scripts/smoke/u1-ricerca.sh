@@ -165,6 +165,10 @@ ATTESI=$(qa "SELECT id FROM movimenti WHERE user_id=$UID_ AND descrizione <> 'nu
 eq "cursore: tutte le righe, una volta, in ordine (41 righe, 6 pagine)" "$(echo $ATTESI)|6" "$(echo $VISTI)|$GIRI"
 eq "cursore con order_by=importo -> 400" "400" "$(hit "${AU[@]}" "$API/movimenti?order_by=importo&dopo=2026-01-01_5")"
 eq "cursore malformato -> 400" "400" "$(hit "${AU[@]}" "$API/movimenti?dopo=ieri")"
+eq "cursore con data impossibile -> 400" "400" "$(hit "${AU[@]}" "$API/movimenti?dopo=2025-02-30_5")"
+eq "cursore con mese 13 -> 400" "400" "$(hit "${AU[@]}" "$API/movimenti?dopo=2025-13-01_5")"
+eq "cursore con id oltre INTEGER -> 400" "400" "$(hit "${AU[@]}" "$API/movimenti?dopo=2025-01-01_2147483648")"
+eq "cursore al limite di INTEGER -> 200" "200" "$(hit "${AU[@]}" "$API/movimenti?dopo=2025-01-01_2147483647")"
 hit "${AU[@]}" "$API/movimenti?conto_id=$CONTO&limit=1" >/dev/null
 eq "saldo progressivo dell'ultimo movimento = calcola_saldo_conto" "$(q "SELECT calcola_saldo_conto($CONTO)")" "$(py "print(d['movimenti'][0]['saldo_progressivo'])")"
 OLD=$(q "SELECT id FROM movimenti WHERE descrizione='vecchio' AND user_id=$UID_")

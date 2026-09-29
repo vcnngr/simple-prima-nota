@@ -47,8 +47,17 @@ const movimentiFiltersSchema = require('joi').object({
   // U1: cursore per le liste infinite ("data_id" dell'ultima riga ricevuta), solo
   // con order_by=data. Con il cursore offset si ignora: righe inserite nel
   // frattempo non fanno saltare ne' ripetere righe.
-  dopo: require('joi').string().pattern(/^\d{4}-\d{2}-\d{2}_[1-9]\d{0,9}$/).optional()
+  dopo: require('joi').string().pattern(/^\d{4}-\d{2}-\d{2}_[1-9]\d{0,9}$/).custom(cursoreValido).optional()
 });
+
+// Il pattern non basta: 2025-02-30 e id oltre INTEGER arrivavano a pg (500).
+function cursoreValido(v, helpers) {
+  const [d, i] = v.split('_');
+  const t = new Date(`${d}T00:00:00Z`);
+  if (Number.isNaN(t.getTime()) || t.toISOString().slice(0, 10) !== d) return helpers.error('any.invalid');
+  if (Number(i) > 2147483647) return helpers.error('any.invalid');
+  return v;
+}
 
 // GET /api/movimenti/export - Export movimenti (AGGIORNATO CON TIPOLOGIE)
 router.get('/export', async (req, res) => {
