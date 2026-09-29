@@ -399,6 +399,7 @@ const ClientDetailPage = () => {
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Conto</th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoria</th>
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Importo</th>
+                          <th className="px-4 py-3"><span className="sr-only">Chiedi</span></th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
@@ -422,6 +423,14 @@ const ClientDetailPage = () => {
                               }`}>
                                 {movimento.tipo === 'Entrata' ? '+' : '-'}{formatCurrency(movimento.importo)}
                               </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right">
+                              <Link
+                                to={`/commercialista/chat/${userId}?movimento=${movimento.id}`}
+                                className="text-primary-600 hover:underline whitespace-nowrap"
+                              >
+                                Chiedi
+                              </Link>
                             </td>
                           </tr>
                         ))}

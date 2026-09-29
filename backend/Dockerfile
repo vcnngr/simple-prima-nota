@@ -19,6 +19,10 @@ COPY . .
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001
 
+# Cartella degli allegati: esiste nell'immagine cosi' il volume nasce del
+# proprietario giusto (un volume vuoto copia i permessi dalla cartella)
+RUN mkdir -p /app/uploads/allegati
+
 # Cambia proprietario dei file
 RUN chown -R nodejs:nodejs /app
 USER nodejs

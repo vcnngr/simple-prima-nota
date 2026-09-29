@@ -1,6 +1,6 @@
 // src/pages/Messaggi/ChatPage.js
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Send,
@@ -9,7 +9,12 @@ import {
   CheckCheck,
   MessageCircle,
   User as UserIcon,
-  Briefcase
+  Briefcase,
+  Paperclip,
+  X,
+  HelpCircle,
+  Download,
+  Receipt
 } from 'lucide-react';
 import { messaggiAPI, utentiCommercialistaAPI, commercialistiAPI } from '../../services/api';
 import Button from '../../components/UI/Button';
@@ -17,6 +22,10 @@ import Alert from '../../components/UI/Alert';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import toast from 'react-hot-toast';
 import usePollingVisibile from '../../hooks/usePollingVisibile';
+
+// Il limite vero lo applica il server; qui si evita solo di caricare 50 MB per
+// sentirsi dire di no.
+const MAX_ALLEGATO = 10 * 1024 * 1024;
 
 const ChatPage = () => {
   const { userId } = useParams(); // For commercialista view
@@ -27,7 +36,13 @@ const ChatPage = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [otherParty, setOtherParty] = useState(null);
+  const [chiarimentiAperti, setChiarimentiAperti] = useState(0);
+  const [file, setFile] = useState(null);
+  const [chiarimento, setChiarimento] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const movimentoRif = parseInt(searchParams.get('movimento'), 10) || null;
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
   const userType = localStorage.getItem('user_type');
 
   // Chat aperta: ogni 15 secondi, e solo se la scheda e' visibile.
@@ -50,6 +65,7 @@ const ChatPage = () => {
 
       setMessages(response.messaggi || []);
       setUnreadCount(response.unread_count || 0);
+      setChiarimentiAperti(response.chiarimenti_aperti || 0);
 
       // Load other party info
       if (userType === 'commercialista' && !otherParty) {
@@ -85,15 +101,39 @@ const ChatPage = () => {
     loadMessages(false);
   };
 
+  const togliMovimento = () => {
+    searchParams.delete('movimento');
+    setSearchParams(searchParams, { replace: true });
+  };
+
+  const scegliFile = (e) => {
+    const scelto = e.target.files?.[0];
+    e.target.value = '';
+    if (!scelto) return;
+    if (scelto.size > MAX_ALLEGATO) {
+      toast.error('File troppo grande (massimo 10 MB)');
+      return;
+    }
+    setFile(scelto);
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!newMessage.trim()) return;
+    if (!newMessage.trim() && !file) return;
 
     setIsSending(true);
     try {
       const params = userId ? { userId } : {};
-      await messaggiAPI.send(newMessage.trim(), params);
+      const extra = { chiarimento, movimento_id: movimentoRif };
+      if (file) {
+        await messaggiAPI.sendAllegato(file, { messaggio: newMessage.trim(), ...extra }, params);
+      } else {
+        await messaggiAPI.send(newMessage.trim(), params, extra);
+      }
       setNewMessage('');
+      setFile(null);
+      setChiarimento(false);
+      if (movimentoRif) togliMovimento();
       loadMessages(false);
       scrollToBottom();
     } catch (err) {
@@ -101,6 +141,34 @@ const ChatPage = () => {
       toast.error(errorMessage);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const scaricaAllegato = async (allegato) => {
+    try {
+      const params = userId ? { userId } : {};
+      const blob = await messaggiAPI.scaricaAllegato(allegato.id, params);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = allegato.nome;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error('Allegato non disponibile');
+    }
+  };
+
+  const cambiaChiarimento = async (message, stato) => {
+    try {
+      const params = userId ? { userId } : {};
+      await messaggiAPI.setChiarimento(message.id, stato, params);
+      loadMessages(false);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Errore nell\'aggiornamento della richiesta');
+      loadMessages(false);
     }
   };
 
@@ -188,6 +256,12 @@ const ChatPage = () => {
           </div>
 
           <div className="flex items-center space-x-3">
+            {chiarimentiAperti > 0 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                <HelpCircle className="h-3.5 w-3.5 mr-1" />
+                {chiarimentiAperti} da chiarire
+              </span>
+            )}
             {unreadCount > 0 && (
               <Button
                 variant="outline"
@@ -246,10 +320,60 @@ const ChatPage = () => {
                         : 'bg-white border border-gray-200 text-gray-900'
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap break-words">
-                      {message.messaggio}
-                    </p>
+                    {message.chiarimento_stato && (
+                      <div className={`flex items-center text-xs font-semibold mb-1 ${
+                        isMine ? 'text-white/90' : 'text-amber-700'
+                      }`}>
+                        <HelpCircle className="h-3.5 w-3.5 mr-1" />
+                        Richiesta di chiarimento · {message.chiarimento_stato === 'aperta' ? 'aperta' : 'risolta'}
+                      </div>
+                    )}
+                    {message.movimento && (
+                      <div className={`flex items-center text-xs rounded-lg px-2 py-1 mb-2 ${
+                        isMine ? 'bg-primary-700' : 'bg-gray-100 text-gray-700'
+                      }`}>
+                        <Receipt className="h-3.5 w-3.5 mr-1 flex-shrink-0" />
+                        <span className="truncate">
+                          {new Date(message.movimento.data).toLocaleDateString('it-IT')} · {message.movimento.descrizione} · {message.movimento.tipo === 'Entrata' ? '+' : '-'}{Number(message.movimento.importo).toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+                        </span>
+                      </div>
+                    )}
+                    {message.movimento_nascosto && (
+                      <div className="text-xs italic mb-2 opacity-80">
+                        Movimento non piu' visibile
+                      </div>
+                    )}
+                    {message.messaggio && (
+                      <p className="text-sm whitespace-pre-wrap break-words">
+                        {message.messaggio}
+                      </p>
+                    )}
+                    {(message.allegati || []).map((allegato) => (
+                      <button
+                        key={allegato.id}
+                        type="button"
+                        onClick={() => scaricaAllegato(allegato)}
+                        className={`mt-2 flex items-center w-full text-left text-xs rounded-lg px-2 py-1.5 ${
+                          isMine ? 'bg-primary-700 hover:bg-primary-800' : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
+                        }`}
+                      >
+                        <Download className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+                        <span className="truncate flex-1">{allegato.nome}</span>
+                        <span className="ml-2 opacity-75">{Math.max(1, Math.round(allegato.dimensione / 1024))} KB</span>
+                      </button>
+                    ))}
                   </div>
+                  {message.chiarimento_stato && (
+                    <div className={`flex mt-1 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                      <button
+                        type="button"
+                        onClick={() => cambiaChiarimento(message, message.chiarimento_stato === 'aperta' ? 'risolta' : 'aperta')}
+                        className="text-xs font-medium text-primary-600 hover:underline"
+                      >
+                        {message.chiarimento_stato === 'aperta' ? 'Segna risolta' : 'Riapri'}
+                      </button>
+                    </div>
+                  )}
                   <div className={`flex items-center mt-1 space-x-2 ${isMine ? 'justify-end' : 'justify-start'}`}>
                     <span className="text-xs text-gray-500">
                       {formatTime(message.created_at)}
@@ -274,7 +398,45 @@ const ChatPage = () => {
 
       {/* Message Input */}
       <div className="bg-white border-t border-gray-200 px-6 py-3">
+        {(movimentoRif || file) && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {movimentoRif && (
+              <span className="inline-flex items-center text-xs bg-gray-100 text-gray-700 rounded-full px-2.5 py-1">
+                <Receipt className="h-3.5 w-3.5 mr-1" />
+                Riferito al movimento #{movimentoRif}
+                <button type="button" onClick={togliMovimento} className="ml-1" aria-label="Togli il movimento">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            )}
+            {file && (
+              <span className="inline-flex items-center text-xs bg-gray-100 text-gray-700 rounded-full px-2.5 py-1 max-w-full">
+                <Paperclip className="h-3.5 w-3.5 mr-1 flex-shrink-0" />
+                <span className="truncate">{file.name}</span>
+                <button type="button" onClick={() => setFile(null)} className="ml-1" aria-label="Togli l'allegato">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            )}
+          </div>
+        )}
         <form onSubmit={handleSendMessage} className="flex items-end space-x-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.xlsx,.csv"
+            className="hidden"
+            onChange={scegliFile}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 mb-6 rounded-lg hover:bg-gray-100 text-gray-600"
+            aria-label="Allega un file"
+            disabled={isSending}
+          >
+            <Paperclip className="h-5 w-5" />
+          </button>
           <div className="flex-1">
             <textarea
               value={newMessage}
@@ -290,14 +452,25 @@ const ChatPage = () => {
               className="form-input resize-none"
               disabled={isSending}
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Premi Invio per inviare, Shift+Invio per andare a capo
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-1">
+              <p className="text-xs text-gray-500">
+                Premi Invio per inviare, Shift+Invio per andare a capo
+              </p>
+              <label className="inline-flex items-center text-xs text-gray-700">
+                <input
+                  type="checkbox"
+                  className="mr-1.5"
+                  checked={chiarimento}
+                  onChange={(e) => setChiarimento(e.target.checked)}
+                />
+                Richiesta di chiarimento
+              </label>
+            </div>
           </div>
           <Button
             type="submit"
             variant="primary"
-            disabled={!newMessage.trim() || isSending}
+            disabled={(!newMessage.trim() && !file) || isSending}
             loading={isSending}
           >
             <Send className="h-5 w-5" />

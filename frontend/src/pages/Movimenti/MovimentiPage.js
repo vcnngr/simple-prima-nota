@@ -1,7 +1,7 @@
 // src/pages/Movimenti/MovimentiPage.js - VERSIONE FLESSIBILE CON TIPOLOGIE
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Plus,
@@ -17,9 +17,10 @@ import {
   FileText,
   Upload,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  MessageCircle
 } from 'lucide-react';
-import { movimentiAPI, contiBancariAPI, anagraficheAPI } from '../../services/api';
+import { movimentiAPI, contiBancariAPI, anagraficheAPI, utentiCommercialistaAPI } from '../../services/api';
 import Card from '../../components/UI/Card';
 import Button from '../../components/UI/Button';
 import Badge from '../../components/UI/Badge';
@@ -61,6 +62,16 @@ const MovimentiPage = () => {
   });
   
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  // "Chiedi al commercialista" compare solo se ce n'e' uno collegato.
+  const { data: commercialistaCollegato } = useQuery(
+    'commercialista-collegato',
+    utentiCommercialistaAPI.getCommercialista,
+    { staleTime: 5 * 60 * 1000, retry: false }
+  );
+  const haCommercialista = Boolean(commercialistaCollegato?.has_commercialista);
+  const chiediAlCommercialista = (movimento) => navigate(`/chat?movimento=${movimento.id}`);
   
   // Auto-apri modal se specificato nei params
   React.useEffect(() => {
@@ -642,6 +653,16 @@ const MovimentiPage = () => {
         </Table.Cell>
         <Table.Cell className="text-right">
         <div className="flex items-center justify-end space-x-1">
+        {haCommercialista && (
+        <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => chiediAlCommercialista(movimento)}
+        title="Chiedi al commercialista"
+        >
+        <MessageCircle className="w-4 h-4" />
+        </Button>
+        )}
         <Button
         variant="ghost"
         size="sm"
@@ -797,6 +818,16 @@ const MovimentiPage = () => {
 
           {/* Actions */}
           <div className="flex items-center justify-end space-x-2 pt-3 border-t border-gray-100">
+          {haCommercialista && (
+          <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => chiediAlCommercialista(movimento)}
+          >
+          <MessageCircle className="w-4 h-4 mr-1" />
+          Chiedi
+          </Button>
+          )}
           <Button
           variant="ghost"
           size="sm"

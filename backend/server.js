@@ -22,6 +22,7 @@ const commercialistiRoutes = require('./routes/commercialisti');
 const utentiCommercialistaRoutes = require('./routes/utentiCommercialista');
 const messaggiRoutes = require('./routes/messaggi');
 const notifiche = require('./services/NotificationService');
+const allegati = require('./services/AllegatiService');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -136,6 +137,7 @@ app.use('*', (req, res) => {
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
   notifiche.ferma();
+  allegati.ferma();
   accessLogStream.end(); // Chiudi il stream dei log
   server.close(() => {
     console.log('HTTP server closed');
@@ -144,6 +146,7 @@ process.on('SIGTERM', () => {
 
 const server = app.listen(PORT, () => {
   notifiche.avvia();
+  allegati.avvia();
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API URL: http://localhost:${PORT}/api`);

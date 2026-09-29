@@ -286,7 +286,26 @@ const schemas = {
       'string.empty': 'Messaggio richiesto',
       'any.required': 'Messaggio richiesto'
     }),
-    collegamento_id: Joi.number().integer().positive().optional()
+    collegamento_id: Joi.number().integer().positive().optional(),
+    movimento_id: Joi.number().integer().positive().allow(null).optional(),
+    chiarimento: Joi.boolean().default(false)
+  }),
+
+  // Campi testuali del multipart di un allegato: il testo e' facoltativo.
+  messaggioAllegato: Joi.object({
+    messaggio: Joi.string().trim().max(5000).allow('').default(''),
+    movimento_id: Joi.number().integer().positive().allow(null, '').optional(),
+    chiarimento: Joi.boolean().truthy('1').falsy('0').default(false)
+  }),
+
+  chiarimentoStato: Joi.object({
+    stato: Joi.string().valid('aperta', 'risolta').required()
+  }),
+
+  chiarimentiQuery: Joi.object({
+    userId: Joi.number().integer().positive().optional(),
+    collegamentoId: Joi.number().integer().positive().optional(),
+    stato: Joi.string().valid('aperta', 'risolta').optional()
   }),
 
   messaggiQuery: Joi.object({

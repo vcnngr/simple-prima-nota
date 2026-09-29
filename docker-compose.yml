@@ -18,6 +18,7 @@ services:
       - ./database/migrations/004_richieste_idempotenti.sql:/docker-entrypoint-initdb.d/05-richieste-idempotenti.sql
       - ./database/migrations/005_accessi_commercialista.sql:/docker-entrypoint-initdb.d/06-accessi-commercialista.sql
       - ./database/migrations/006_notifiche.sql:/docker-entrypoint-initdb.d/07-notifiche.sql
+      - ./database/migrations/007_chat_lavoro.sql:/docker-entrypoint-initdb.d/08-chat-lavoro.sql
     ports:
       - "5432:5432"
     networks:
@@ -48,6 +49,10 @@ services:
       SMTP_PORT: 1025
       MAIL_FROM: Simple Prima Nota <no-reply@localhost>
       FRONTEND_URL: http://localhost:3000
+      ALLEGATI_DIR: /app/uploads/allegati
+    volumes:
+      # Allegati della chat: fuori dall'immagine, sopravvivono al rebuild.
+      - allegati_data:/app/uploads
     ports:
       - "3001:3001"
     depends_on:
@@ -97,6 +102,7 @@ services:
 
 volumes:
   postgres_data:
+  allegati_data:
 
 networks:
   prima_nota_network:

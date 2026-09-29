@@ -32,3 +32,6 @@ frontend/logs/
 *.tmp
 *.temp
 /tmp/
+
+# Allegati della chat caricati in sviluppo
+backend/uploads/

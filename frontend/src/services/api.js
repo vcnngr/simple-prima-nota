@@ -360,8 +360,30 @@ export const messaggiAPI = {
   // Get messages for current connection
   getAll: (params = {}) => api.get('/messaggi', { params }),
 
-  // Send message
-  send: (messaggio, params = {}) => api.post('/messaggi', { messaggio }, { params }),
+  // Send message. extra: { movimento_id, chiarimento }
+  send: (messaggio, params = {}, extra = {}) => api.post('/messaggi', { messaggio, ...extra }, { params }),
+
+  // Messaggio con allegato (multipart). Il Content-Type esplicito serve: con il
+  // default JSON dell'istanza axios convertirebbe il FormData in JSON.
+  sendAllegato: (file, campi = {}, params = {}) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    Object.entries(campi).forEach(([k, v]) => {
+      if (v === undefined || v === null || v === '') return;
+      fd.append(k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v));
+    });
+    return api.post('/messaggi/allegati', fd, {
+      params,
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Scarica un allegato (blob)
+  scaricaAllegato: (id, params = {}) => api.get(`/messaggi/allegati/${id}`, { params, responseType: 'blob' }),
+
+  // Richieste di chiarimento
+  setChiarimento: (id, stato, params = {}) => api.put(`/messaggi/${id}/chiarimento`, { stato }, { params }),
+  getChiarimenti: (params = {}) => api.get('/messaggi/chiarimenti', { params }),
 
   // Mark message as read
   markAsRead: (id, params = {}) => api.put(`/messaggi/${id}/letto`, {}, { params }),

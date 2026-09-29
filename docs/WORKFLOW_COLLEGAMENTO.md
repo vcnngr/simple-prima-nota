@@ -422,6 +422,45 @@ e il chart non ha ancora le variabili SMTP.
 - **richieste di chiarimento** con stato `aperta`/`risolta`, così che "mancano i documenti di marzo"
   non si perda dopo venti messaggi.
 
+**Stato (W5, migration 007).** Realizzato così:
+
+- **Allegati** — `POST /api/messaggi/allegati` (multipart: `file`, `messaggio?`, `movimento_id?`,
+  `chiarimento?`), `GET /api/messaggi/allegati/:id`. Metadati in `allegati_messaggio`, contenuto su
+  disco in `ALLEGATI_DIR` con nome = chiave casuale di 32 esadecimali (vincolo `CHECK` in tabella):
+  il nome scelto da chi carica è solo un'etichetta ripulita e non tocca mai il filesystem.
+  - Tipo riconosciuto **dal contenuto** (firma PDF/PNG/JPEG, xlsx = zip con `xl/workbook.xml`,
+    CSV = UTF-8 senza byte nulli e senza `<` iniziale) **e** coerente con l'estensione; il tipo
+    dichiarato dal browser non conta. Altrimenti `415`.
+  - `ALLEGATI_MAX_BYTES` (10 MB, applicato da multer in lettura) → `413`; quota per collegamento
+    `ALLEGATI_QUOTA_BYTES` (200 MB) controllata sotto `FOR UPDATE` del collegamento → `413`.
+  - Il file si scrive dentro la transazione del messaggio; se il commit fallisce si toglie.
+  - Download solo dal collegamento risolto per chi chiede (altrimenti `404`, come un id
+    inesistente), sempre `attachment`, `nosniff`, `no-store`, CSP `sandbox`.
+  - Il download del **commercialista** scrive una riga `allegato` nel registro della 005 prima dei
+    byte (fail-closed: registro non scrivibile → `500`, nessun byte). Il cliente non si registra.
+  - Eliminato l'allegato (in cascata con messaggio, collegamento o account), un trigger mette la
+    chiave in `allegati_da_rimuovere`; il backend (`AllegatiService.pulisci`, ogni
+    `ALLEGATI_PULIZIA_MS`) cancella il file e toglie la riga nella stessa transazione.
+  - nginx: `client_max_body_size 11m` su `/api/`; docker-compose: volume `allegati_data`.
+- **Movimento citato** — `movimento_id` sul messaggio (`ON DELETE SET NULL`). Si cita solo un
+  movimento del cliente **dentro l'ambito**, da entrambi i lati (stessa risposta `400` per
+  inesistente, altrui, fuori ambito). In lettura il commercialista vede il contenuto solo se il
+  movimento è ancora nell'ambito (il cliente può averlo spostato): altrimenti `movimento_nascosto`.
+  In UI: "Chiedi" sul movimento (cliente: `MovimentiPage`, studio: `ClientDetailPage`) apre la chat
+  con il riferimento; la bolla mostra data, descrizione e importo.
+- **Richieste di chiarimento** — `chiarimento_stato` `aperta|risolta` sul messaggio;
+  `PUT /api/messaggi/:id/chiarimento {stato}` con lo stato di partenza nel predicato (10 richieste
+  simultanee: una `200`, nove `409`); `GET /api/messaggi/chiarimenti?stato=`; contatore
+  `chiarimenti_aperti` nella risposta della chat.
+
+Prove: `scripts/smoke/w5-chat-lavoro.sh` 91/0 (su `db4e6d0` 25/66); E2E Chromium (movimento → chat
+→ allegato multipart → download identico → chiarimento risolto) 10/0.
+
+Residui dichiarati: il rollback della 007 non cancella i file su disco; un crash fra la scrittura
+del file e il commit lascia un file orfano (senza riga, quindi non raggiungibile); il chart Helm non
+monta ancora un volume per `ALLEGATI_DIR` (fase «sistema», con le migration 002–007); la UI della
+chat è funzionale ma va rifatta nella fase UX.
+
 ### 3.9 Pulizia
 
 - **Eliminare `utenti.commercialista_id`.** Unica fonte di verità: `collegamenti_commercialista`.
@@ -490,8 +529,8 @@ Rispetta l'ordine ratificato dal titolare: **workflow → sistema → sicurezza 
 | W1 ✅ | Macchina a stati | migration 002 + rollback, `requireCollegamento`, rimozione `utenti.commercialista_id` | migration applicata e annullata su DB di prova; curl su ogni transizione |
 | W2 ✅ | Invito irrigidito | hash, 1 token attivo, 7 gg, richiesta diretta + accettazione; migration 004: richieste idempotenti e risoluzione senza scelta arbitraria | `scripts/smoke/w2-invito.sh` 54/54 e `w2-concorrenza.py` 7/7; le fixture di W2 falliscono su `8793b25`, quelle dei tre P0 della revisione falliscono su `5b57ba0` |
 | W3 ✅ | Audit + ambito | `accessi_commercialista` (migration 005), scrittura fail-closed in `requireCollegamento`, registro leggibile dal cliente; ambito già applicato dal W1 | `scripts/smoke/w3-accessi.sh` 62/62; su `79599d6` 14/33, i due P0 della revisione falliscono su `fad8fc3` (54/8) |
-| W4 | Notifiche | outbox + SMTP, sostituzione parziale del polling | email in coda su ogni evento; conteggio richieste per sessione ridotto |
-| W5 | Chat di lavoro | allegati, `movimento_id`, richieste di chiarimento | upload accettato/rifiutato per MIME e dimensione |
+| W4 ✅ | Notifiche | outbox + SMTP, sostituzione parziale del polling | email in coda su ogni evento; conteggio richieste per sessione ridotto |
+| W5 ✅ | Chat di lavoro | allegati, `movimento_id`, richieste di chiarimento | upload accettato/rifiutato per MIME e dimensione |
 | W6 | Account | cambio password ed email, reset per entrambi i tipi | ciclo completo di reset via curl |
 
 W1 e W2 sono il cuore: da soli chiudono i difetti 2.1, 2.2, 2.5, 2.6, 2.7.
