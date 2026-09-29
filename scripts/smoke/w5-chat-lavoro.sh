@@ -69,6 +69,17 @@ printf 'PK\x03\x04 xl/workbook.xml [Content_Types].xml' > $T/finto.xlsx
 const X=require('xlsx');const wb=X.utils.book_new();
 X.utils.book_append_sheet(wb,X.utils.aoa_to_sheet([['data','importo'],['2025-06-01',100]]),'F');
 X.writeFile(wb,'$T/foglio.xlsx');")
+# Zip validi ma non fogli di lavoro: due voci vuote dai nomi giusti piu' un
+# eseguibile; un xlsx vero con un eseguibile accanto; un xlsx con macro.
+python3 - "$T" <<'PY2'
+import sys, zipfile, shutil
+t = sys.argv[1]
+with zipfile.ZipFile(t + '/zipfinto.xlsx', 'w') as z:
+    z.writestr('[Content_Types].xml', ''); z.writestr('xl/workbook.xml', ''); z.writestr('payload.exe', 'MZ')
+for nome, voce in (('conpayload', 'payload.exe'), ('macro', 'xl/vbaProject.bin')):
+    shutil.copy(t + '/foglio.xlsx', t + '/' + nome + '.xlsx')
+    with zipfile.ZipFile(t + '/' + nome + '.xlsx', 'a') as z: z.writestr(voce, 'MZ')
+PY2
 head -c 11534336 /dev/zero | tr '\0' 'a' > $T/grande.csv       # 11 MB
 { printf '%%PDF-1.4\n'; head -c 1258291 /dev/zero; } > $T/medio.pdf   # 1,2 MB
 
@@ -134,6 +145,9 @@ assert_http "html rinominato .csv -> 415" 415 up "$UT" "$QU" $T/pagina.html pagi
 assert_http "csv con byte nulli -> 415" 415 up "$UT" "$QU" $T/binario.csv
 assert_http "zip qualunque rinominato .xlsx -> 415" 415 up "$UT" "$QU" $T/archivio.zip archivio.xlsx
 assert_http "firma zip + nomi xlsx senza struttura zip -> 415" 415 up "$UT" "$QU" $T/finto.xlsx finto.xlsx
+assert_http "zip valido con voci xlsx vuote e un eseguibile -> 415" 415 up "$UT" "$QU" $T/zipfinto.xlsx zipfinto.xlsx
+assert_http "xlsx vero con un eseguibile accanto -> 415" 415 up "$UT" "$QU" $T/conpayload.xlsx conpayload.xlsx
+assert_http "xlsx con macro -> 415" 415 up "$UT" "$QU" $T/macro.xlsx macro.xlsx
 assert_http "jpg con estensione .png -> 415" 415 up "$UT" "$QU" $T/img.jpg foto.png
 assert_http "pdf con estensione .exe -> 415" 415 up "$UT" "$QU" $T/doc.pdf doc.exe
 assert_http "11 MB -> 413" 413 up "$UT" "$QU" $T/grande.csv

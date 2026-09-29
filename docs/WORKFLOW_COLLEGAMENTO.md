@@ -428,7 +428,9 @@ e il chart non ha ancora le variabili SMTP.
   `chiarimento?`), `GET /api/messaggi/allegati/:id`. Metadati in `allegati_messaggio`, contenuto su
   disco in `ALLEGATI_DIR` con nome = chiave casuale di 32 esadecimali (vincolo `CHECK` in tabella):
   il nome scelto da chi carica è solo un'etichetta ripulita e non tocca mai il filesystem.
-  - Tipo riconosciuto **dal contenuto** (firma PDF/PNG/JPEG, xlsx = zip con `xl/workbook.xml`,
+  - Tipo riconosciuto **dal contenuto** (firma PDF/PNG/JPEG, xlsx = zip con directory centrale
+    valida, sole voci OOXML (`[Content_Types].xml`, `_rels/`, `docProps/`, `xl/`, `customXml/`), niente
+    `vbaProject.bin`, e workbook letto dal parser `xlsx` con almeno un foglio;
     CSV = UTF-8 senza byte nulli e senza `<` iniziale) **e** coerente con l'estensione; il tipo
     dichiarato dal browser non conta. Altrimenti `415`.
   - `ALLEGATI_MAX_BYTES` (10 MB, applicato da multer in lettura) → `413`; quota per collegamento

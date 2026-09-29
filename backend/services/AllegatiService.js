@@ -8,6 +8,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const XLSX = require('xlsx');
 const { withTransaction } = require('../config/database');
 
 const cfg = () => ({
@@ -76,6 +77,26 @@ function vociZip(buf) {
   return voci;
 }
 
+// Voci che un xlsx puo' contenere. Uno zip qualunque con due voci vuote dai
+// nomi giusti non e' un foglio di lavoro, e un foglio vero non porta con se'
+// file estranei (un eseguibile accanto al workbook) ne' macro (xlsm).
+const RADICI_XLSX = ['[Content_Types].xml', '_rels/', 'docProps/', 'xl/', 'customXml/'];
+
+function cartellaDiLavoro(buf, voci) {
+  for (const v of voci) {
+    if (!RADICI_XLSX.some(r => (r.endsWith('/') ? v.startsWith(r) : v === r))) return false;
+    if (v.includes('..') || /vbaProject\.bin$/i.test(v)) return false;
+  }
+  // Il parser gia' usato dall'import legge solo la struttura del workbook
+  // (nomi dei fogli), senza celle ne' formule: se non la trova, non e' un xlsx.
+  try {
+    const wb = XLSX.read(buf, { type: 'buffer', bookSheets: true, bookVBA: false });
+    return Array.isArray(wb.SheetNames) && wb.SheetNames.length > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
 // Riconosce il tipo dal contenuto. null = non ammesso.
 function riconosci(buf) {
   if (iniziaCon(buf, [0x25, 0x50, 0x44, 0x46, 0x2d])) return 'pdf';            // %PDF-
@@ -85,7 +106,8 @@ function riconosci(buf) {
     // Uno zip qualunque non basta, e nemmeno le due stringhe cercate nei byte:
     // si legge la directory centrale e si pretendono le due voci di un xlsx.
     const voci = vociZip(buf);
-    return voci && voci.has('xl/workbook.xml') && voci.has('[Content_Types].xml') ? 'xlsx' : null;
+    if (!voci || !voci.has('xl/workbook.xml') || !voci.has('[Content_Types].xml')) return null;
+    return cartellaDiLavoro(buf, voci) ? 'xlsx' : null;
   }
   if (testoUtf8(buf)) {
     // Un file di testo che si apre come pagina web non e' un CSV.
