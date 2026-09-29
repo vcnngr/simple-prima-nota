@@ -7,7 +7,7 @@ Ogni blocco è un branch `feat/s…`, con review `pn-gpt` prima della chiusura.
 | # | Blocco | Contenuto | Prova |
 |---|---|---|---|
 | S1 ✅ | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dalla migration 009 | `scripts/smoke/s1-migrazioni.sh` |
-| S2 | Configurazione del backend nel chart | `FRONTEND_URL` pubblico, `SMTP_*`/`MAIL_FROM` con password da Secret, `NOTIFICHE_*`, `ALLEGATI_*`, `RESET_*`; PVC degli allegati con `fsGroup`; numeri non più in notazione esponenziale | `scripts/smoke/s2-config-chart.sh` |
+| S2 ✅ | Configurazione del backend nel chart | `FRONTEND_URL` pubblico, `SMTP_*`/`MAIL_FROM` con password da Secret, `NOTIFICHE_*`, `ALLEGATI_*`, `RESET_*`; PVC degli allegati con `fsGroup`; numeri non più in notazione esponenziale | `scripts/smoke/s2-config-chart.sh` |
 | S3 | Dati e cancellazioni | cancellazione dell'account commercialista (oggi in cascata su collegamenti, registro e chat del cliente); file degli allegati orfani dopo il down della 007 | smoke dedicato |
 | S4 | Pulizia deploy | `nginx.conf` deploy-neutral, versione di PostgreSQL (README 16, chart standalone 15) | build + `compose config` + `helm template` |
 
