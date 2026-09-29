@@ -16,6 +16,7 @@ import Button from '../../components/UI/Button';
 import Alert from '../../components/UI/Alert';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import toast from 'react-hot-toast';
+import usePollingVisibile from '../../hooks/usePollingVisibile';
 
 const ChatPage = () => {
   const { userId } = useParams(); // For commercialista view
@@ -29,11 +30,8 @@ const ChatPage = () => {
   const messagesEndRef = useRef(null);
   const userType = localStorage.getItem('user_type');
 
-  useEffect(() => {
-    loadMessages();
-    const interval = setInterval(loadMessages, 10000); // Poll every 10 seconds
-    return () => clearInterval(interval);
-  }, [userId]);
+  // Chat aperta: ogni 15 secondi, e solo se la scheda e' visibile.
+  usePollingVisibile(() => loadMessages(), 15000, [userId]);
 
   useEffect(() => {
     scrollToBottom();

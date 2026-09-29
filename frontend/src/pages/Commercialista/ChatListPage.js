@@ -1,5 +1,5 @@
 // src/pages/Commercialista/ChatListPage.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -15,18 +15,15 @@ import { messaggiAPI } from '../../services/api';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import Badge from '../../components/UI/Badge';
 import toast from 'react-hot-toast';
+import usePollingVisibile from '../../hooks/usePollingVisibile';
 
 const ChatListPage = () => {
   const [clienti, setClienti] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    loadClienti();
-    // Refresh ogni 15 secondi per aggiornare contatori
-    const interval = setInterval(loadClienti, 15000);
-    return () => clearInterval(interval);
-  }, []);
+  // Contatori aggiornati ogni 30 secondi, solo a scheda visibile.
+  usePollingVisibile(() => loadClienti(), 30000);
 
   const loadClienti = async () => {
     try {

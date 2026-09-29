@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { messaggiAPI } from '../../services/api';
+import usePollingVisibile from '../../hooks/usePollingVisibile';
 
 const navigation = [
   {
@@ -68,10 +69,10 @@ const Sidebar = ({ isOpen, onClose }) => {
   const { user, logout } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    loadUnreadCount();
-    const interval = setInterval(loadUnreadCount, 15000); // Update every 15 seconds
+  // Ogni minuto, solo a scheda visibile: fuori dall'app avvisano le email.
+  usePollingVisibile(() => loadUnreadCount(), 60000);
 
+  useEffect(() => {
     // Listen for messages read event from ChatPage
     const handleMessagesRead = () => {
       loadUnreadCount();
@@ -79,7 +80,6 @@ const Sidebar = ({ isOpen, onClose }) => {
     window.addEventListener('messagesRead', handleMessagesRead);
 
     return () => {
-      clearInterval(interval);
       window.removeEventListener('messagesRead', handleMessagesRead);
     };
   }, []);

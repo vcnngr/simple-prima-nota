@@ -366,6 +366,48 @@ messaggio non letto da più di N ore.
 Senza questo, il polling a 10/15 secondi resta l'unico meccanismo di consegna — con il costo già
 misurato (≈150 richieste per 15 minuti per scheda aperta, contro un limite di produzione di 300).
 
+**Stato (W4, migration 006).** Realizzato così:
+
+- `notifiche` è una coda in uscita. Le righe le scrive un **trigger** su
+  `collegamenti_commercialista`, nella stessa transazione della transizione: non esiste una
+  transizione senza la sua notifica, e se la coda non è scrivibile la transizione fallisce
+  (`500`, stato invariato). Nessuna route può dimenticarsi di notificare.
+- Eventi: richiesta ricevuta (al lato che non l'ha fatta), accettata, rifiutata, sospesa,
+  riattivata (allo studio), revocata (al lato che **non** ha revocato), messaggi non letti.
+- La mail di richiesta parte **al massimo una volta ogni 7 giorni per coppia**: rifiuto e nuova
+  richiesta non diventano un modo di mandare posta a ripetizione. La richiesta resta visibile in app.
+- Promemoria non letti: `accoda_promemoria_non_letti(ore)` (default 4 ore, `NOTIFICHE_NON_LETTI_ORE`),
+  al massimo uno ogni 24 ore per lato, e solo se è arrivato qualcosa dopo l'ultimo promemoria.
+  Riporta **quanti** messaggi, mai il testo.
+- Consegna: `services/NotificationService.js`, un worker nel backend che prende lotti con un lease
+  (`FOR UPDATE SKIP LOCKED`: più backend non spediscono la stessa riga), ricontrolla che l'evento
+  sia ancora vero (una richiesta già accettata non si annuncia: riga `annullata`), compone il testo
+  **all'invio** (solo testo semplice, nomi ripuliti da a capo e caratteri di controllo) e spedisce
+  via SMTP. In errore ritenta con attesa crescente; dopo `NOTIFICHE_MAX_TENTATIVI` la riga è
+  `fallita`. Consegna *almeno una volta*.
+- Nei log: id della notifica ed esito. Mai indirizzi, testi o messaggi del server SMTP.
+- Senza `SMTP_HOST` il worker non parte e le notifiche restano in coda. In sviluppo
+  `docker-compose.yml` avvia **mailpit** (http://localhost:8025): nessuna mail esce davvero.
+- Polling: `frontend/src/hooks/usePollingVisibile.js` interroga **solo a scheda visibile** e
+  riallinea al ritorno. Sidebar 60 s, elenco chat studio 30 s, chat aperta 15 s.
+  Misurato in Chromium con orologio accelerato (15 minuti, `/api/*`):
+
+  | scheda | prima | dopo |
+  |---|---|---|
+  | cliente in chat, visibile | 243 | 78 |
+  | cliente in chat, nascosta | 240 | **0** |
+  | studio, elenco chat, visibile | 90 | 45 |
+  | studio, elenco chat, nascosta | 90 | **0** |
+
+  Nel "prima" 90 delle 243 richieste erano `/utenti/commercialista`: l'intervallo chiudeva sulla
+  prima versione di `loadMessages`, che vedeva sempre `otherParty` vuoto e lo ricaricava a ogni giro.
+
+Residui dichiarati: nessuna preferenza di disiscrizione (le mail sono tutte legate a consenso e
+accesso ai dati, più il promemoria); se il **commercialista** elimina l'account i collegamenti
+spariscono in cascata e con loro le notifiche non ancora partite (stessa FK della 001 già segnalata
+in W3); `helm-chart/templates/db-init-job.yaml` non contiene le migration 002–006 (fase «sistema»),
+e il chart non ha ancora le variabili SMTP.
+
 ### 3.8 La chat diventa uno strumento di lavoro
 
 - **Allegati** (`multer`, limite dimensione, whitelist MIME, storage fuori dal DB);
@@ -441,7 +483,7 @@ Rispetta l'ordine ratificato dal titolare: **workflow → sistema → sicurezza 
 |---|---|---|---|
 | W1 ✅ | Macchina a stati | migration 002 + rollback, `requireCollegamento`, rimozione `utenti.commercialista_id` | migration applicata e annullata su DB di prova; curl su ogni transizione |
 | W2 ✅ | Invito irrigidito | hash, 1 token attivo, 7 gg, richiesta diretta + accettazione; migration 004: richieste idempotenti e risoluzione senza scelta arbitraria | `scripts/smoke/w2-invito.sh` 54/54 e `w2-concorrenza.py` 7/7; le fixture di W2 falliscono su `8793b25`, quelle dei tre P0 della revisione falliscono su `5b57ba0` |
-| W3 ✅ | Audit + ambito | `accessi_commercialista` (migration 005), scrittura fail-closed in `requireCollegamento`, registro leggibile dal cliente; ambito già applicato dal W1 | `scripts/smoke/w3-accessi.sh` 47/47; su `79599d6` 14/33 |
+| W3 ✅ | Audit + ambito | `accessi_commercialista` (migration 005), scrittura fail-closed in `requireCollegamento`, registro leggibile dal cliente; ambito già applicato dal W1 | `scripts/smoke/w3-accessi.sh` 62/62; su `79599d6` 14/33, i due P0 della revisione falliscono su `fad8fc3` (54/8) |
 | W4 | Notifiche | outbox + SMTP, sostituzione parziale del polling | email in coda su ogni evento; conteggio richieste per sessione ridotto |
 | W5 | Chat di lavoro | allegati, `movimento_id`, richieste di chiarimento | upload accettato/rifiutato per MIME e dimensione |
 | W6 | Account | cambio password ed email, reset per entrambi i tipi | ciclo completo di reset via curl |

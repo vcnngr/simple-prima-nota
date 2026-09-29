@@ -1,5 +1,5 @@
 // src/components/Layout/CommercialistaSidebar.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -11,6 +11,7 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { messaggiAPI } from '../../services/api';
+import usePollingVisibile from '../../hooks/usePollingVisibile';
 
 const navigation = [
   {
@@ -38,11 +39,8 @@ const CommercialistaSidebar = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const [unreadCount, setUnreadCount] = useState(0);
 
-  useEffect(() => {
-    loadUnreadCount();
-    const interval = setInterval(loadUnreadCount, 30000); // Update every 30 seconds
-    return () => clearInterval(interval);
-  }, []);
+  // Ogni minuto, solo a scheda visibile: fuori dall'app avvisano le email.
+  usePollingVisibile(() => loadUnreadCount(), 60000);
 
   const loadUnreadCount = async () => {
     try {

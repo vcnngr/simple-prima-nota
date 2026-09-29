@@ -17,6 +17,7 @@ services:
       - ./database/migrations/003_invito_irrigidito.sql:/docker-entrypoint-initdb.d/04-invito-irrigidito.sql
       - ./database/migrations/004_richieste_idempotenti.sql:/docker-entrypoint-initdb.d/05-richieste-idempotenti.sql
       - ./database/migrations/005_accessi_commercialista.sql:/docker-entrypoint-initdb.d/06-accessi-commercialista.sql
+      - ./database/migrations/006_notifiche.sql:/docker-entrypoint-initdb.d/07-notifiche.sql
     ports:
       - "5432:5432"
     networks:
@@ -42,6 +43,11 @@ services:
       DB_PASSWORD: password123
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
       PORT: 3001
+      # Notifiche email: in sviluppo vanno a mailpit (http://localhost:8025).
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      MAIL_FROM: Simple Prima Nota <no-reply@localhost>
+      FRONTEND_URL: http://localhost:3000
     ports:
       - "3001:3001"
     depends_on:
@@ -66,6 +72,16 @@ services:
     networks:
       - prima_nota_network
     # NESSUN volume mapping e NESSUN command override per produzione
+
+  # Casella di prova per le notifiche email (solo sviluppo): nessuna mail esce
+  # davvero, si leggono su http://localhost:8025.
+  mailpit:
+    image: docker.io/axllent/mailpit
+    container_name: prima_nota_mailpit
+    ports:
+      - "8025:8025"
+    networks:
+      - prima_nota_network
 
   # Adminer per gestione database (opzionale)
   adminer:
