@@ -9,9 +9,9 @@ uno smoke che fallisce sul codice di prima.
 |---|---|---|---|
 | K1 ✅ | Token | il token dice per quale tabella vale (`tipo`); solo HS256; password di almeno 8 caratteri alla registrazione; registrazione dello studio validata | `scripts/smoke/k1-token.sh` |
 | K2 ✅ | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | `scripts/smoke/k2-ip.sh` |
-| K3 | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | `scripts/smoke/k3-errori.sh` |
+| K3 ✅ | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | `scripts/smoke/k3-errori.sh` |
 | K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | `scripts/smoke/k4-dipendenze.sh` |
-| K5 | Deploy | utenti demo `admin`/`demo` con password note creati da `init.sql` anche in produzione; `JWT_SECRET` di esempio accettato in produzione; CSP che ammette `http:`, `https:` e `'unsafe-inline'` | da scrivere |
+| K5 | Deploy | `JWT_SECRET` di esempio o debole rifiutato in produzione; compose senza segreto nel file; CSP senza `http:`/`https:` generici né script in linea; immagini senza `.env`, `node_modules` e mappe dei sorgenti. Utenti demo `admin`/`demo` di `init.sql`: **in attesa di decisione** | `scripts/smoke/k5-deploy.sh` |
 
 ## K1 — Token
 
@@ -165,3 +165,53 @@ Aperti, fuori da K4 (tutti chiusi dalla ricostruzione del frontend con Vite, fas
   destinazione di navigazione viene da input dell'utente e non c'è SSR.
 - `backend/.dockerignore` non esclude `node_modules`: la build copia quelli della macchina prima di
   `npm install` (da sistemare con K5).
+
+## K5 — Deploy
+
+**Il problema.**
+
+- `JWT_SECRET`: il backend partiva con qualunque valore, anche vuoto o quello pubblicato in
+  `docker-compose.yml` (`NODE_ENV: production`). Con un segreto noto chiunque firma un token valido
+  per qualsiasi utente o studio. Il chart era già a posto (64 caratteri casuali).
+- CSP del frontend: `default-src 'self' http: https: data: blob: 'unsafe-inline'`, cioè script da
+  qualunque sito e script in linea: non fermava niente.
+- `Referrer-Policy: no-referrer-when-downgrade`: i link di reset e di conferma email portano il token
+  nell'URL.
+- `backend/.dockerignore` non escludeva `.env` né `node_modules`: un `.env` locale finiva
+  nell'immagine; `node_modules` della macchina sovrascriveva quelli installati nell'immagine (con un
+  symlink, come nei worktree, la build si rompeva). Il frontend pubblicava le mappe dei sorgenti.
+
+**Come funziona ora.**
+
+- `backend/config/avvio.js`, chiamato per primo da `server.js`: in produzione il processo esce se
+  `JWT_SECRET` manca, è di esempio, è più corto di 32 caratteri o è ripetitivo. Fuori produzione un
+  avviso.
+- docker compose: `JWT_SECRET` dal file `.env` accanto a `docker-compose.yml`
+  (`echo "JWT_SECRET=$(openssl rand -hex 32)" > .env`), altrimenti compose si ferma con il messaggio.
+  `/.env` in `.gitignore`. Gli smoke che eseguono `compose config` passano un valore di prova.
+- nginx: CSP `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'
+  https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data:
+  blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';
+  frame-ancestors 'self'`; `Referrer-Policy: same-origin`. `'unsafe-inline'` resta solo per gli stili
+  (attributi `style` di React e animazioni); i font di Google finché non sono serviti in locale.
+- Build del frontend con `INLINE_RUNTIME_CHUNK=false` e `GENERATE_SOURCEMAP=false`.
+- `backend/.dockerignore`: `node_modules/`, `logs/`, `.env`, `.env.*`.
+
+**Prova**: `scripts/smoke/k5-deploy.sh`. Avvio del backend con segreti mancanti, di esempio, corti,
+ripetitivi e buoni; compose con e senza `.env`; immagine del backend costruita con un `.env` finto nel
+contesto; immagine del frontend: intestazioni, `index.html`, mappe; Chrome headless apre le pagine
+pubbliche e la console non riporta violazioni della CSP, con una controprova a CSP più stretta in cui
+le violazioni si vedono. Non osservato: le pagine dopo il login con Chrome (servono backend e
+database); stessa CSP e stesso bundle, le chiamate API sono verso `'self'`.
+
+**In attesa di decisione del titolare: utenti demo.** `init.sql` crea `admin` / `password123` e
+`demo` / `password` su ogni installazione nuova, produzione compresa. `init.sql` non si può cambiare
+(migra.sh ne controlla l'impronta) e una migration che cambia quelle password toglierebbe l'accesso a
+chi oggi usa quegli account. Opzioni:
+
+1. migration che, solo se la password è ancora quella pubblicata, la sostituisce con una casuale e
+   invalida i token: chi usa quegli account perde l'accesso (le email sono `@example.com`, il reset
+   per mail non arriva);
+2. in produzione il login con la password pubblicata è rifiutato con un messaggio: l'account resta,
+   serve un cambio password da SQL o da una procedura da scrivere;
+3. solo un avviso nei log all'avvio se esistono account con la password pubblicata.

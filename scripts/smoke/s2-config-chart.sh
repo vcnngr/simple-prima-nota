@@ -179,7 +179,10 @@ import sys, yaml, shlex
 docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
 dep = [d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'].endswith('-backend')][0]
 spec = dep['spec']['template']['spec']; c = spec['containers'][0]
-segreti = {'postgres-password': 'pw', 'jwt-secret': 'segreto-jwt-s2', 'smtp-password': 'x'}
+# jwt-secret come lo genera il chart (64 alfanumerici): dal K5 il backend in
+# produzione rifiuta i segreti corti.
+import secrets
+segreti = {'postgres-password': 'pw', 'jwt-secret': secrets.token_hex(32), 'smtp-password': 'x'}
 with open(sys.argv[2] + '/be.env', 'w') as f:
     for e in c.get('env', []):
         v = e['value'] if 'value' in e else segreti[e['valueFrom']['secretKeyRef']['key']]

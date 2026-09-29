@@ -39,3 +39,6 @@ frontend/logs/
 
 # Allegati della chat caricati in sviluppo
 backend/uploads/
+
+# K5: segreti di docker compose (JWT_SECRET)
+/.env

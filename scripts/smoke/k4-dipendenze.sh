@@ -174,7 +174,7 @@ echo
 echo "=== E. nodemailer ==="
 conta_mail() {
   curl -s --max-time 5 "$MAIL_API/api/v1/messages?limit=500" | python3 -c "
-import sys,json;d=json.load(sys.stdin);print(sum(1 for m in d.get('messages',[]) if any(a['Address'].lower()=='$U@t.it' for a in m.get('To',[]))))" 2>/dev/null || echo "-"; }
+import sys,json;d=json.load(sys.stdin);print(sum(1 for m in d.get('messages',[]) if m.get('Subject','').startswith('Reimposta la password') and any(a['Address'].lower()=='$U@t.it' for a in m.get('To',[]))))" 2>/dev/null || echo "-"; }
 curl -s -o /dev/null -X POST "$API/auth/password-dimenticata" "${JSON[@]}" -H "X-Forwarded-For: 10.4.0.$((RANDOM % 250))" -d "{\"identificativo\":\"$U\"}"
 N=0; for _ in $(seq 1 30); do N=$(conta_mail); [ "$N" = 1 ] && break; sleep 0.5; done
 eq "mail di reset consegnata a Mailpit" "1" "$N"

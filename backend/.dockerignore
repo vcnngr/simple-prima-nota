@@ -1,2 +1,8 @@
 # Allegati caricati in sviluppo: non entrano nell'immagine
 uploads/
+# Dipendenze e file locali: nell'immagine le installa `npm install` (K5)
+node_modules/
+logs/
+.env
+.env.*
+npm-debug.log*

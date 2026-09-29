@@ -311,7 +311,7 @@ if [ "$NESSUN_JOB" = 0 ]; then
 fi
 
 echo "=== M. docker-compose: servizio di migrazione ==="
-docker compose config --format json > "$T/compose.json" 2>/dev/null
+JWT_SECRET="${JWT_SECRET:-smoke-solo-per-compose-config}" docker compose config --format json > "$T/compose.json" 2>/dev/null
 eq "compose config" "0" "$?"
 python3 - "$T/compose.json" > "$T/compose.env" <<'PY'
 import sys, json, shlex

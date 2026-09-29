@@ -116,7 +116,7 @@ if [ -z "$IMG" ]; then
   eq "build dell'immagine" "0" "$?"
   [ -s "$T/build" ] && tail -3 "$T/build" | grep -i error
 fi
-docker compose -f "$R/docker-compose.yml" config > "$T/compose.yml" 2>"$T/compose.err"
+JWT_SECRET="${JWT_SECRET:-smoke-solo-per-compose-config}" docker compose -f "$R/docker-compose.yml" config > "$T/compose.yml" 2>"$T/compose.err"
 eq "docker compose config" "0" "$?"
 eq "compose: frontend verso il servizio backend" "1" "$(grep -c 'BACKEND_UPSTREAM: backend:3001' "$T/compose.yml")"
 stub be backend
@@ -218,7 +218,7 @@ eq "README: niente PostgreSQL 15" "0" "$(grep -c 'PostgreSQL 15' "$R/README.md")
 helm template t "$R/helm-chart" --set postgresql.enabled=true --set cloudnativepg.enabled=false > "$T/sa.yaml" 2>&1
 eq "chart standalone: immagine 16.15-bookworm" "docker.io/postgres:16.15-bookworm" "$(grep -oE 'image: "docker.io/postgres:[^"]*"' "$T/sa.yaml" | head -1 | sed 's/image: "//; s/"$//')"
 # Immagini dei servizi di compose lette dal file (non scritte qui).
-docker compose -f "$R/docker-compose.yml" config --format json > "$T/compose.json" 2>/dev/null
+JWT_SECRET="${JWT_SECRET:-smoke-solo-per-compose-config}" docker compose -f "$R/docker-compose.yml" config --format json > "$T/compose.json" 2>/dev/null
 immagine_compose() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["services"][sys.argv[2]]["image"])' "$T/compose.json" "$1" 2>/dev/null; }
 IMG_DB=$(immagine_compose db)
 eq "compose db: 16.15-bookworm (glibc del 16.1)" "docker.io/library/postgres:16.15-bookworm" "$IMG_DB"

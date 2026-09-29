@@ -56,7 +56,9 @@ services:
       DB_NAME: prima_nota
       DB_USER: postgres
       DB_PASSWORD: password123
-      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      # K5: niente segreto di esempio (il backend in produzione non parte). Si mette
+      # in un file .env accanto a questo: echo "JWT_SECRET=$(openssl rand -hex 32)" > .env
+      JWT_SECRET: ${JWT_SECRET:?imposta JWT_SECRET nel file .env accanto a docker-compose.yml (openssl rand -hex 32)}
       PORT: 3001
       TRUST_PROXY: "1"
       # Notifiche email: in sviluppo vanno a mailpit (http://localhost:8025).

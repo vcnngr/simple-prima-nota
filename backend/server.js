@@ -7,6 +7,14 @@ const morgan = require('morgan');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+// Prima di tutto il resto: in produzione con un JWT_SECRET di esempio o corto
+// il processo si ferma qui (K5, config/avvio.js).
+try {
+  require('./config/avvio').controllaConfigurazione();
+} catch (err) {
+  console.error(`Avvio rifiutato: ${err.message}`);
+  process.exit(1);
+}
 
 const authRoutes = require('./routes/auth');
 const contiBancariRoutes = require('./routes/contiBancari');

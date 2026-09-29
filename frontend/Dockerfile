@@ -15,6 +15,10 @@ COPY . .
 
 # Build dell'applicazione con più memoria
 ENV NODE_OPTIONS="--max-old-space-size=8192"
+# K5: niente script in linea in index.html (la CSP ammette solo script da 'self')
+# e niente mappe dei sorgenti pubblicate.
+ENV INLINE_RUNTIME_CHUNK=false \
+    GENERATE_SOURCEMAP=false
 RUN npm run build
 
 # Stage di produzione con Nginx

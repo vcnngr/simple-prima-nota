@@ -154,7 +154,7 @@ eq "con ingress: TRUST_PROXY 2" "2" "$(env_be TRUST_PROXY)"
 eq "senza ingress: TRUST_PROXY 1" "1" "$(env_be TRUST_PROXY --set ingress.enabled=false --set app.publicUrl=https://pn.example.it)"
 eq "impostato nei values: vince, una volta sola" "10.0.0.0/8" "$(env_be TRUST_PROXY --set backend.env.TRUST_PROXY=10.0.0.0/8)"
 eq "RATE_LIMIT_MAX_REQUESTS del chart: 300 (il tetto di prima)" "300" "$(env_be RATE_LIMIT_MAX_REQUESTS)"
-docker compose -f "$R/docker-compose.yml" config --format json > "$T/c.json" 2>/dev/null
+JWT_SECRET="${JWT_SECRET:-smoke-solo-per-compose-config}" docker compose -f "$R/docker-compose.yml" config --format json > "$T/c.json" 2>/dev/null
 eq "compose: backend TRUST_PROXY 1, porta 3001 solo su 127.0.0.1" "1|127.0.0.1" "$(python3 -c '
 import json,sys; b=json.load(open(sys.argv[1]))["services"]["backend"]
 print(b["environment"].get("TRUST_PROXY","-")+"|"+",".join(p.get("host_ip","0.0.0.0") for p in b.get("ports",[])))' "$T/c.json")"
