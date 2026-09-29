@@ -50,30 +50,61 @@ function testoUtf8(buf) {
 }
 
 // Nomi delle voci di uno zip, letti dalla directory centrale. null se la
-// struttura non torna: record di fine assente, directory fuori dal file, voce
-// che non punta a un'intestazione locale.
+// struttura non torna. Non basta che ogni record dichiarato sia leggibile: un
+// record in piu' oltre il conteggio dell'EOCD, o una voce locale che nessun
+// record nomina, resterebbero fuori dai controlli pur essendo estraibili. Per
+// questo si pretende che il file sia tutto spiegato, byte per byte:
+//   [voci locali contigue da 0] [directory centrale di esattamente `dim` byte] [EOCD]
+// senza zip64, archivi multi-disco ne' commenti.
 function vociZip(buf) {
-  const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50;
-  const min = Math.max(0, buf.length - 22 - 0xffff);
-  let fine = -1;
-  for (let i = buf.length - 22; i >= min; i--) {
-    if (buf.readUInt32LE(i) === EOCD && i + 22 + buf.readUInt16LE(i + 20) === buf.length) { fine = i; break; }
-  }
-  if (fine < 0) return null;
+  const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50, DESCR = 0x08074b50;
+  if (buf.length < 22) return null;
+  const fine = buf.length - 22;                        // EOCD senza commento
+  if (buf.readUInt32LE(fine) !== EOCD || buf.readUInt16LE(fine + 20) !== 0) return null;
+  if (buf.readUInt16LE(fine + 4) !== 0 || buf.readUInt16LE(fine + 6) !== 0) return null; // un solo disco
   const n = buf.readUInt16LE(fine + 10);
+  if (n === 0 || buf.readUInt16LE(fine + 8) !== n) return null;
   const dim = buf.readUInt32LE(fine + 12);
-  let p = buf.readUInt32LE(fine + 16);
-  if (n === 0 || p + dim > fine) return null;
+  const inizioCen = buf.readUInt32LE(fine + 16);
+  if (inizioCen + dim !== fine) return null;           // niente fra directory ed EOCD
+
   const voci = new Set();
+  const locali = [];
+  let p = inizioCen;
   for (let k = 0; k < n; k++) {
     if (p + 46 > fine || buf.readUInt32LE(p) !== CEN) return null;
+    const flag = buf.readUInt16LE(p + 8);
+    const compresso = buf.readUInt32LE(p + 20);
     const lNome = buf.readUInt16LE(p + 28), lExtra = buf.readUInt16LE(p + 30), lComm = buf.readUInt16LE(p + 32);
     const locale = buf.readUInt32LE(p + 42);
-    if (locale + 30 > buf.length || buf.readUInt32LE(locale) !== LOC) return null;
-    if (p + 46 + lNome > fine) return null;
-    voci.add(buf.subarray(p + 46, p + 46 + lNome).toString('utf8'));
-    p += 46 + lNome + lExtra + lComm;
+    if (compresso === 0xffffffff || locale === 0xffffffff || lComm !== 0) return null; // zip64, commenti
+    if (p + 46 + lNome + lExtra > fine) return null;
+    const nome = buf.subarray(p + 46, p + 46 + lNome);
+
+    // La voce locale deve esistere, avere lo stesso nome e finire dove dice il record.
+    if (locale + 30 > inizioCen || buf.readUInt32LE(locale) !== LOC) return null;
+    const lNomeLoc = buf.readUInt16LE(locale + 26), lExtraLoc = buf.readUInt16LE(locale + 28);
+    if (lNomeLoc !== lNome || !buf.subarray(locale + 30, locale + 30 + lNome).equals(nome)) return null;
+    let fineLoc = locale + 30 + lNomeLoc + lExtraLoc + compresso;
+    if (flag & 0x08) {                                   // data descriptor dopo i dati
+      fineLoc += fineLoc + 4 <= inizioCen && buf.readUInt32LE(fineLoc) === DESCR ? 16 : 12;
+    }
+    if (fineLoc > inizioCen) return null;
+    locali.push([locale, fineLoc]);
+
+    voci.add(nome.toString('utf8'));
+    p += 46 + lNome + lExtra;
   }
+  if (p !== fine) return null;                         // i record consumano esattamente `dim`
+
+  // Le voci locali coprono [0, inizioCen) senza buchi ne' sovrapposizioni.
+  locali.sort((x, y) => x[0] - y[0]);
+  let cursore = 0;
+  for (const [da, a] of locali) {
+    if (da !== cursore) return null;
+    cursore = a;
+  }
+  if (cursore !== inizioCen) return null;
   return voci;
 }
 
@@ -85,7 +116,7 @@ const RADICI_XLSX = ['[Content_Types].xml', '_rels/', 'docProps/', 'xl/', 'custo
 function cartellaDiLavoro(buf, voci) {
   for (const v of voci) {
     if (!RADICI_XLSX.some(r => (r.endsWith('/') ? v.startsWith(r) : v === r))) return false;
-    if (v.includes('..') || /vbaProject\.bin$/i.test(v)) return false;
+    if (v.includes('..') || v.includes('\\') || /vbaProject\.bin$/i.test(v)) return false;
   }
   // Il parser gia' usato dall'import legge solo la struttura del workbook
   // (nomi dei fogli), senza celle ne' formule: se non la trova, non e' un xlsx.

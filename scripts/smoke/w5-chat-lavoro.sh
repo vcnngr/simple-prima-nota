@@ -79,6 +79,25 @@ with zipfile.ZipFile(t + '/zipfinto.xlsx', 'w') as z:
 for nome, voce in (('conpayload', 'payload.exe'), ('macro', 'xl/vbaProject.bin')):
     shutil.copy(t + '/foglio.xlsx', t + '/' + nome + '.xlsx')
     with zipfile.ZipFile(t + '/' + nome + '.xlsx', 'a') as z: z.writestr(voce, 'MZ')
+# Voci estranee nascoste alla directory centrale (revisione W5-fix2):
+#  - eseguibile aggiunto e contatori dell'EOCD scalati di uno;
+#  - voce locale inserita prima della directory, che nessun record nomina;
+#  - byte in coda nel commento dell'EOCD.
+import io, struct
+shutil.copy(t + '/foglio.xlsx', t + '/eocd.xlsx')
+with zipfile.ZipFile(t + '/eocd.xlsx', 'a') as z: z.writestr('payload.exe', 'MZ' * 100)
+b = bytearray(open(t + '/eocd.xlsx', 'rb').read()); e = len(b) - 22
+n = struct.unpack_from('<H', b, e + 10)[0]; struct.pack_into('<HH', b, e + 8, n - 1, n - 1)
+open(t + '/eocd.xlsx', 'wb').write(b)
+d = bytearray(open(t + '/foglio.xlsx', 'rb').read()); e = len(d) - 22
+cen = struct.unpack_from('<I', d, e + 16)[0]
+h = io.BytesIO()
+with zipfile.ZipFile(h, 'w') as z: z.writestr('payload.exe', 'MZ' * 100)
+hb = h.getvalue(); loc = hb[:struct.unpack_from('<I', hb, len(hb) - 6)[0]]
+o = d[:cen] + loc + d[cen:]; struct.pack_into('<I', o, len(o) - 6, cen + len(loc))
+open(t + '/nascosta.xlsx', 'wb').write(o)
+c = bytearray(open(t + '/foglio.xlsx', 'rb').read()); struct.pack_into('<H', c, len(c) - 2, 6)
+open(t + '/commento.xlsx', 'wb').write(c + b'MZ\x90\x00XX')
 PY2
 head -c 11534336 /dev/zero | tr '\0' 'a' > $T/grande.csv       # 11 MB
 { printf '%%PDF-1.4\n'; head -c 1258291 /dev/zero; } > $T/medio.pdf   # 1,2 MB
@@ -148,6 +167,9 @@ assert_http "firma zip + nomi xlsx senza struttura zip -> 415" 415 up "$UT" "$QU
 assert_http "zip valido con voci xlsx vuote e un eseguibile -> 415" 415 up "$UT" "$QU" $T/zipfinto.xlsx zipfinto.xlsx
 assert_http "xlsx vero con un eseguibile accanto -> 415" 415 up "$UT" "$QU" $T/conpayload.xlsx conpayload.xlsx
 assert_http "xlsx con macro -> 415" 415 up "$UT" "$QU" $T/macro.xlsx macro.xlsx
+assert_http "eseguibile oltre il conteggio dell'EOCD -> 415" 415 up "$UT" "$QU" $T/eocd.xlsx eocd.xlsx
+assert_http "voce locale che la directory non nomina -> 415" 415 up "$UT" "$QU" $T/nascosta.xlsx nascosta.xlsx
+assert_http "byte in coda nel commento dell'EOCD -> 415" 415 up "$UT" "$QU" $T/commento.xlsx commento.xlsx
 assert_http "jpg con estensione .png -> 415" 415 up "$UT" "$QU" $T/img.jpg foto.png
 assert_http "pdf con estensione .exe -> 415" 415 up "$UT" "$QU" $T/doc.pdf doc.exe
 assert_http "11 MB -> 413" 413 up "$UT" "$QU" $T/grande.csv
