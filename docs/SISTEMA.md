@@ -6,8 +6,8 @@ Ogni blocco è un branch `feat/s…`, con review `pn-gpt` prima della chiusura.
 
 | # | Blocco | Contenuto | Prova |
 |---|---|---|---|
-| S1 | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dalla migration 009 | `scripts/smoke/s1-migrazioni.sh` |
-| S2 | Configurazione del backend nel chart | `SMTP_*`, `MAIL_FROM`, `FRONTEND_URL` pubblico (oggi è l'URL interno del servizio: i link nelle mail non si aprono), volume per `ALLEGATI_DIR`, `NOTIFICHE_*` | `helm template` + job/deployment eseguiti come in S1 |
+| S1 ✅ | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dalla migration 009 | `scripts/smoke/s1-migrazioni.sh` |
+| S2 | Configurazione del backend nel chart | `FRONTEND_URL` pubblico, `SMTP_*`/`MAIL_FROM` con password da Secret, `NOTIFICHE_*`, `ALLEGATI_*`, `RESET_*`; PVC degli allegati con `fsGroup`; numeri non più in notazione esponenziale | `scripts/smoke/s2-config-chart.sh` |
 | S3 | Dati e cancellazioni | cancellazione dell'account commercialista (oggi in cascata su collegamenti, registro e chat del cliente); file degli allegati orfani dopo il down della 007 | smoke dedicato |
 | S4 | Pulizia deploy | `nginx.conf` deploy-neutral, versione di PostgreSQL (README 16, chart standalone 15) | build + `compose config` + `helm template` |
 
@@ -63,3 +63,58 @@ chart va committata (lo smoke lo controlla).
 
 Aperti, fuori da S1: `init.sql` crea gli utenti demo `admin`/`demo` con password note anche in
 produzione (fase «sicurezza»); `Chart.yaml` non è stato incrementato (si fa al rilascio).
+
+## S2 — Configurazione del backend nel chart
+
+**Il problema.** Il chart passava al backend solo database, JWT e poche variabili di contorno:
+
+- `FRONTEND_URL` era l'indirizzo interno del servizio (`http://<release>-frontend:80`): ogni link
+  nelle mail (reset password, conferma email, notifiche) puntava a un host che il browser di chi
+  riceve la mail non risolve;
+- nessuna variabile `SMTP_*` / `MAIL_FROM`: nessuna mail partiva, le notifiche restavano in coda,
+  il reset password non mandava niente;
+- nessun volume per gli allegati della chat: stavano nel filesystem del container e sparivano a
+  ogni riavvio del pod;
+- i numeri dei values arrivano al template come float64: `MAX_FILE_SIZE: 10485760` diventava
+  `"1.048576e+07"`, che `parseInt` legge come **1**. Senza `ALLEGATI_MAX_BYTES` il backend usa
+  `MAX_FILE_SIZE`: ogni allegato veniva rifiutato con `413 "massimo 0 MB"`.
+
+**Come funziona ora** (`helm-chart/values.yaml`, `templates/backend-deployment.yaml`,
+`templates/backend-allegati-pvc.yaml`, helper in `_helpers.tpl`):
+
+- `app.publicUrl` → `FRONTEND_URL`. Vuoto: schema e primo host di `ingress.hosts` (https se l'host
+  è in `ingress.tls`). Senza ingress e senza `app.publicUrl` il render si ferma con un messaggio;
+  un valore senza `http(s)://` pure.
+- `backend.env`: ogni chiave diventa una variabile d'ambiente (le vuote non si passano, così il
+  backend usa i suoi default); i numeri interi escono interi. Nuove chiavi: `SMTP_HOST`,
+  `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `MAIL_FROM`, `NOTIFICHE_*`, `RESET_PASSWORD_*`,
+  `CONFERMA_EMAIL_ORE`, `ACCOUNT_MAIL_ATTESA_SEC`, `ALLEGATI_MAX_BYTES|QUOTA_BYTES|PULIZIA_MS`.
+  Il chart imposta da sé `FRONTEND_URL`, `ALLEGATI_DIR`, `JWT_SECRET`, `SMTP_PASS` e `DB_*`.
+- password SMTP solo da Secret: `backend.smtpPassword.existingSecret` + `key`, oppure `value`
+  (finisce nel Secret del chart, chiave `smtp-password`); mai nel Deployment.
+- allegati: PVC `<release>-allegati` montato su `/app/uploads/allegati`, con
+  `helm.sh/resource-policy: keep` (un `helm uninstall` non cancella i documenti dei clienti);
+  `existingClaim` per un volume già esistente; `fsGroup: 1001` (gruppo dell'utente `nodejs`
+  dell'immagine) perché il volume nasce `root:root`. Con `ReadWriteOnce` la strategia è `Recreate`;
+  più di una replica solo con `ReadWriteMany` (altrimenti il render si ferma), perché ogni replica
+  deve vedere gli stessi file. `persistence.enabled: false` → `emptyDir` (perso al riavvio).
+
+**Prova**: `scripts/smoke/s2-config-chart.sh`. Oltre al render nelle varianti, costruisce
+l'immagine del backend dal checkout e la avvia con l'ambiente e i volumi del Deployment
+renderizzato (Secret sostituiti; PVC simulato come lo prepara kubelet: radice `root:root 755`, poi
+gruppo `fsGroup` con setgid e `fsGroup` fra i gruppi del processo): la mail di reset arriva a
+mailpit con il link pubblico; un allegato da 270 KB si carica, finisce sul volume e si riscarica
+identico dopo che il "pod" è stato sostituito. Senza `fsGroup` lo stesso upload dà `500`
+(permesso negato sul volume): la simulazione non è vuota. Non osservato: un cluster Kubernetes
+reale.
+
+Aperti, fuori da S2:
+
+- **dietro ingress il backend vede un solo IP** (fase «sicurezza», da fare per prima): la catena è
+  ingress → nginx del frontend → backend e `server.js` ha `trust proxy 1`, quindi `req.ip` è
+  l'indirizzo dell'ingress per tutti. Il limite generale (300 richieste / 15 min in produzione) e il
+  tetto dei reset diventano globali per l'intera app. Va deciso insieme al problema opposto già
+  noto (backend esposto direttamente → `X-Forwarded-For` scelto dal client).
+- `RATE_LIMIT_*` e `LOG_LEVEL` sono nei values ma il backend non li legge (il limite è fisso in
+  `server.js`): restano per compatibilità, da sistemare con il punto sopra.
+

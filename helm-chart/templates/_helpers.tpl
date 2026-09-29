@@ -111,3 +111,48 @@ migrazioni, qualunque sia il database scelto.
       key: {{ .Values.externalDatabase.secretPasswordKey | default "postgres-password" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Indirizzo pubblico dell'app, senza "/" finale: e' la base dei link nelle mail
+(reset password, conferma email, notifiche) e l'origine ammessa dal CORS.
+app.publicUrl, oppure lo schema e il primo host dell'ingress (https se quell'host
+e' in ingress.tls). Mai l'indirizzo interno del servizio: dal browser di chi
+riceve la mail non si apre.
+*/}}
+{{- define "prima-nota.publicUrl" -}}
+{{- $u := trimSuffix "/" (.Values.app.publicUrl | default "") -}}
+{{- if not $u -}}
+  {{- if and .Values.ingress.enabled .Values.ingress.hosts -}}
+    {{- $h := (index .Values.ingress.hosts 0).host -}}
+    {{- $tls := false -}}
+    {{- range .Values.ingress.tls -}}{{- if has $h .hosts -}}{{- $tls = true -}}{{- end -}}{{- end -}}
+    {{- $u = printf "%s://%s" (ternary "https" "http" $tls) $h -}}
+  {{- else -}}
+    {{- fail "app.publicUrl e' obbligatorio senza ingress: e' l'indirizzo dei link nelle mail (es. https://primanota.example.it)" -}}
+  {{- end -}}
+{{- end -}}
+{{- if not (regexMatch "^https?://[^/[:space:]]+(/[^[:space:]]*)?$" $u) -}}
+  {{- fail (printf "app.publicUrl non valido: %q (atteso http(s)://host[/percorso])" $u) -}}
+{{- end -}}
+{{- $u -}}
+{{- end -}}
+
+{{/*
+Valore di una variabile d'ambiente. I numeri dei values arrivano come float64:
+senza conversione 10485760 diventa "1.048576e+07", che parseInt legge come 1.
+*/}}
+{{- define "prima-nota.envValue" -}}
+{{- if and (kindIs "float64" .) (eq (float64 (int64 .)) .) -}}
+{{- int64 . | toString | quote -}}
+{{- else -}}
+{{- toString . | quote -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Volume degli allegati: una sola scrittura alla volta se ReadWriteOnce.
+*/}}
+{{- define "prima-nota.allegatiRWO" -}}
+{{- $p := .Values.backend.allegati.persistence -}}
+{{- if and $p.enabled (has "ReadWriteOnce" $p.accessModes) (not (has "ReadWriteMany" $p.accessModes)) -}}true{{- end -}}
+{{- end -}}

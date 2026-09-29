@@ -1,4 +1,8 @@
 {{- if .Values.backend.enabled }}
+{{- $p := .Values.backend.allegati.persistence }}
+{{- if and (gt (int .Values.backend.replicaCount) 1) (or (not $p.enabled) (include "prima-nota.allegatiRWO" .)) }}
+{{- fail "backend.replicaCount > 1 richiede backend.allegati.persistence con accessModes [ReadWriteMany]: ogni replica deve vedere gli stessi file degli allegati" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,6 +12,12 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   replicas: {{ .Values.backend.replicaCount }}
+  {{- if include "prima-nota.allegatiRWO" . }}
+  # Volume ReadWriteOnce: il pod nuovo parte dopo che il vecchio ha lasciato il
+  # volume (con RollingUpdate resterebbe in attesa se finisce su un altro nodo).
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       {{- include "prima-nota.selectorLabels" . | nindent 6 }}
@@ -18,33 +28,39 @@ spec:
         {{- include "prima-nota.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
     spec:
+      {{- with .Values.backend.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - name: backend
         image: "{{ .Values.backend.image.registry }}/{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
         imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
         env:
-        - name: NODE_ENV
-          value: {{ .Values.backend.env.NODE_ENV }}
-        - name: PORT
-          value: {{ .Values.backend.env.PORT | quote }}
-        
         {{- include "prima-nota.dbEnv" . | nindent 8 }}
-        
         - name: JWT_SECRET
           valueFrom:
             secretKeyRef:
               name: {{ include "prima-nota.fullname" . }}-secret
               key: jwt-secret
-        - name: RATE_LIMIT_WINDOW_MS
-          value: {{ .Values.backend.env.RATE_LIMIT_WINDOW_MS | quote }}
-        - name: RATE_LIMIT_MAX_REQUESTS
-          value: {{ .Values.backend.env.RATE_LIMIT_MAX_REQUESTS | quote }}
-        - name: MAX_FILE_SIZE
-          value: {{ .Values.backend.env.MAX_FILE_SIZE | quote }}
-        - name: LOG_LEVEL
-          value: {{ .Values.backend.env.LOG_LEVEL }}
         - name: FRONTEND_URL
-          value: "http://{{ include "prima-nota.fullname" . }}-frontend:{{ .Values.frontend.service.port }}"
+          value: {{ include "prima-nota.publicUrl" . | quote }}
+        - name: ALLEGATI_DIR
+          value: /app/uploads/allegati
+        {{- if or .Values.backend.smtpPassword.existingSecret .Values.backend.smtpPassword.value }}
+        - name: SMTP_PASS
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.smtpPassword.existingSecret | default (printf "%s-secret" (include "prima-nota.fullname" .)) }}
+              key: {{ ternary .Values.backend.smtpPassword.key "smtp-password" (not (empty .Values.backend.smtpPassword.existingSecret)) }}
+        {{- end }}
+        # backend.env: le variabili vuote non si passano (il backend usa i suoi default).
+        {{- range $k, $v := .Values.backend.env }}
+        {{- if and (not (has $k (list "JWT_SECRET" "FRONTEND_URL" "ALLEGATI_DIR" "SMTP_PASS" "DB_HOST" "DB_PORT" "DB_NAME" "DB_USER" "DB_PASSWORD"))) (ne (toString $v) "") }}
+        - name: {{ $k }}
+          value: {{ include "prima-nota.envValue" $v }}
+        {{- end }}
+        {{- end }}
         ports:
         - name: backend
           containerPort: {{ .Values.backend.env.PORT }}
@@ -75,4 +91,16 @@ spec:
         {{- end }}
         resources:
           {{- toYaml .Values.backend.resources | nindent 10 }}
+        volumeMounts:
+        - name: allegati
+          mountPath: /app/uploads/allegati
+      volumes:
+      - name: allegati
+        {{- if $p.enabled }}
+        persistentVolumeClaim:
+          claimName: {{ $p.existingClaim | default (printf "%s-allegati" (include "prima-nota.fullname" .)) }}
+        {{- else }}
+        # Senza persistenza gli allegati spariscono a ogni riavvio del pod.
+        emptyDir: {}
+        {{- end }}
 {{- end }}

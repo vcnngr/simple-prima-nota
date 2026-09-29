@@ -7,6 +7,11 @@
 {{- end }}
 {{- end }}
 
+   Indirizzo pubblico (link nelle mail): {{ include "prima-nota.publicUrl" . }}
+   {{- if not .Values.backend.env.SMTP_HOST }}
+   ATTENZIONE: backend.env.SMTP_HOST vuoto, nessuna mail parte (reset password, notifiche).
+   {{- end }}
+
 2. Database Configuration:
 {{- if .Values.postgresql.enabled }}
    📊 Database: PostgreSQL Standalone

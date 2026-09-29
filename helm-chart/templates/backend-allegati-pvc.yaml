@@ -1,0 +1,23 @@
+{{- $p := .Values.backend.allegati.persistence }}
+{{- if and .Values.backend.enabled $p.enabled (not $p.existingClaim) }}
+# Allegati della chat (blocco W5): il contenuto sta su disco, nel database solo
+# i metadati. `keep`: un `helm uninstall` non cancella i documenti dei clienti.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-allegati
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    {{- toYaml $p.accessModes | nindent 4 }}
+  {{- if $p.storageClass }}
+  storageClassName: {{ $p.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $p.size }}
+{{- end }}

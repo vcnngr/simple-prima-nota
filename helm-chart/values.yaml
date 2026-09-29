@@ -197,6 +197,13 @@ externalDatabase:
   existingSecret: ""
   secretPasswordKey: "password"
 
+# Indirizzo pubblico dell'app (es. https://primanota.example.it): base dei link
+# nelle mail (reset password, conferma email, notifiche) e origine del CORS.
+# Vuoto: schema e primo host di ingress.hosts (https se l'host e' in ingress.tls).
+# Senza ingress e' obbligatorio.
+app:
+  publicUrl: ""
+
 backend:
   enabled: true
   image:
@@ -216,6 +223,48 @@ backend:
     RATE_LIMIT_MAX_REQUESTS: 100
     MAX_FILE_SIZE: 10485760
     LOG_LEVEL: info
+    # Posta: notifiche (W4), reset password e conferma email (W6). Senza SMTP_HOST
+    # le notifiche restano in coda e il reset password non manda niente.
+    # La password SMTP sta in backend.smtpPassword, non qui.
+    SMTP_HOST: ""
+    SMTP_PORT: 587
+    SMTP_SECURE: "false"
+    SMTP_USER: ""
+    MAIL_FROM: "Simple Prima Nota <no-reply@example.com>"
+    NOTIFICHE_INTERVALLO_MS: 30000
+    NOTIFICHE_NON_LETTI_ORE: 4
+    NOTIFICHE_MAX_TENTATIVI: 5
+    NOTIFICHE_BACKOFF_MS: 60000
+    # Account (W6): tetto per IP sulle richieste di reset (15 min), durata dei link.
+    RESET_PASSWORD_LIMITE: 5
+    RESET_PASSWORD_MINUTI: 60
+    CONFERMA_EMAIL_ORE: 24
+    ACCOUNT_MAIL_ATTESA_SEC: 120
+    # Allegati della chat (W5): dimensione massima, quota per collegamento.
+    ALLEGATI_MAX_BYTES: 10485760
+    ALLEGATI_QUOTA_BYTES: 209715200
+    ALLEGATI_PULIZIA_MS: 60000
+  # Password SMTP. existingSecret (+ key) per un Secret gestito fuori dal chart;
+  # altrimenti value finisce nel Secret del chart (chiave smtp-password).
+  smtpPassword:
+    existingSecret: ""
+    key: smtp-password
+    value: ""
+  # 1001 e' il gruppo dell'utente nodejs dell'immagine: con fsGroup il volume
+  # degli allegati e' scrivibile dal backend.
+  podSecurityContext:
+    fsGroup: 1001
+  # Volume degli allegati della chat (/app/uploads/allegati). Il PVC resta anche
+  # dopo `helm uninstall` (sono documenti dei clienti). Piu' di una replica solo
+  # con ReadWriteMany. Senza persistenza: emptyDir, perso a ogni riavvio.
+  allegati:
+    persistence:
+      enabled: true
+      existingClaim: ""
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 10Gi
   resources:
     limits:
       cpu: 500m
