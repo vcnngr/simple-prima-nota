@@ -9,7 +9,7 @@ Ogni blocco è un branch `feat/s…`, con review `pn-gpt` prima della chiusura.
 | S1 ✅ | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dalla migration 009 | `scripts/smoke/s1-migrazioni.sh` |
 | S2 ✅ | Configurazione del backend nel chart | `FRONTEND_URL` pubblico, `SMTP_*`/`MAIL_FROM` con password da Secret, `NOTIFICHE_*`, `ALLEGATI_*`, `RESET_*`; PVC degli allegati con `fsGroup`; numeri non più in notazione esponenziale | `scripts/smoke/s2-config-chart.sh` |
 | S3 ✅ | Dati e cancellazioni | eliminazione dell'account di uno studio senza perdere i dati dei clienti (migration 010); pulizia dei file degli allegati che nessun allegato nomina | `scripts/smoke/s3-eliminazione-studio.sh` |
-| S4 | Pulizia deploy | una sola configurazione nginx per compose, Podman e Helm (modello con variabili d'ambiente); allegati oltre 1 MB non più fermati da nginx nel chart; PostgreSQL 16.15 ovunque (server ufficiali su bookworm, stessa glibc del 16.1) | `scripts/smoke/s4-deploy.sh` |
+| S4 ✅ | Pulizia deploy | una sola configurazione nginx per compose, Podman e Helm (modello con variabili d'ambiente); allegati oltre 1 MB non più fermati da nginx nel chart; PostgreSQL 16.15 ovunque (server ufficiali su bookworm, stessa glibc del 16.1) | `scripts/smoke/s4-deploy.sh` |
 
 ## S1 — Migrazioni versionate
 
