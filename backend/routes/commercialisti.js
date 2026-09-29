@@ -15,7 +15,9 @@ const account = require('../services/AccountService');
 const { versioneValida } = account;
 const { limiteResetPassword, rispondiResetAccolto } = require('../middleware/account');
 
+const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
+idNumerici(router, 'userId'); // 400 per id non interi (U1)
 
 // ==============================================================================
 // RATE LIMIT: richieste di collegamento

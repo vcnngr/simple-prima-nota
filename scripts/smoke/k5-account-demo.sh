@@ -60,6 +60,13 @@ echo $! > "$T/pid"
 PUB_ADMIN='$2b$10$yxaU3JOqC8dpeH8fLFtRWOAzzNvqTNQNF44GcPIxWtct6B54HEEuK'
 PUB_DEMO='$2b$10$7gusA60TTbNH2RMgwdGm0.3ZYMAtgLG2CTsLMuFF8nSuH4kCmtwrO'
 hash_di() { q "SELECT password_hash FROM utenti WHERE username='$1'"; }
+# Si annulla solo l'ultima: prima quelle venute dopo la 011 (012 in poi), poi la 011.
+annulla_011() {
+  local v; for v in $(q "SELECT string_agg(versione, ' ' ORDER BY versione DESC) FROM schema_migrazioni WHERE versione > '011'"); do
+    migra annulla "$v" >/dev/null || return 1
+  done
+  migra annulla 011
+}
 
 # ------------------------------------------------------------------------------
 echo "=== A. installazione nuova ==="
@@ -81,7 +88,7 @@ eq "un account registrato entra" "200" "$(login k5nuovo 'Password123!')"
 # ------------------------------------------------------------------------------
 echo
 echo "=== B. rollback ==="
-migra annulla 011; eq "annulla 011" "0" "$?"
+annulla_011; eq "annulla 011" "0" "$?"
 eq "password pubblicate di nuovo al loro posto" "1|1" "$([ "$(hash_di admin)" = "$PUB_ADMIN" ] && echo 1 || echo 0)|$([ "$(hash_di demo)" = "$PUB_DEMO" ] && echo 1 || echo 0)"
 eq "tabella rimossa" "" "$(q "SELECT to_regclass('account_demo_bloccati')")"
 eq "demo / password entra (stato della 010)" "200" "$(login demo password)"
@@ -108,7 +115,7 @@ eq "seconda esecuzione: nulla da fare, hash invariato" "0|1" "$?|$([ "$(hash_di 
 # ------------------------------------------------------------------------------
 echo
 echo "=== D. hash rigenerato della password pubblicata ==="
-migra annulla 011 >/dev/null
+annulla_011 >/dev/null
 HR=$(bc 'console.log(require("bcryptjs").hashSync("password",10))')
 case "$HR" in '$2b$'*|'$2a$'*) ;; *) ko "bcryptjs produce un hash bcrypt" "$HR";; esac
 q "UPDATE utenti SET password_hash='$HR' WHERE username='demo'" >/dev/null

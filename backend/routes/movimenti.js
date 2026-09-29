@@ -8,7 +8,9 @@ const UnifiedImportProcessor = require('../services/UnifiedImportProcessor');
 const { logErrore } = require('../utils/errori');
 const { cartellaXlsx } = require('../utils/xlsx');
 
+const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
+idNumerici(router, 'id'); // 400 per id non interi (U1)
 
 // Middleware di autenticazione per tutte le route
 router.use((req, res, next) => {
@@ -41,7 +43,11 @@ const movimentiFiltersSchema = require('joi').object({
   limit: require('joi').number().integer().min(1).max(1000).default(50),
   offset: require('joi').number().integer().min(0).default(0),
   order_by: require('joi').string().valid('data', 'importo', 'created_at').default('data'),
-  order_direction: require('joi').string().valid('ASC', 'DESC').default('DESC')
+  order_direction: require('joi').string().valid('ASC', 'DESC').default('DESC'),
+  // U1: cursore per le liste infinite ("data_id" dell'ultima riga ricevuta), solo
+  // con order_by=data. Con il cursore offset si ignora: righe inserite nel
+  // frattempo non fanno saltare ne' ripetere righe.
+  dopo: require('joi').string().pattern(/^\d{4}-\d{2}-\d{2}_[1-9]\d{0,9}$/).optional()
 });
 
 // GET /api/movimenti/export - Export movimenti (AGGIORNATO CON TIPOLOGIE)
@@ -548,7 +554,8 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           limit,
           offset,
           order_by,
-          order_direction
+          order_direction,
+          dopo
         } = req.query;
         
         let whereConditions = ['m.user_id = $1'];
@@ -615,6 +622,40 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
         const validDirection = ['ASC', 'DESC'];
         const safeOrderBy = validOrderBy.includes(order_by) ? order_by : 'data';
         const safeDirection = validDirection.includes(order_direction) ? order_direction : 'DESC';
+
+        // U1: il cursore vale solo per l'ordine per data (data, id).
+        if (dopo && safeOrderBy !== 'data') {
+          return res.status(400).json({ error: 'Il cursore vale solo con order_by=data' });
+        }
+        const pagina = [...whereConditions];
+        const paramsPagina = [...params];
+        if (dopo) {
+          const [d, i] = dopo.split('_');
+          paramsPagina.push(d, parseInt(i, 10));
+          const n = paramsPagina.length;
+          pagina.push(`(m.data, m.id) ${safeDirection === 'DESC' ? '<' : '>'} ($${n - 1}::date, $${n})`);
+        }
+        // Saldo progressivo del conto (saldo dopo il movimento, in ordine data, id):
+        // solo filtrando per conto, dove ha senso. Si calcola su tutti i movimenti
+        // del conto, poi si filtra: con altri filtri resta il saldo vero del conto.
+        let saldoJoin = '';
+        let saldoCol = '';
+        if (conto_id) {
+          paramsPagina.push(conto_id);
+          const c = paramsPagina.length;
+          saldoCol = ',\n        sp.saldo_progressivo';
+          saldoJoin = `
+      LEFT JOIN (
+        SELECT m2.id,
+               cc2.saldo_iniziale + sum(CASE WHEN m2.tipo = 'Entrata' THEN m2.importo ELSE -m2.importo END)
+                 OVER (ORDER BY m2.data, m2.id) AS saldo_progressivo
+        FROM movimenti m2
+        JOIN conti_correnti cc2 ON cc2.id = m2.conto_id AND cc2.user_id = $1
+        WHERE m2.user_id = $1 AND m2.conto_id = $${c}
+      ) sp ON sp.id = m.id`;
+        }
+        paramsPagina.push(limit + 1, dopo ? 0 : offset);
+        const nLim = paramsPagina.length - 1;
         
         // Query principale con tipologie (AGGIORNATA)
         const movimenti = await queryAll(`
@@ -626,15 +667,19 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
         ta.colore as tipologia_colore,
         ta.icona as tipologia_icona,
         cc.nome_banca,
-        cc.intestatario
+        cc.intestatario${saldoCol}
       FROM movimenti m
       LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
       LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
-      LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
-      WHERE ${whereConditions.join(' AND ')}
-      ORDER BY m.data DESC, m.created_at DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    `, [...params, limit, offset]);
+      LEFT JOIN conti_correnti cc ON m.conto_id = cc.id${saldoJoin}
+      WHERE ${pagina.join(' AND ')}
+      ORDER BY m.${safeOrderBy} ${safeDirection}, m.id ${safeDirection}
+      LIMIT $${nLim} OFFSET $${nLim + 1}
+    `, paramsPagina);
+        // Una riga in piu' dice se ce ne sono altre (vale anche col cursore).
+        const altri = movimenti.length > limit;
+        if (altri) movimenti.pop();
+        const ultima = movimenti[movimenti.length - 1];
           
           // Conta il totale (AGGIORNATO)
           const totalCount = await queryOne(`
@@ -666,7 +711,10 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
                   total: parseInt(totalCount.count),
                   limit: parseInt(limit),
                   offset: parseInt(offset),
-                  hasMore: parseInt(offset) + parseInt(limit) < parseInt(totalCount.count)
+                  hasMore: altri,
+                  // "data_id" dell'ultima riga, da ripassare come `dopo` (solo order_by=data)
+                  cursore: altri && safeOrderBy === 'data' && ultima
+                    ? `${moment(ultima.data).format('YYYY-MM-DD')}_${ultima.id}` : null
                 },
                 totali
               });

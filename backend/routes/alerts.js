@@ -4,7 +4,9 @@ const { query, queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { logErrore } = require('../utils/errori');
 
+const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
+idNumerici(router, 'id'); // 400 per id non interi (U1)
 
 // Middleware di autenticazione per tutte le route
 router.use(auth);

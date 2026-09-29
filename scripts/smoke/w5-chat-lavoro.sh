@@ -252,7 +252,7 @@ assert_http "l'altro cliente, nominando il mio collegamento -> 404" 404 "$API/me
 assert_http "lo studio, passando per l'altro cliente -> 404" 404 "$API/messaggi/allegati/$A_PDF?userId=$CLI2" -H "Authorization: Bearer $CT"
 assert_http "uno studio non collegato -> 404" 404 "$API/messaggi/allegati/$A_PDF?$QC" -H "Authorization: Bearer $CT2"
 assert_http "uno studio non collegato non carica -> 404" 404 up "$CT2" "$QC" $T/doc.pdf
-assert_http "id non numerico -> 404" 404 "$API/messaggi/allegati/abc?$QU" -H "Authorization: Bearer $UT"
+assert_http "id non numerico -> 400 (U1)" 400 "$API/messaggi/allegati/abc?$QU" -H "Authorization: Bearer $UT"
 eq "i tentativi non aggiungono righe" "2" "$(righe_allegato)"
 
 echo

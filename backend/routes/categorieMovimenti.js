@@ -8,8 +8,11 @@ const { queryAll, queryOne, execute } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 const { logErrore } = require('../utils/errori');
+const { contiene } = require('../utils/ricerca');
 
+const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
+idNumerici(router, 'id'); // 400 per id non interi (U1)
 router.use(auth);
 
 // GET /api/categorie-movimenti - Lista tutte le categorie
@@ -69,7 +72,7 @@ router.get('/suggestions', async (req, res) => {
 
 
     let tipoCondition = '';
-    let params = [userId, `%${q}%`];
+    let params = [userId, contiene(q)]; // % e _ digitati restano caratteri (U1)
     
     if (tipo) {
       tipoCondition = 'AND (tipo = $3 OR tipo = \'Entrambi\')';
@@ -80,7 +83,7 @@ router.get('/suggestions', async (req, res) => {
     const suggestions = await queryAll(`
       SELECT DISTINCT nome, tipo, colore, descrizione, 'categoria' as fonte
       FROM categorie_movimenti 
-      WHERE user_id = $1 AND attiva = true AND nome ILIKE $2 ${tipoCondition}
+      WHERE user_id = $1 AND attiva = true AND lower(nome) LIKE $2 ESCAPE '\\' ${tipoCondition}
       
       UNION
       
@@ -92,7 +95,7 @@ router.get('/suggestions', async (req, res) => {
         'movimento' as fonte
       FROM movimenti 
       WHERE user_id = $1 AND categoria IS NOT NULL AND categoria != '' 
-        AND categoria ILIKE $2
+        AND lower(categoria) LIKE $2 ESCAPE '\\'
         AND categoria NOT IN (
           SELECT nome FROM categorie_movimenti WHERE user_id = $1
         )

@@ -14,7 +14,9 @@ const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 const { logErrore } = require('../utils/errori');
 
+const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
+idNumerici(router, 'id', 'tokenId'); // 400 per id non interi (U1)
 
 // Transizioni ammesse, indicizzate per AZIONE e non per stato di arrivo.
 //

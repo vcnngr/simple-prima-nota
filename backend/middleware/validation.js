@@ -272,6 +272,23 @@ const schemas = {
     })
   }),
 
+  // Fase UX, blocco U1: selettore della controparte e elenco paginato.
+  cercaAnagrafiche: Joi.object({
+    q: Joi.string().trim().max(100).allow('').default(''),
+    tipo: Joi.string().valid('Entrata', 'Uscita').optional(),
+    limit: Joi.number().integer().min(1).max(50).default(20),
+    solo_attive: Joi.boolean().default(true)
+  }),
+  elencoAnagrafiche: Joi.object({
+    q: Joi.string().trim().max(100).allow('').default(''),
+    lettera: Joi.string().pattern(/^([A-Z]|#)$/).optional(),
+    tipologia_id: Joi.number().integer().min(1).max(2147483647).optional(),
+    attivo: Joi.string().valid('true', 'false', 'tutte').default('tutte'),
+    ordina: Joi.string().valid('nome', 'uso', 'recente').default('nome'),
+    limit: Joi.number().integer().min(1).max(100).default(50),
+    offset: Joi.number().integer().min(0).max(1000000).default(0)
+  }),
+
   paginazione: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(500).default(50)

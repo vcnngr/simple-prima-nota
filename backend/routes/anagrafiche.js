@@ -2,11 +2,14 @@
 const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { validate, schemas } = require('../middleware/validation');
+const { validate, validateQuery, schemas } = require('../middleware/validation');
+const { contiene, iniziaCon } = require('../utils/ricerca');
 const { logErrore } = require('../utils/errori');
 const { cartellaXlsx } = require('../utils/xlsx');
 
+const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
+idNumerici(router, 'id'); // 400 per id non interi (U1)
 
 // Middleware di autenticazione per tutte le route
 router.use(auth);
@@ -397,6 +400,138 @@ router.get('/categorie', async (req, res) => {
   } catch (error) {
     logErrore('Error fetching categorie', error);
     res.status(500).json({ error: 'Errore durante il caricamento delle categorie' });
+  }
+});
+
+// ==============================================================================
+// FASE UX, BLOCCO U1: ricerca sul server, sempre con un tetto
+// ==============================================================================
+// Con migliaia di anagrafiche le tendine che caricavano l'elenco intero non
+// reggono. Il selettore chiede /cerca (al massimo 50 righe, le piu' usate prima),
+// la pagina delle controparti chiede /elenco a pagine, con gli aggregati
+// calcolati solo per la pagina. GET / e /attive restano per il frontend attuale
+// e spariscono con la sua ricostruzione.
+
+// Filtri comuni a /cerca e /elenco. Ritorna { dove, params }.
+function filtriAnagrafiche(userId, { q, attivo, tipologia_id, lettera }) {
+  const dove = ['a.user_id = $1'];
+  const params = [userId];
+  const p = (v) => { params.push(v); return `$${params.length}`; };
+  if (attivo === true) dove.push('a.attivo = true');
+  if (attivo === false) dove.push('a.attivo = false');
+  if (tipologia_id) dove.push(`a.tipologia_id = ${p(tipologia_id)}`);
+  if (q) {
+    const like = p(contiene(q));
+    dove.push(`(lower(a.nome) LIKE ${like} ESCAPE '\\' OR lower(coalesce(a.piva, '')) LIKE ${like} ESCAPE '\\')`);
+  }
+  if (lettera === '#') dove.push(`upper(left(a.nome, 1)) !~ '^[A-Z]$'`);
+  else if (lettera) dove.push(`upper(left(a.nome, 1)) = ${p(lettera)}`);
+  return { dove, params, p };
+}
+
+// GET /api/anagrafiche/cerca?q=&tipo=&limit= - Selettore della controparte.
+// q vuoto: le controparti usate di recente (ultimi 12 mesi) prima, poi A-Z.
+// q: chi inizia con q prima, poi chi lo contiene; a parita', le piu' usate.
+// tipo (Entrata/Uscita): a parita', prima le controparti di quel tipo.
+router.get('/cerca', validateQuery(schemas.cercaAnagrafiche), async (req, res) => {
+  try {
+    const { q, tipo, limit, solo_attive } = req.query;
+    const { dove, params, p } = filtriAnagrafiche(req.user.id, { q, attivo: solo_attive ? true : undefined });
+    const prefisso = q ? p(iniziaCon(q)) : null;
+    const tipoP = tipo ? p(tipo) : null;
+    const tetto = p(limit + 1);
+
+    const righe = await queryAll(`
+      WITH uso AS (
+        SELECT anagrafica_id, count(*)::int AS n, max(data) AS ultimo
+        FROM movimenti
+        WHERE user_id = $1 AND anagrafica_id IS NOT NULL AND data >= CURRENT_DATE - 365
+        GROUP BY anagrafica_id
+      )
+      SELECT a.id, a.nome, a.piva, a.categoria, a.attivo,
+             ta.nome AS tipologia_nome, ta.colore AS tipologia_colore,
+             coalesce(a.tipo_movimento_preferito, ta.tipo_movimento_default) AS tipo_movimento_preferito,
+             coalesce(u.n, 0) AS movimenti_recenti, u.ultimo AS ultimo_movimento
+      FROM anagrafiche a
+      LEFT JOIN tipologie_anagrafiche ta ON ta.id = a.tipologia_id AND ta.user_id = a.user_id
+      LEFT JOIN uso u ON u.anagrafica_id = a.id
+      WHERE ${dove.join(' AND ')}
+      ORDER BY
+        ${prefisso ? `(lower(a.nome) LIKE ${prefisso} ESCAPE '\\') DESC,` : ''}
+        ${tipoP ? `(coalesce(a.tipo_movimento_preferito, ta.tipo_movimento_default, 'Entrambi') IN (${tipoP}, 'Entrambi')) DESC,` : ''}
+        u.n DESC NULLS LAST, u.ultimo DESC NULLS LAST, lower(a.nome), a.id
+      LIMIT ${tetto}
+    `, params);
+
+    res.json({ risultati: righe.slice(0, limit), altri: righe.length > limit });
+  } catch (error) {
+    logErrore('Error searching anagrafiche', error);
+    res.status(500).json({ error: 'Errore durante la ricerca delle anagrafiche' });
+  }
+});
+
+// GET /api/anagrafiche/elenco - Pagina delle controparti, con indice A-Z.
+// Aggregati (numero movimenti, totali, ultimo movimento) solo per le righe
+// della pagina. `lettere`: quante controparti per iniziale con gli stessi
+// filtri, lettera esclusa (l'indice resta intero mentre si salta fra lettere).
+router.get('/elenco', validateQuery(schemas.elencoAnagrafiche), async (req, res) => {
+  try {
+    const { q, lettera, tipologia_id, ordina, limit, offset } = req.query;
+    const attivo = req.query.attivo === 'tutte' ? undefined : req.query.attivo === 'true';
+    const f = filtriAnagrafiche(req.user.id, { q, attivo, tipologia_id, lettera });
+    const g = filtriAnagrafiche(req.user.id, { q, attivo, tipologia_id });
+
+    const ordine = {
+      nome: 'lower(a.nome), a.id',
+      uso: 's.numero_movimenti DESC, lower(a.nome), a.id',
+      recente: 's.ultimo_movimento DESC NULLS LAST, lower(a.nome), a.id'
+    }[ordina];
+    const lim = f.p(limit + 1);
+    const off = f.p(offset);
+
+    const righe = await queryAll(`
+      SELECT a.id, a.nome, a.categoria, a.email, a.telefono, a.piva, a.attivo, a.tipologia_id,
+             ta.nome AS tipologia_nome, ta.colore AS tipologia_colore, ta.icona AS tipologia_icona,
+             coalesce(a.tipo_movimento_preferito, ta.tipo_movimento_default) AS tipo_movimento_preferito,
+             s.numero_movimenti, s.totale_entrate, s.totale_uscite, s.ultimo_movimento
+      FROM anagrafiche a
+      LEFT JOIN tipologie_anagrafiche ta ON ta.id = a.tipologia_id AND ta.user_id = a.user_id
+      CROSS JOIN LATERAL (
+        SELECT count(*)::int AS numero_movimenti,
+               coalesce(sum(m.importo) FILTER (WHERE m.tipo = 'Entrata'), 0) AS totale_entrate,
+               coalesce(sum(m.importo) FILTER (WHERE m.tipo = 'Uscita'), 0) AS totale_uscite,
+               max(m.data) AS ultimo_movimento
+        FROM movimenti m
+        WHERE m.anagrafica_id = a.id AND m.user_id = $1
+      ) s
+      WHERE ${f.dove.join(' AND ')}
+      ORDER BY ${ordine}
+      LIMIT ${lim} OFFSET ${off}
+    `, f.params);
+
+    const totale = await queryOne(
+      `SELECT count(*)::int AS n FROM anagrafiche a WHERE ${f.dove.join(' AND ')}`,
+      f.params.slice(0, f.params.length - 2)
+    );
+    const lettere = await queryAll(`
+      SELECT CASE WHEN upper(left(a.nome, 1)) ~ '^[A-Z]$' THEN upper(left(a.nome, 1)) ELSE '#' END AS lettera,
+             count(*)::int AS n
+      FROM anagrafiche a
+      WHERE ${g.dove.join(' AND ')}
+      GROUP BY 1 ORDER BY 1
+    `, g.params);
+
+    res.json({
+      anagrafiche: righe.slice(0, limit),
+      totale: totale.n,
+      limit,
+      offset,
+      altri: righe.length > limit,
+      lettere
+    });
+  } catch (error) {
+    logErrore('Error listing anagrafiche', error);
+    res.status(500).json({ error: 'Errore durante il caricamento delle anagrafiche' });
   }
 });
 

@@ -11,7 +11,9 @@ const {
 const allegati = require('../services/AllegatiService');
 const { validate, validateQuery, schemas } = require('../middleware/validation');
 
+const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
+idNumerici(router, 'id'); // 400 per id non interi (U1)
 
 // ==============================================================================
 // MIDDLEWARE: Get collegamento_id for current user/commercialista
