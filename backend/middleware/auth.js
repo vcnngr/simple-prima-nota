@@ -53,7 +53,7 @@ const authEither = async (req, res, next) => {
     if (decoded.tipo === 'commercialista') {
       // Search only in commercialisti table
       const commercialista = await queryOne(
-        'SELECT id, username, email, ragione_sociale, versione_credenziali FROM commercialisti WHERE id = $1',
+        'SELECT id, username, email, ragione_sociale, versione_credenziali FROM commercialisti WHERE id = $1 AND eliminato_il IS NULL',
         [decoded.id]
       );
 

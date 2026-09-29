@@ -324,6 +324,37 @@ async function richiediCambioEmail(t, accountId, password, email) {
   return { esito: 'ok' };
 }
 
+// ------------------------------------------------------------------------------
+// Eliminazione dell'account di uno studio (S3, migration 010)
+// ------------------------------------------------------------------------------
+
+/**
+ * Password verificata fuori dal lock, hash ricontrollato sotto lock come nel
+ * cambio email: una password vecchia non elimina l'account dopo un cambio.
+ * @returns {{esito: 'ok', revocati}|{esito: 'password_errata'}|{esito: 'non_trovato'}}
+ */
+async function eliminaAccountCommercialista(accountId, password) {
+  const prima = await queryOne(
+    'SELECT id, password_hash FROM commercialisti WHERE id = $1 AND eliminato_il IS NULL',
+    [accountId]
+  );
+  if (!prima) return { esito: 'non_trovato' };
+  if (!(await bcrypt.compare(String(password || ''), prima.password_hash))) {
+    return { esito: 'password_errata' };
+  }
+  return withTransaction(async (cl) => {
+    const r = await cl.query(
+      'SELECT password_hash FROM commercialisti WHERE id = $1 AND eliminato_il IS NULL FOR UPDATE',
+      [accountId]
+    );
+    if (r.rowCount === 0) return { esito: 'non_trovato' };
+    if (r.rows[0].password_hash !== prima.password_hash) return { esito: 'password_errata' };
+    const e = await cl.query('SELECT elimina_account_commercialista($1) AS revocati', [accountId]);
+    if (e.rows[0].revocati === null) return { esito: 'non_trovato' };
+    return { esito: 'ok', revocati: e.rows[0].revocati };
+  });
+}
+
 /**
  * @returns {{esito: 'ok', email}|{esito: 'non_valido'}|{esito: 'email_in_uso'}}
  */
@@ -396,5 +427,6 @@ module.exports = {
   cambiaPassword,
   richiediCambioEmail,
   confermaEmail,
+  eliminaAccountCommercialista,
   hashToken
 };

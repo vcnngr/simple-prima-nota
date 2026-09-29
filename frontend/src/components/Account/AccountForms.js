@@ -105,6 +105,44 @@ export const CambioPasswordCommercialistaForm = () => {
   );
 };
 
+// Eliminazione dell'account dello studio. I collegamenti aperti si chiudono; chat,
+// allegati e registro degli accessi restano ai clienti.
+export const EliminaAccountStudioForm = ({ onEliminato }) => {
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm();
+
+  const onSubmit = async ({ password }) => {
+    try {
+      await commercialistiAPI.eliminaAccount(password);
+      toast.success('Account eliminato');
+      onEliminato();
+    } catch (err) {
+      toast.error(errore(err, 'Eliminazione non riuscita'));
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <Alert type="warning">
+        L'eliminazione e' definitiva. I collegamenti con i clienti vengono chiusi e i clienti ricevono un avviso.
+        Lo storico (chat, allegati, registro degli accessi) resta ai clienti; username ed email tornano liberi.
+      </Alert>
+      <div>
+        <label className="form-label" htmlFor="c-elimina-password">Password attuale</label>
+        <input id="c-elimina-password" type="password" autoComplete="current-password"
+          className={`form-input ${errors.password ? 'border-danger-500' : ''}`}
+          {...register('password', { required: 'Serve la password per confermare' })} />
+        {errors.password && <p className="form-error">{errors.password.message}</p>}
+      </div>
+      <label className="flex items-start gap-2 text-sm text-gray-700">
+        <input type="checkbox" className="mt-1" {...register('conferma', { required: 'Conferma per procedere' })} />
+        <span>Ho capito: l'account dello studio non si puo' recuperare.</span>
+      </label>
+      {errors.conferma && <p className="form-error">{errors.conferma.message}</p>}
+      <Button type="submit" variant="danger" loading={isSubmitting}>Elimina account</Button>
+    </form>
+  );
+};
+
 // Dati dello studio. Username ed email non si cambiano da qui.
 export const ProfiloStudioForm = ({ profilo, onSalvato }) => {
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({

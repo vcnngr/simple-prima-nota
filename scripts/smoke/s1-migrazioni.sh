@@ -214,9 +214,10 @@ contiene "dice perche'" "007 non e' l'ultima" "$T/out"
 migra a "$R/database" annulla "$ULTIMA"
 eq "annulla $ULTIMA exit 0" "0" "$RC"
 eq "registro alla versione precedente" "$(printf '%03d' $((10#$ULTIMA - 1)))" "$(versione a)"
-# la 009 non toglie nulla (vedi il suo _down): gli oggetti si vedono sparire con la 008
-migra a "$R/database" annulla 008
-eq "annulla 008 exit 0" "0" "$RC"
+# Giu' fino alla 008 compresa, una alla volta dall'ultima (la 009 non toglie
+# nulla, vedi il suo _down: gli oggetti si vedono sparire con la 008).
+rc=""; for v in $(seq $((10#$ULTIMA - 1)) -1 8); do migra a "$R/database" annulla "$(printf '%03d' "$v")"; rc="$rc$RC"; done
+eq "annulla dalla $(printf '%03d' $((10#$ULTIMA - 1))) alla 008: exit 0" "$(printf '0%.0s' $(seq $((10#$ULTIMA - 1)) -1 8))" "$rc"
 eq "oggetti della 008 tolti (token_account)" "" "$(q a "SELECT to_regclass('public.token_account')")"
 eq "gen_random_bytes ancora disponibile dopo annulla 009" "8" "$(q a "SELECT length(encode(gen_random_bytes(4),'hex'))")"
 migra a "$R/database"

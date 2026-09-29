@@ -1,5 +1,6 @@
 // src/pages/Commercialista/CommercialistaProfilePage.js
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Briefcase,
@@ -9,18 +10,27 @@ import {
   Calendar,
   User,
   Shield,
-  Hash
+  Hash,
+  Trash2
 } from 'lucide-react';
 import { commercialistiAPI } from '../../services/api';
 import LoadingSpinner from '../../components/UI/LoadingSpinner';
 import {
-  CambioEmailForm, CambioPasswordCommercialistaForm, ProfiloStudioForm
+  CambioEmailForm, CambioPasswordCommercialistaForm, ProfiloStudioForm, EliminaAccountStudioForm
 } from '../../components/Account/AccountForms';
 import toast from 'react-hot-toast';
 
 const CommercialistaProfilePage = () => {
   const [profile, setProfile] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
+
+  const dopoEliminazione = () => {
+    localStorage.removeItem('commercialista_token');
+    localStorage.removeItem('commercialista');
+    localStorage.removeItem('user_type');
+    navigate('/login/commercialista');
+  };
 
   useEffect(() => {
     loadProfile();
@@ -248,6 +258,14 @@ const CommercialistaProfilePage = () => {
           </div>
         </div>
       </motion.div>
+
+      {/* Eliminazione account (S3) */}
+      <div className="bg-white rounded-lg shadow-sm border border-danger-200 p-6">
+        <h3 className="text-lg font-semibold text-danger-700 mb-4 flex items-center">
+          <Trash2 className="h-5 w-5 mr-2" /> Elimina account
+        </h3>
+        <EliminaAccountStudioForm onEliminato={dopoEliminazione} />
+      </div>
     </div>
   );
 };

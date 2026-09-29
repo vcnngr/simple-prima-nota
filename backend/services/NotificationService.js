@@ -267,6 +267,13 @@ async function giro(trasporto) {
       console.log(`notifica ${id}: annullata (evento superato)`);
       continue;
     }
+    // Destinatario senza indirizzo (studio eliminato, migration 010): non c'e'
+    // nessuno a cui scrivere e riprovare non cambia nulla.
+    if (!(n.destinatario_tipo === 'user' ? n.user_email : n.commercialista_email)) {
+      await chiudi(id, 'annullata', 'EDESTINATARIO');
+      console.log(`notifica ${id}: annullata (destinatario senza indirizzo)`);
+      continue;
+    }
     try {
       await send(trasporto, c, n);
     } catch (err) {

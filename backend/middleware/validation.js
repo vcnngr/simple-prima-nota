@@ -337,6 +337,10 @@ const schemas = {
       .messages({ 'any.required': 'La password attuale e\' richiesta', 'string.empty': 'La password attuale e\' richiesta' }),
     newPassword: passwordNuova
   }),
+  eliminaAccount: Joi.object({
+    password: Joi.string().max(200).required()
+      .messages({ 'any.required': 'La password e\' richiesta', 'string.empty': 'La password e\' richiesta' })
+  }),
   cambioEmail: Joi.object({
     password: Joi.string().max(200).required()
       .messages({ 'any.required': 'La password e\' richiesta', 'string.empty': 'La password e\' richiesta' }),

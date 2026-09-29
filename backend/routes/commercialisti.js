@@ -51,7 +51,7 @@ const authCommercialista = async (req, res, next) => {
 
     // Verify commercialista exists
     const commercialista = await queryOne(
-      'SELECT id, username, email, ragione_sociale, partita_iva, telefono, versione_credenziali FROM commercialisti WHERE id = $1',
+      'SELECT id, username, email, ragione_sociale, partita_iva, telefono, versione_credenziali FROM commercialisti WHERE id = $1 AND eliminato_il IS NULL',
       [decoded.id]
     );
 
@@ -134,7 +134,7 @@ router.post('/login', async (req, res) => {
 
     // Get commercialista
     const commercialista = await queryOne(
-      'SELECT id, username, email, password_hash, ragione_sociale, partita_iva, telefono, versione_credenziali FROM commercialisti WHERE username = $1',
+      'SELECT id, username, email, password_hash, ragione_sociale, partita_iva, telefono, versione_credenziali FROM commercialisti WHERE username = $1 AND eliminato_il IS NULL',
       [username]
     );
 
@@ -216,6 +216,26 @@ router.put('/password', authCommercialista, validate(schemas.cambioPassword), as
   } catch (error) {
     console.error('Change password error:', error.code || error.message);
     res.status(500).json({ error: 'Errore durante il cambio password' });
+  }
+});
+
+// Eliminazione dell'account dello studio (S3): serve la password. Lo studio si
+// anonimizza, i collegamenti aperti si revocano; chat, allegati e registro degli
+// accessi restano ai clienti (migration 010).
+router.delete('/account', authCommercialista, validate(schemas.eliminaAccount), async (req, res) => {
+  try {
+    const r = await account.eliminaAccountCommercialista(req.commercialista.id, req.body.password);
+    if (r.esito === 'password_errata') {
+      return res.status(400).json({ error: 'Password non corretta' });
+    }
+    if (r.esito === 'non_trovato') {
+      return res.status(401).json({ error: 'Token non valido.' });
+    }
+    console.log(`eliminazione studio ${req.commercialista.id}: fatta, collegamenti revocati ${r.revocati}`);
+    res.json({ success: true, message: 'Account eliminato', collegamenti_revocati: r.revocati });
+  } catch (error) {
+    console.error('Delete account error:', error.code || error.message);
+    res.status(500).json({ error: 'Errore durante l\'eliminazione dell\'account' });
   }
 });
 

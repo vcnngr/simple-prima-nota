@@ -219,7 +219,8 @@ router.get('/collegamenti', auth, async (req, res) => {
               c.revocato_da, c.motivo_revoca,
               c.ambito_dal, c.ambito_al, c.conti_ammessi,
               com.id AS commercialista_id, com.username, com.email,
-              com.ragione_sociale, com.partita_iva, com.telefono
+              com.ragione_sociale, com.partita_iva, com.telefono,
+              (com.eliminato_il IS NOT NULL) AS studio_eliminato
        FROM collegamenti_commercialista c
        JOIN commercialisti com ON com.id = c.commercialista_id
        WHERE c.user_id = $1

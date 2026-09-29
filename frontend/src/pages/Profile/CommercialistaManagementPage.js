@@ -264,6 +264,7 @@ const CommercialistaManagementPage = () => {
                       </span>
                       <h3 className="text-xl font-bold text-gray-900">
                         {c.ragione_sociale || c.username}
+                        {c.studio_eliminato && <span className="ml-2 text-sm font-normal text-gray-500">(account eliminato)</span>}
                       </h3>
                       <div className="text-sm text-gray-600 mt-1 space-y-0.5">
                         {c.email && <div>{c.email}</div>}

@@ -244,6 +244,8 @@ backend:
     ALLEGATI_MAX_BYTES: 10485760
     ALLEGATI_QUOTA_BYTES: 209715200
     ALLEGATI_PULIZIA_MS: 60000
+    ALLEGATI_ORFANI_MINUTI: 60
+    ALLEGATI_ORFANI_MS: 3600000
   # Password SMTP. existingSecret (+ key) per un Secret gestito fuori dal chart;
   # altrimenti value finisce nel Secret del chart (chiave smtp-password).
   smtpPassword:

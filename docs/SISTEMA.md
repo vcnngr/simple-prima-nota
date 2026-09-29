@@ -8,7 +8,7 @@ Ogni blocco è un branch `feat/s…`, con review `pn-gpt` prima della chiusura.
 |---|---|---|---|
 | S1 ✅ | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dalla migration 009 | `scripts/smoke/s1-migrazioni.sh` |
 | S2 ✅ | Configurazione del backend nel chart | `FRONTEND_URL` pubblico, `SMTP_*`/`MAIL_FROM` con password da Secret, `NOTIFICHE_*`, `ALLEGATI_*`, `RESET_*`; PVC degli allegati con `fsGroup`; numeri non più in notazione esponenziale | `scripts/smoke/s2-config-chart.sh` |
-| S3 | Dati e cancellazioni | cancellazione dell'account commercialista (oggi in cascata su collegamenti, registro e chat del cliente); file degli allegati orfani dopo il down della 007 | smoke dedicato |
+| S3 | Dati e cancellazioni | eliminazione dell'account di uno studio senza perdere i dati dei clienti (migration 010); pulizia dei file degli allegati che nessun allegato nomina | `scripts/smoke/s3-eliminazione-studio.sh` |
 | S4 | Pulizia deploy | `nginx.conf` deploy-neutral, versione di PostgreSQL (README 16, chart standalone 15) | build + `compose config` + `helm template` |
 
 ## S1 — Migrazioni versionate
@@ -117,4 +117,46 @@ Aperti, fuori da S2:
   noto (backend esposto direttamente → `X-Forwarded-For` scelto dal client).
 - `RATE_LIMIT_*` e `LOG_LEVEL` sono nei values ma il backend non li legge (il limite è fisso in
   `server.js`): restano per compatibilità, da sistemare con il punto sopra.
+
+## S3 — Dati e cancellazioni
+
+**Il problema.** Nessuna rotta eliminava uno studio, e un `DELETE FROM commercialisti` (a mano o
+da uno script) cancellava in cascata collegamenti, chat, allegati, notifiche e registro degli
+accessi: dati del **cliente**, compresa la traccia di chi ha guardato i suoi conti. A parte, il
+down della 007 toglie le tabelle degli allegati ma lascia i file su disco, che poi nessuno toglie.
+
+**Come funziona ora** (migration 010):
+
+- `DELETE /api/commercialisti/account` (`password`) → `elimina_account_commercialista()`, in una
+  transazione sotto il lock della riga: collegamenti aperti revocati (`revocato_da = 'commercialista'`,
+  motivo "Account dello studio eliminato"; il cliente riceve l'avviso della 006), notifiche per lo
+  studio in coda annullate, link di reset/conferma annullati, username/email/telefono/P.IVA tolti
+  (tornano liberi), password inutilizzabile, `versione_credenziali` avanti (ogni JWT muore),
+  `eliminato_il` impostato. Restano la ragione sociale, la chat, gli allegati e il registro degli
+  accessi. La password si ricontrolla sotto lock come nel cambio email (W6).
+- Il DELETE fisico di uno studio con collegamenti è rifiutato: FK `RESTRICT` al posto di `CASCADE`.
+  Vincolo: un account vivo ha username ed email; `auth`, `authEither`, login e reset escludono gli
+  eliminati. Il cliente vede lo studio con `studio_eliminato: true` e senza contatti.
+- Frontend: sezione "Elimina account" nel profilo dello studio (password + conferma esplicita);
+  nella pagina collegamenti del cliente, "(account eliminato)" accanto al nome.
+- Pulizia dei file orfani (`AllegatiService.pulisciOrfani`): all'avvio e ogni `ALLEGATI_ORFANI_MS`
+  (1 h) rimuove da `ALLEGATI_DIR` i file regolari con nome da chiave (32 esadecimali, o `.tmp`) più
+  vecchi di `ALLEGATI_ORFANI_MINUTI` (60) che nessuna riga di `allegati_messaggio` nomina. Se il
+  database non risponde o le tabelle non ci sono, non cancella nulla.
+- Rollback (`010_…_down.sql`): FK di nuovo `CASCADE`; gli studi eliminati restano senza accesso con
+  username `#eliminato-<id>`; riapplicando la 010 tornano eliminati.
+
+**Prova**: `scripts/smoke/s3-eliminazione-studio.sh` (mailpit, `ALLEGATI_DIR` condivisa): password e
+tipo di token, effetti su studio e clienti (mail di avviso consegnate), cinque eliminazioni
+simultanee (una sola `200`), password cambiata mentre la richiesta aspetta il lock (`400`), DELETE
+fisico rifiutato, file orfani (solo quelli giusti), rollback 010→007 e riapplicazione con
+`migra.sh` (i file lasciati dal down della 007 spariscono dopo).
+
+Aperti, fuori da S3:
+
+- la chat di un collegamento non più attivo non si legge dall'app (`getCollegamentoId` è
+  fail-closed su `attiva`): vale per ogni revoca, non solo per l'eliminazione dello studio. I dati
+  restano nel database; mostrarli in sola lettura è lavoro della fase UX;
+- `DELETE /api/auth/account` (utente) restituisce `details: error.message` e scrive lo username nel
+  log (fase «sicurezza»); i file dei suoi allegati vanno via con il trigger della 007, già prima di S3.
 

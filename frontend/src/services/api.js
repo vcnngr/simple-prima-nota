@@ -285,6 +285,7 @@ export const commercialistiAPI = {
   passwordReimposta: (token, password) => api.post('/commercialisti/password-reimposta', { token, password }),
   cambiaEmail: (password, email) => api.post('/commercialisti/email', { password, email }),
   confermaEmail: (token) => api.post('/commercialisti/email/conferma', { token }),
+  eliminaAccount: (password) => api.delete('/commercialisti/account', { data: { password } }),
 
   // Dashboard
   getDashboard: () => api.get('/commercialisti/dashboard'),

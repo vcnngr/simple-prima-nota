@@ -9,14 +9,18 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
-const { withTransaction } = require('../config/database');
+const { query, withTransaction } = require('../config/database');
 
 const cfg = () => ({
   dir: process.env.ALLEGATI_DIR || path.join(__dirname, '..', 'uploads', 'allegati'),
   maxBytes: parseInt(process.env.ALLEGATI_MAX_BYTES || process.env.MAX_FILE_SIZE || String(10 * 1024 * 1024), 10),
   // Spazio massimo per collegamento: senza, la chat diventa un modo di riempire il disco.
   quotaBytes: parseInt(process.env.ALLEGATI_QUOTA_BYTES || String(200 * 1024 * 1024), 10),
-  puliziaMs: parseInt(process.env.ALLEGATI_PULIZIA_MS || '60000', 10)
+  puliziaMs: parseInt(process.env.ALLEGATI_PULIZIA_MS || '60000', 10),
+  // File senza allegato: si toccano solo se piu' vecchi di cosi' (un upload in
+  // corso ha gia' il file ma non ancora la riga), e si cercano ogni orfaniMs.
+  orfaniMinuti: parseInt(process.env.ALLEGATI_ORFANI_MINUTI || '60', 10),
+  orfaniMs: parseInt(process.env.ALLEGATI_ORFANI_MS || '3600000', 10)
 });
 
 const CHIAVE = /^[0-9a-f]{32}$/;
@@ -282,8 +286,72 @@ async function pulisci() {
   });
 }
 
+// File sul disco che nessun allegato nomina: li lascia il down della 007 (toglie
+// le tabelle, non i file), un upload interrotto fra la scrittura e l'INSERT, un
+// .tmp rimasto a meta'. Si considerano solo i nomi che genera `salva` (32
+// esadecimali, eventualmente .tmp), solo file regolari e solo piu' vecchi di
+// `orfaniMinuti`. Se il database non risponde (o le tabelle non ci sono) non si
+// cancella nulla: l'errore sale al chiamante.
+async function pulisciOrfani() {
+  const c = cfg();
+  let nomi;
+  try {
+    nomi = await fs.promises.readdir(c.dir);
+  } catch (err) {
+    if (err.code === 'ENOENT') return 0;
+    throw err;
+  }
+  const soglia = Date.now() - c.orfaniMinuti * 60 * 1000;
+  const candidati = [];
+  for (const nome of nomi) {
+    const m = /^([0-9a-f]{32})(\.tmp)?$/.exec(nome);
+    if (!m) continue;
+    let st;
+    try {
+      st = await fs.promises.lstat(path.join(c.dir, nome));
+    } catch (_) {
+      continue;
+    }
+    if (!st.isFile() || st.mtimeMs > soglia) continue;
+    candidati.push({ nome, chiave: m[1], tmp: Boolean(m[2]) });
+  }
+  if (candidati.length === 0) return 0;
+
+  const r = await query(
+    'SELECT chiave FROM allegati_messaggio WHERE chiave = ANY($1::varchar[])',
+    [candidati.filter(x => !x.tmp).map(x => x.chiave)]
+  );
+  const vive = new Set(r.rows.map(x => x.chiave));
+  let rimossi = 0;
+  for (const x of candidati) {
+    if (!x.tmp && vive.has(x.chiave)) continue;
+    try {
+      await fs.promises.unlink(path.join(c.dir, x.nome));
+      rimossi++;
+    } catch (err) {
+      if (err.code !== 'ENOENT') console.error(`pulizia allegati: orfano non rimosso (${err.code || 'ERRORE'})`);
+    }
+  }
+  if (rimossi) console.log(`pulizia allegati: ${rimossi} file senza allegato rimossi`);
+  return rimossi;
+}
+
 let timer = null;
+let timerOrfani = null;
 let inCorso = false;
+let orfaniInCorso = false;
+
+async function giroOrfani() {
+  if (orfaniInCorso) return;
+  orfaniInCorso = true;
+  try {
+    await pulisciOrfani();
+  } catch (err) {
+    console.error(`pulizia allegati orfani: ${err.code || 'ERRORE'}`);
+  } finally {
+    orfaniInCorso = false;
+  }
+}
 
 function avvia() {
   if (timer) return;
@@ -300,11 +368,18 @@ function avvia() {
     }
   }, c.puliziaMs);
   timer.unref();
+  // Un giro subito dopo l'avvio (i resti di un down della 007 si vedono qui),
+  // poi a intervalli.
+  setTimeout(giroOrfani, 5000).unref();
+  timerOrfani = setInterval(giroOrfani, c.orfaniMs);
+  timerOrfani.unref();
 }
 
 function ferma() {
   if (timer) clearInterval(timer);
+  if (timerOrfani) clearInterval(timerOrfani);
   timer = null;
+  timerOrfani = null;
 }
 
 module.exports = {
@@ -314,6 +389,7 @@ module.exports = {
   rimuovi,
   apri,
   pulisci,
+  pulisciOrfani,
   avvia,
   ferma,
   ESTENSIONI_AMMESSE
