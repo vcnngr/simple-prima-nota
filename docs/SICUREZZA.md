@@ -7,7 +7,7 @@ uno smoke che fallisce sul codice di prima.
 
 | # | Blocco | Contenuto | Prova |
 |---|---|---|---|
-| K1 | Token | il token dice per quale tabella vale (`tipo`); solo HS256; password di almeno 8 caratteri alla registrazione; registrazione dello studio validata | `scripts/smoke/k1-token.sh` |
+| K1 ✅ | Token | il token dice per quale tabella vale (`tipo`); solo HS256; password di almeno 8 caratteri alla registrazione; registrazione dello studio validata | `scripts/smoke/k1-token.sh` |
 | K2 | IP e limiti | `trust proxy` corretto per ingress → nginx → backend e per il backend esposto direttamente (`X-Forwarded-For` scelto dal client); `RATE_LIMIT_*` letti davvero; `X-Forwarded-Proto` dietro TLS | da scrivere |
 | K3 | Errori e log | niente `error.message` nelle risposte (13 punti, fra cui `DELETE /api/auth/account`); niente username o email nei log | da scrivere |
 | K4 | Dipendenze | `xlsx@0.18.5` (vulnerabilità high, nessuna correzione su npm) da sostituire; `npm audit` di backend e frontend | da scrivere |
