@@ -15,8 +15,11 @@
 #      raggiungibile con il nome FQDN del Service; tetto calcolato da
 #      ALLEGATI_MAX_BYTES (10 MB -> 11m, 20 MB -> 21m);
 #   D. PostgreSQL: compose, CloudNativePG, job delle migrazioni e database
-#      standalone sulla stessa immagine 16.15; migra.sh su 16.15 vuoto; un volume
-#      creato dal 15 non parte con il 16 e resta leggibile dal 15.
+#      standalone sulla stessa versione 16.15; i server ufficiali su un volume
+#      (compose db, standalone del chart) su 16.15-bookworm, stessa glibc (2.36)
+#      del 16.1; migra.sh su 16.15 vuoto; un volume creato dal 16.1 riparte con
+#      l'immagine di compose con i dati e senza "collation version mismatch";
+#      un volume creato dal 15 non parte con il 16 e resta leggibile dal 15.
 #
 #   ./scripts/smoke/s4-deploy.sh
 #
@@ -28,8 +31,9 @@ set -u
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMG_NGINX=docker.io/library/nginx:1.30-alpine
 IMG_NODE=docker.io/library/node:18-alpine
-IMG_PG=docker.io/library/postgres:16.15
+IMG_PG=docker.io/library/postgres:16.15-bookworm
 IMG_PG15=docker.io/library/postgres:15-alpine
+IMG_PG161=docker.io/library/postgres:16.1
 IMG_PUBBLICATA="${IMG_PUBBLICATA-docker.io/vcnngr/pnfrontend:latest}"
 S=pn-s4-$$
 NET=$S-net
@@ -44,7 +48,7 @@ contiene() { if printf '%s' "$3" | grep -qiF -- "$2"; then ok "$1"; else ko "$1"
 pulisci() {
   docker rm -f $(docker ps -aq --filter "name=^$S-") >/dev/null 2>&1
   docker network rm "$NET" >/dev/null 2>&1
-  docker volume rm "$S-pg15" >/dev/null 2>&1
+  docker volume rm "$S-pg15" "$S-pg161" >/dev/null 2>&1
   [ -n "${IMG_COSTRUITA:-}" ] && docker rmi "$IMG_COSTRUITA" >/dev/null 2>&1
   rm -rf "$T"
 }
@@ -140,19 +144,33 @@ contiene "backend ricreato con un altro indirizzo: raggiunto" '"path":"/api/heal
 echo
 echo "=== C. chart Helm ==="
 rende() { # rende <prefisso> [--set ...]: configurazione e variabili del frontend renderizzati
+  # Solo helm e awk (niente PyYAML): il blocco letterale della ConfigMap, le
+  # variabili e il punto di montaggio del container del Deployment del frontend.
   local p=$1; shift
   helm template t "$R/helm-chart" "$@" > "$T/$p.yaml" 2>"$T/$p.err" || return 1
-  python3 - "$T/$p.yaml" "$T/$p" <<'EOF'
-import sys, yaml
-docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
-cm = next(d for d in docs if d['kind'] == 'ConfigMap' and d['metadata']['name'].endswith('-config'))
-dep = next(d for d in docs if d['kind'] == 'Deployment' and d['metadata']['name'].endswith('-frontend'))
-c = dep['spec']['template']['spec']['containers'][0]
-m = next(v for v in c['volumeMounts'] if v['name'] == 'nginx-config')
-open(sys.argv[2] + '.tpl', 'w').write(cm['data']['default.conf.template'])
-open(sys.argv[2] + '.env', 'w').write(''.join(f"{e['name']}={e['value']}\n" for e in c['env']))
-open(sys.argv[2] + '.mount', 'w').write(m['mountPath'])
-EOF
+  helm template t "$R/helm-chart" "$@" --show-only templates/configmap.yaml > "$T/$p.cm" 2>>"$T/$p.err" || return 1
+  helm template t "$R/helm-chart" "$@" --show-only templates/frontend-deployment.yaml > "$T/$p.dep" 2>>"$T/$p.err" || return 1
+  awk '
+    dentro && /^[^ ]/ { dentro = 0 }
+    dentro && /^    / { sub(/^    /, ""); riga[++n] = $0; next }
+    dentro && /^ *$/  { riga[++n] = ""; next }
+    dentro            { dentro = 0 }
+    /^  default\.conf\.template: \|$/ { dentro = 1 }
+    END { while (n > 0 && riga[n] == "") n--; for (i = 1; i <= n; i++) print riga[i] }
+  ' "$T/$p.cm" > "$T/$p.tpl"
+  awk '
+    function nudo(v) { if (v ~ /^".*"$/) v = substr(v, 2, length(v) - 2); return v }
+    /^        env:$/ { env = 1; next }
+    env && /^        [a-zA-Z]/ { env = 0 }
+    env && /^        - name: / { k = $0; sub(/^        - name: /, "", k); next }
+    env && /^          value: / { v = $0; sub(/^          value: /, "", v); print k "=" nudo(v); next }
+  ' "$T/$p.dep" > "$T/$p.env"
+  awk '
+    /^        - name: nginx-config$/ { m = 1; next }
+    m && /^          mountPath: / { sub(/^          mountPath: /, ""); printf "%s", $0; exit }
+    m && /^        - / { m = 0 }
+  ' "$T/$p.dep" > "$T/$p.mount"
+  [ -s "$T/$p.tpl" ] && [ -s "$T/$p.env" ] && [ -s "$T/$p.mount" ]
 }
 avvia_chart() { # avvia_chart <nome> <prefisso> <immagine>
   mkdir -p "$T/$2.d"; cp "$T/$2.tpl" "$T/$2.d/default.conf.template"
@@ -198,7 +216,13 @@ V=$( { senza_commenti "$R/docker-compose.yml" "$R/helm-chart/values.yaml" | grep
 eq "una sola versione in compose, CloudNativePG, job e standalone" "16.15" "$V"
 eq "README: niente PostgreSQL 15" "0" "$(grep -c 'PostgreSQL 15' "$R/README.md")"
 helm template t "$R/helm-chart" --set postgresql.enabled=true --set cloudnativepg.enabled=false > "$T/sa.yaml" 2>&1
-eq "chart standalone: immagine 16.15" "docker.io/postgres:16.15" "$(grep -oE 'image: "docker.io/postgres:[^"]*"' "$T/sa.yaml" | head -1 | sed 's/image: "//; s/"$//')"
+eq "chart standalone: immagine 16.15-bookworm" "docker.io/postgres:16.15-bookworm" "$(grep -oE 'image: "docker.io/postgres:[^"]*"' "$T/sa.yaml" | head -1 | sed 's/image: "//; s/"$//')"
+# Immagini dei servizi di compose lette dal file (non scritte qui).
+docker compose -f "$R/docker-compose.yml" config --format json > "$T/compose.json" 2>/dev/null
+immagine_compose() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["services"][sys.argv[2]]["image"])' "$T/compose.json" "$1" 2>/dev/null; }
+IMG_DB=$(immagine_compose db)
+eq "compose db: 16.15-bookworm (glibc del 16.1)" "docker.io/library/postgres:16.15-bookworm" "$IMG_DB"
+eq "compose migra: stessa immagine di db" "$IMG_DB" "$(immagine_compose migra)"
 eq "chart CloudNativePG: immagine 16.15" "1" "$(helm template t "$R/helm-chart" | grep -c 'imageName: ghcr.io/cloudnative-pg/postgresql:16.15')"
 
 docker run -d --name "$S-pg" --network "$NET" -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=prima_nota "$IMG_PG" >/dev/null
@@ -209,6 +233,26 @@ docker run --rm --network "$NET" -e PGHOST="$S-pg" -e PGUSER=postgres -e PGPASSW
 eq "migra.sh su 16.15 vuoto: exit 0" "0" "$?"
 ULTIMA=$(cd "$R/database/migrations" && ls [0-9][0-9][0-9]_*.sql | grep -v _down | tail -1 | cut -c1-3)
 eq "registro all'ultima migrazione ($ULTIMA)" "$ULTIMA" "$(docker exec "$S-pg" psql -U postgres -d prima_nota -tAc 'SELECT max(versione) FROM schema_migrazioni')"
+
+# Aggiornamento reale: volume creato dal 16.1 (Debian bookworm, glibc 2.36), poi
+# riavviato con l'immagine di db in compose. Con una glibc diversa le collation
+# cambiano versione: "collation version mismatch" e indici su testo sospetti.
+docker volume create "$S-pg161" >/dev/null
+docker run -d --name "$S-q1" -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=prima_nota -v "$S-pg161:/var/lib/postgresql/data" "$IMG_PG161" >/dev/null
+for _ in $(seq 1 60); do docker exec "$S-q1" pg_isready -q -h 127.0.0.1 -U postgres >/dev/null 2>&1 && break; sleep 1; done
+docker exec "$S-q1" psql -U postgres -d prima_nota -v ON_ERROR_STOP=1 -qc \
+  "CREATE TABLE prova (n int, t text); INSERT INTO prova VALUES (42, 'quarantadue'); CREATE UNIQUE INDEX prova_t ON prova (t)" >/dev/null 2>&1
+eq "16.1: volume creato con dati e indice su testo" "42" "$(docker exec "$S-q1" psql -U postgres -d prima_nota -tAc 'SELECT n FROM prova')"
+docker stop "$S-q1" >/dev/null; docker rm "$S-q1" >/dev/null
+docker run -d --name "$S-q2" -e POSTGRES_PASSWORD=pw -v "$S-pg161:/var/lib/postgresql/data" "${IMG_DB:-$IMG_PG}" >/dev/null
+for _ in $(seq 1 60); do docker exec "$S-q2" pg_isready -q -h 127.0.0.1 -U postgres >/dev/null 2>&1 && break; sleep 1; done
+eq "16.1 -> compose ($IMG_DB): dati intatti" "42" "$(docker exec "$S-q2" psql -U postgres -d prima_nota -tAc "SELECT n FROM prova WHERE t = 'quarantadue'" 2>"$T/q2.err")"
+eq "16.1 -> compose: psql senza collation version mismatch" "0" "$(grep -ci 'collation version' "$T/q2.err")"
+eq "16.1 -> compose: versione collation del database = quella della glibc" "t" \
+  "$(docker exec "$S-q2" psql -U postgres -d prima_nota -tAc "SELECT datcollversion = pg_database_collation_actual_version(oid) FROM pg_database WHERE datname = 'prima_nota'" 2>/dev/null)"
+docker logs "$S-q2" > "$T/q2.log" 2>&1
+eq "16.1 -> compose: log del server senza collation version mismatch" "0" "$(grep -ci 'collation version' "$T/q2.log")"
+docker rm -f "$S-q2" >/dev/null
 
 docker volume create "$S-pg15" >/dev/null
 docker run -d --name "$S-p15" -e POSTGRES_PASSWORD=pw -v "$S-pg15:/var/lib/postgresql/data" "$IMG_PG15" >/dev/null

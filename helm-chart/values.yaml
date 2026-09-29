@@ -13,7 +13,10 @@ postgresql:
     # creato da PostgreSQL 15 non parte con il 16 ("database files are
     # incompatible with server"; i dati restano intatti). Per restare sul 15
     # impostare tag: "15"; per passare al 16 serve pg_dump/pg_upgrade.
-    tag: "16.15"
+    # -bookworm: stessa glibc (2.36) del 16.1. Il tag senza suffisso e' Debian
+    # trixie (glibc 2.41): collation diverse, "collation version mismatch" sui
+    # volumi esistenti (docs/SISTEMA.md, S4).
+    tag: "16.15-bookworm"
     pullPolicy: IfNotPresent
   auth:
     database: prima_nota

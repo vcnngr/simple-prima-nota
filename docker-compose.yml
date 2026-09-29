@@ -1,9 +1,11 @@
 # docker-compose.prod.yml
 
 services:
-  # Database PostgreSQL
+  # Database PostgreSQL. 16.15-bookworm: stessa glibc (2.36) del 16.1 con cui
+  # sono nati i volumi esistenti; il tag senza suffisso e' trixie (glibc 2.41)
+  # e porta a "collation version mismatch" (docs/SISTEMA.md, S4).
   db:
-    image: docker.io/library/postgres:16.15
+    image: docker.io/library/postgres:16.15-bookworm
     container_name: prima_nota_db
     environment:
       POSTGRES_DB: prima_nota
@@ -25,7 +27,7 @@ services:
   # applica solo le migrazioni mancanti su uno esistente, poi esce. Il backend
   # parte solo se questo e' uscito con 0.
   migra:
-    image: docker.io/library/postgres:16.15
+    image: docker.io/library/postgres:16.15-bookworm
     container_name: prima_nota_migra
     environment:
       PGHOST: db

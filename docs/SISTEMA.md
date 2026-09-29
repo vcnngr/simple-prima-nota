@@ -9,7 +9,7 @@ Ogni blocco è un branch `feat/s…`, con review `pn-gpt` prima della chiusura.
 | S1 ✅ | Migrazioni versionate | `database/migra.sh` + registro `schema_migrazioni`; compose e Helm lo usano entrambi; `pgcrypto` dalla migration 009 | `scripts/smoke/s1-migrazioni.sh` |
 | S2 ✅ | Configurazione del backend nel chart | `FRONTEND_URL` pubblico, `SMTP_*`/`MAIL_FROM` con password da Secret, `NOTIFICHE_*`, `ALLEGATI_*`, `RESET_*`; PVC degli allegati con `fsGroup`; numeri non più in notazione esponenziale | `scripts/smoke/s2-config-chart.sh` |
 | S3 ✅ | Dati e cancellazioni | eliminazione dell'account di uno studio senza perdere i dati dei clienti (migration 010); pulizia dei file degli allegati che nessun allegato nomina | `scripts/smoke/s3-eliminazione-studio.sh` |
-| S4 | Pulizia deploy | una sola configurazione nginx per compose, Podman e Helm (modello con variabili d'ambiente); allegati oltre 1 MB non più fermati da nginx nel chart; PostgreSQL 16.15 ovunque | `scripts/smoke/s4-deploy.sh` |
+| S4 | Pulizia deploy | una sola configurazione nginx per compose, Podman e Helm (modello con variabili d'ambiente); allegati oltre 1 MB non più fermati da nginx nel chart; PostgreSQL 16.15 ovunque (server ufficiali su bookworm, stessa glibc del 16.1) | `scripts/smoke/s4-deploy.sh` |
 
 ## S1 — Migrazioni versionate
 
@@ -198,8 +198,21 @@ PostgreSQL: compose, CloudNativePG e job delle migrazioni su 16.1, database stan
   `server_tokens off`. Tolto il proxy `/pgadmin/` in nginx: l'ingress instrada `/pgadmin` da sé.
 - Immagine `nginx:1.30-alpine` invece di `nginx:alpine`.
 - PostgreSQL 16.15 ovunque (compose `db` e `migra`, `cloudnativepg.cluster.imageName`,
-  `migrazioni.image.tag`, `postgresql.image.tag`, smoke S1–S3). Dal 16.1 è un cambio di minor: per
-  CloudNativePG un aggiornamento a rotazione delle istanze. **Il database standalone** (`postgresql.enabled`,
+  `migrazioni.image.tag`, `postgresql.image.tag`, smoke S1–S3). Dal 16.1 è un cambio di minor, **a
+  patto che non cambi la glibc**: le collation di testo vengono dalla glibc del sistema, e con una glibc
+  diversa l'ordinamento può cambiare, gli indici su colonne di testo possono diventare incoerenti e il
+  server avvisa a ogni connessione `database "..." has a collation version mismatch`. L'immagine
+  ufficiale `postgres:16.1` è Debian bookworm (glibc 2.36); `postgres:16.15` senza suffisso è Debian
+  trixie (glibc 2.41). Per questo i server ufficiali che girano su un volume (compose `db`, e `migra`
+  per coerenza; `postgresql.image.tag` del chart) sono fissati a **`16.15-bookworm`** (glibc 2.36).
+  Il job delle migrazioni resta su `16.15-alpine`: usa solo `psql`, nessun dato. CloudNativePG non è
+  toccato: `ghcr.io/cloudnative-pg/postgresql` 16.1 e 16.15 sono entrambe bullseye (glibc 2.31), e per
+  CloudNativePG il passaggio è un aggiornamento a rotazione delle istanze.
+  Passare in futuro a una glibc più nuova (trixie o oltre) è un'operazione a sé, con fermo scritture:
+  con la nuova immagine, per ogni database `REINDEX DATABASE <db>;` (ricostruisce gli indici con le
+  nuove regole; se un indice `UNIQUE` fallisce ci sono duplicati da sistemare a mano) e poi
+  `ALTER DATABASE <db> REFRESH COLLATION VERSION;` (anche `template1` e `postgres`); solo dopo
+  sparisce l'avviso. In alternativa `pg_dump`/ripristino su un volume nuovo. **Il database standalone** (`postgresql.enabled`,
   spento di default) passa da 15 a 16: un volume creato dal 15 non parte con il 16 ("database files are
   incompatible with server"), i dati restano intatti e con `postgresql.image.tag: "15"` riparte; per
   passare al 16 serve `pg_dump`/`pg_upgrade`.
@@ -208,8 +221,12 @@ PostgreSQL: compose, CloudNativePG e job delle migrazioni su 16.1, database stan
 una rete Docker con un finto backend chiamato `backend`; monta la configurazione e le variabili del
 Deployment renderizzato su `nginx:1.30-alpine` e sull'immagine pubblicata, con il finto backend
 raggiungibile col nome FQDN del Service. Allegati da 5 MB passano, da 12 MB `413`; con
-`ALLEGATI_MAX_BYTES` a 20 MB il tetto diventa `21m`. `migra.sh` su 16.15 vuoto; volume del 15 rifiutato
-dal 16 e di nuovo leggibile dal 15. Non osservato: un cluster Kubernetes reale (il resolver lì è quello
+`ALLEGATI_MAX_BYTES` a 20 MB il tetto diventa `21m`. `migra.sh` su 16.15 vuoto; aggiornamento reale:
+volume creato da `postgres:16.1` con un indice `UNIQUE` su testo, riavviato con l'immagine di `db` letta
+da `docker-compose.yml`, dati intatti, nessun `collation version mismatch` né in `psql` né nel log,
+`datcollversion` uguale a `pg_database_collation_actual_version()` (con `postgres:16.15` trixie queste
+prove falliscono); volume del 15 rifiutato dal 16 e di nuovo leggibile dal 15. Lo smoke non richiede più
+PyYAML (solo `helm`, `awk` e `python3` di base). Non osservato: un cluster Kubernetes reale (il resolver lì è quello
 di `resolv.conf` del pod).
 
 Aperti, fuori da S4 (fase «sicurezza»): la CSP ammette `http:`, `https:` e `'unsafe-inline'`;

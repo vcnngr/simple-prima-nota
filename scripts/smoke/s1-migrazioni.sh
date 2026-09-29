@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test delle migrazioni versionate (blocco S1, database/migra.sh).
 #
-# Crea da se' i database di prova (container postgres:16.15 su una rete docker
+# Crea da se' i database di prova (container postgres:16.15-bookworm su una rete docker
 # dedicata) e fa girare le migrazioni come le fanno i deploy: dentro un container
 # postgres, con i file montati. Verifica:
 #   A. database vuoto: init + 001..N, schema identico a quello costruito a mano;
@@ -35,7 +35,7 @@ set -u
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$R"
 NET="pn-s1-net-$$"
-IMG=docker.io/library/postgres:16.15
+IMG=docker.io/library/postgres:16.15-bookworm
 PFX="pn-s1-$$"
 T=$(mktemp -d)
 ULTIMA=$(ls database/migrations/[0-9][0-9][0-9]_*.sql | grep -v '_down.sql$' | tail -1 | xargs basename | cut -c1-3)
