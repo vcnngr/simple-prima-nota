@@ -4,6 +4,7 @@
 // token gia' verificato dal middleware. I valori ammessi stanno anche nei CHECK
 // della migrazione 013 e nello schema Joi `preferenze`.
 const { queryOne } = require('../config/database');
+const { logErrore } = require('../utils/errori');
 
 const TABELLE = { user: 'utenti', commercialista: 'commercialisti' };
 const TEMI = ['registro', 'bottega'];
@@ -30,4 +31,16 @@ async function salva(tipo, id, { tema, aspetto }) {
   );
 }
 
-module.exports = { leggi, salva, TEMI, ASPETTI };
+// Per login e profilo: le preferenze non devono mai bloccare l'accesso. Se non
+// si leggono (schema sotto la 013 dopo un rollback, errore del database) la
+// risposta porta `null` e il frontend usa i predefiniti.
+async function perRisposta(tipo, id) {
+  try {
+    return await leggi(tipo, id);
+  } catch (error) {
+    logErrore('Preferenze non lette', error);
+    return null;
+  }
+}
+
+module.exports = { leggi, salva, perRisposta, TEMI, ASPETTI };

@@ -66,7 +66,7 @@ router.post('/login', validate(schemas.login), async (req, res) => {
     
     // Trova l'utente
     const user = await queryOne(
-      'SELECT id, username, email, password_hash, versione_credenziali, tema, aspetto FROM utenti WHERE username = $1',
+      'SELECT id, username, email, password_hash, versione_credenziali FROM utenti WHERE username = $1',
       [username]
     );
     
@@ -90,7 +90,7 @@ router.post('/login', validate(schemas.login), async (req, res) => {
         username: user.username,
         email: user.email
       },
-      preferenze: { tema: user.tema, aspetto: user.aspetto },
+      preferenze: await preferenze.perRisposta('user', user.id),
       token
     });
   } catch (error) {
@@ -116,7 +116,7 @@ router.get('/verify', auth, async (req, res) => {
 router.get('/profile', auth, async (req, res) => {
   try {
     const user = await queryOne(
-      'SELECT id, username, email, created_at, tema, aspetto FROM utenti WHERE id = $1',
+      'SELECT id, username, email, created_at FROM utenti WHERE id = $1',
       [req.user.id]
     );
     
@@ -124,7 +124,7 @@ router.get('/profile', auth, async (req, res) => {
       return res.status(404).json({ error: 'Utente non trovato' });
     }
     
-    res.json(user);
+    res.json({ ...user, preferenze: await preferenze.perRisposta('user', user.id) });
   } catch (error) {
     logErrore('Profile error', error);
     res.status(500).json({ error: 'Errore durante il caricamento del profilo' });

@@ -138,7 +138,7 @@ router.post('/login', async (req, res) => {
 
     // Get commercialista
     const commercialista = await queryOne(
-      'SELECT id, username, email, password_hash, ragione_sociale, partita_iva, telefono, versione_credenziali, tema, aspetto FROM commercialisti WHERE username = $1 AND eliminato_il IS NULL',
+      'SELECT id, username, email, password_hash, ragione_sociale, partita_iva, telefono, versione_credenziali FROM commercialisti WHERE username = $1 AND eliminato_il IS NULL',
       [username]
     );
 
@@ -160,13 +160,12 @@ router.post('/login', async (req, res) => {
     delete commercialista.versione_credenziali;
     // Preferenze accanto allo studio, non dentro: il frontend salva
     // `commercialista` cosi' com'e' e le preferenze nella loro copia locale.
-    const { tema, aspetto, ...studio } = commercialista;
 
     res.json({
       success: true,
       message: 'Login effettuato con successo',
-      commercialista: studio,
-      preferenze: { tema, aspetto },
+      commercialista,
+      preferenze: await preferenze.perRisposta('commercialista', commercialista.id),
       token
     });
   } catch (error) {
@@ -183,7 +182,7 @@ router.get('/profile', authCommercialista, async (req, res) => {
     res.json({
       success: true,
       commercialista: req.commercialista,
-      preferenze: await preferenze.leggi('commercialista', req.commercialista.id)
+      preferenze: await preferenze.perRisposta('commercialista', req.commercialista.id)
     });
   } catch (error) {
     logErrore('Profile error', error);

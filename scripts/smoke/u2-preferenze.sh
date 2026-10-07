@@ -70,7 +70,7 @@ eq "PUT entrambi -> 200" "200|registro/chiaro" "$(hit -X PUT "${AU[@]}" "${JSON[
 hit -X PUT "${AU[@]}" "${JSON[@]}" -d '{"tema":"bottega","aspetto":"scuro"}' "$API/auth/preferenze" >/dev/null
 eq "rilettura: salvate" "200|bottega/scuro" "$(hit "${AU[@]}" "$API/auth/preferenze")|$(pref)"
 hit "${AU[@]}" "$API/auth/profile" >/dev/null
-eq "profilo con tema e aspetto" "bottega/scuro" "$(pref)"
+eq "profilo con tema e aspetto" "bottega/scuro" "$(py "p=d['preferenze'];print(p['tema']+'/'+p['aspetto'])")"
 for b in '{"tema":"notte"}' '{"aspetto":"blu"}' '{}' '{"tema":""}' '{"tema":null}' '{"tema":["bottega"]}' '{"tema":"Bottega"}'; do
   eq "PUT $b -> 400" "400" "$(hit -X PUT "${AU[@]}" "${JSON[@]}" -d "$b" "$API/auth/preferenze")"
 done
@@ -118,6 +118,12 @@ eq "colonne tolte" "0" "$(q "SELECT count(*) FROM information_schema.columns WHE
 eq "senza colonne: preferenze -> 500 generico" "500|0" \
   "$(hit "${AU[@]}" "$API/auth/preferenze")|$(grep -c -i -E 'column|tema|does not exist' "$T/body")"
 eq "senza colonne: l'autenticazione non ne dipende (verify 200)" "200" "$(hit "${AU[@]}" "$API/auth/verify")"
+eq "senza colonne: login utente 200, preferenze null" "200|None" \
+  "$(hit -X POST "${JSON[@]}" -d "{\"username\":\"$U\",\"password\":\"$PW\"}" "$API/auth/login")|$(py "print(d['preferenze'])")"
+eq "senza colonne: profilo utente 200" "200" "$(hit "${AU[@]}" "$API/auth/profile")"
+eq "senza colonne: login studio 200, preferenze null" "200|None" \
+  "$(hit -X POST "${JSON[@]}" -d "{\"username\":\"$C\",\"password\":\"$PW\"}" "$API/commercialisti/login")|$(py "print(d['preferenze'])")"
+eq "senza colonne: profilo studio 200" "200" "$(hit "${AC[@]}" "$API/commercialisti/profile")"
 migra; eq "riapplicata: exit 0" "0" "$?"
 eq "colonne di nuovo, predefiniti su tutti" "4|registro/automatico" \
   "$(q "SELECT count(*) FROM information_schema.columns WHERE table_name IN ('utenti','commercialisti') AND column_name IN ('tema','aspetto')")|$(q "SELECT string_agg(DISTINCT tema||'/'||aspetto, ',') FROM (SELECT tema, aspetto FROM utenti UNION ALL SELECT tema, aspetto FROM commercialisti) x")"
