@@ -383,6 +383,15 @@ const schemas = {
       .messages({ 'string.pattern.base': 'Telefono non valido' })
   }),
 
+  // Tema e aspetto dell'account (blocco U2): almeno uno dei due, solo i valori
+  // della migrazione 013, minuscoli. null e stringa vuota rifiutati.
+  preferenze: Joi.object({
+    tema: Joi.string().valid('registro', 'bottega')
+      .messages({ 'any.only': 'Tema non valido (registro, bottega)' }),
+    aspetto: Joi.string().valid('chiaro', 'scuro', 'automatico')
+      .messages({ 'any.only': 'Aspetto non valido (chiaro, scuro, automatico)' })
+  }).or('tema', 'aspetto').options({ stripUnknown: true }),
+
   profiloCommercialista: Joi.object({
     ragione_sociale: Joi.string().trim().max(200).allow('', null).optional(),
     partita_iva: Joi.string().trim().pattern(/^[0-9]{11}$/).allow('', null).optional()

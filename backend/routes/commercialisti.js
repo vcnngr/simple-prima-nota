@@ -12,6 +12,7 @@ const {
 } = require('../middleware/collegamento');
 const { validate, validateQuery, schemas } = require('../middleware/validation');
 const account = require('../services/AccountService');
+const preferenze = require('../services/PreferenzeService');
 const { versioneValida } = account;
 const { limiteResetPassword, rispondiResetAccolto } = require('../middleware/account');
 
@@ -137,7 +138,7 @@ router.post('/login', async (req, res) => {
 
     // Get commercialista
     const commercialista = await queryOne(
-      'SELECT id, username, email, password_hash, ragione_sociale, partita_iva, telefono, versione_credenziali FROM commercialisti WHERE username = $1 AND eliminato_il IS NULL',
+      'SELECT id, username, email, password_hash, ragione_sociale, partita_iva, telefono, versione_credenziali, tema, aspetto FROM commercialisti WHERE username = $1 AND eliminato_il IS NULL',
       [username]
     );
 
@@ -157,11 +158,15 @@ router.post('/login', async (req, res) => {
     // Remove password_hash from response
     delete commercialista.password_hash;
     delete commercialista.versione_credenziali;
+    // Preferenze accanto allo studio, non dentro: il frontend salva
+    // `commercialista` cosi' com'e' e le preferenze nella loro copia locale.
+    const { tema, aspetto, ...studio } = commercialista;
 
     res.json({
       success: true,
       message: 'Login effettuato con successo',
-      commercialista,
+      commercialista: studio,
+      preferenze: { tema, aspetto },
       token
     });
   } catch (error) {
@@ -177,11 +182,33 @@ router.get('/profile', authCommercialista, async (req, res) => {
   try {
     res.json({
       success: true,
-      commercialista: req.commercialista
+      commercialista: req.commercialista,
+      preferenze: await preferenze.leggi('commercialista', req.commercialista.id)
     });
   } catch (error) {
     logErrore('Profile error', error);
     res.status(500).json({ error: 'Errore nel recupero del profilo' });
+  }
+});
+
+// ==============================================================================
+// Tema e aspetto dell'account (blocco U2)
+// ==============================================================================
+router.get('/preferenze', authCommercialista, async (req, res) => {
+  try {
+    res.json(await preferenze.leggi('commercialista', req.commercialista.id));
+  } catch (error) {
+    logErrore('Preferenze error', error);
+    res.status(500).json({ error: 'Errore nel caricamento delle preferenze' });
+  }
+});
+
+router.put('/preferenze', authCommercialista, validate(schemas.preferenze), async (req, res) => {
+  try {
+    res.json(await preferenze.salva('commercialista', req.commercialista.id, req.body));
+  } catch (error) {
+    logErrore('Preferenze update error', error);
+    res.status(500).json({ error: 'Errore nel salvataggio delle preferenze' });
   }
 });
 

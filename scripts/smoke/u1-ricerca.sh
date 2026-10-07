@@ -202,11 +202,19 @@ PIANO=$(qa "SET enable_seqscan = off; EXPLAIN SELECT id FROM anagrafiche a WHERE
 eq "LIKE '%...%' servito dall'indice a trigrammi" "1" "$(echo "$PIANO" | grep -c idx_anagrafiche_nome_trgm)"
 PIANO=$(qa "EXPLAIN SELECT id FROM movimenti m WHERE m.user_id = $UID_ AND (m.data, m.id) < ('2030-01-01', 1) ORDER BY m.data DESC, m.id DESC LIMIT 8")
 eq "il piano del cursore usa idx_movimenti_user_data_id" "1" "$(echo "$PIANO" | grep -c idx_movimenti_user_data_id)"
-migra annulla 012; eq "annulla 012: exit 0" "0" "$?"
+ULTIMA=$(q "SELECT max(versione) FROM schema_migrazioni")
+# Si annulla solo l'ultima: prima quelle successive alla 012, poi la 012.
+annulla_012() {
+  local v
+  for v in $(q "SELECT string_agg(versione, ' ' ORDER BY versione DESC) FROM schema_migrazioni WHERE versione >= '012'"); do
+    migra annulla "$v" || return 1
+  done
+}
+annulla_012; eq "annulla 012 (e successive): exit 0" "0" "$?"
 eq "indici tolti, pg_trgm resta" "0|1" "$(q "SELECT count(*) FROM pg_indexes WHERE indexname IN ('idx_anagrafiche_nome_trgm','idx_anagrafiche_user_nome','idx_movimenti_user_data_id','idx_movimenti_conto_data_id')")|$(q "SELECT count(*) FROM pg_extension WHERE extname='pg_trgm'")"
 eq "senza indici la ricerca funziona" "200" "$(hit "${AU[@]}" "$API/anagrafiche/cerca?q=ross")"
 migra; eq "riapplicata: exit 0" "0" "$?"
-eq "indici di nuovo presenti, registro alla 012" "4|012" "$(q "SELECT count(*) FROM pg_indexes WHERE indexname IN ('idx_anagrafiche_nome_trgm','idx_anagrafiche_user_nome','idx_movimenti_user_data_id','idx_movimenti_conto_data_id')")|$(q "SELECT max(versione) FROM schema_migrazioni")"
+eq "indici di nuovo presenti, registro all'ultima ($ULTIMA)" "4|$ULTIMA" "$(q "SELECT count(*) FROM pg_indexes WHERE indexname IN ('idx_anagrafiche_nome_trgm','idx_anagrafiche_user_nome','idx_movimenti_user_data_id','idx_movimenti_conto_data_id')")|$(q "SELECT max(versione) FROM schema_migrazioni")"
 
 echo
 echo "=== G. chart ==="

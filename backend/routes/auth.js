@@ -5,6 +5,7 @@ const { query, queryOne } = require('../config/database');
 const { validate, schemas } = require('../middleware/validation');
 const { auth } = require('../middleware/auth');
 const account = require('../services/AccountService');
+const preferenze = require('../services/PreferenzeService');
 const { limiteResetPassword, rispondiResetAccolto } = require('../middleware/account');
 const { logErrore, motivoRiga } = require('../utils/errori');
 
@@ -65,7 +66,7 @@ router.post('/login', validate(schemas.login), async (req, res) => {
     
     // Trova l'utente
     const user = await queryOne(
-      'SELECT id, username, email, password_hash, versione_credenziali FROM utenti WHERE username = $1',
+      'SELECT id, username, email, password_hash, versione_credenziali, tema, aspetto FROM utenti WHERE username = $1',
       [username]
     );
     
@@ -89,6 +90,7 @@ router.post('/login', validate(schemas.login), async (req, res) => {
         username: user.username,
         email: user.email
       },
+      preferenze: { tema: user.tema, aspetto: user.aspetto },
       token
     });
   } catch (error) {
@@ -114,7 +116,7 @@ router.get('/verify', auth, async (req, res) => {
 router.get('/profile', auth, async (req, res) => {
   try {
     const user = await queryOne(
-      'SELECT id, username, email, created_at FROM utenti WHERE id = $1',
+      'SELECT id, username, email, created_at, tema, aspetto FROM utenti WHERE id = $1',
       [req.user.id]
     );
     
@@ -126,6 +128,25 @@ router.get('/profile', auth, async (req, res) => {
   } catch (error) {
     logErrore('Profile error', error);
     res.status(500).json({ error: 'Errore durante il caricamento del profilo' });
+  }
+});
+
+// Tema e aspetto dell'account (blocco U2).
+router.get('/preferenze', auth, async (req, res) => {
+  try {
+    res.json(await preferenze.leggi('user', req.user.id));
+  } catch (error) {
+    logErrore('Preferenze error', error);
+    res.status(500).json({ error: 'Errore nel caricamento delle preferenze' });
+  }
+});
+
+router.put('/preferenze', auth, validate(schemas.preferenze), async (req, res) => {
+  try {
+    res.json(await preferenze.salva('user', req.user.id, req.body));
+  } catch (error) {
+    logErrore('Preferenze update error', error);
+    res.status(500).json({ error: 'Errore nel salvataggio delle preferenze' });
   }
 });
 
