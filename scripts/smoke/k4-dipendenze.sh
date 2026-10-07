@@ -60,15 +60,20 @@ eq "nodemailer installato >= 10.0.12" "si" "$(node -e "const [a,b,c]=process.arg
 eq "Node 24 nelle immagini di backend e frontend" "2" "$(grep -hc 'FROM docker.io/library/node:24-alpine' "$R/backend/Dockerfile" "$R/frontend/Dockerfile" | paste -sd+ - | bc)"
 mkdir -p "$T/audit" && cp "$R/backend/package.json" "$T/audit/"
 (cd "$T/audit" && npm i --package-lock-only --ignore-scripts --no-fund >/dev/null 2>&1)
-eq "npm audit backend: 0 vulnerabilita'" "0" "$(cd "$T/audit" && npm audit --json 2>/dev/null | j "['metadata']['vulnerabilities']['total']")"
+# Conta quello che finisce nell'immagine (--omit=dev nel Dockerfile). jest e
+# nodemon (solo sviluppo) hanno avvisi senza correzione a monte dal 10/2026.
+eq "npm audit backend, produzione: 0 vulnerabilita'" "0" "$(cd "$T/audit" && npm audit --omit=dev --json 2>/dev/null | j "['metadata']['vulnerabilities']['total']")"
+eq "immagine del backend senza dipendenze di sviluppo" "1" "$(grep -c '^RUN npm install --omit=dev' "$R/backend/Dockerfile")"
 (cd "$R/frontend" && npm audit --json 2>/dev/null) > "$T/fe-audit.json"
 eq "npm audit frontend: 0 critical" "0" "$(j "['metadata']['vulnerabilities']['critical']" < "$T/fe-audit.json")"
 # Le dirette ancora segnalate: react-scripts (catena di build CRA, esce con Vite
-# nella fase UX) e react-router-dom 6 (correzioni solo nella 7; vedi SICUREZZA.md).
-eq "frontend: dirette vulnerabili solo react-scripts / react-router-dom" "" \
+# nella fase UX), react-router-dom 6 (correzioni solo nella 7; vedi SICUREZZA.md),
+# tailwindcss 3 e @tailwindcss/typography (solo build: l'immagine serve file
+# statici con nginx; avvisi di 10/2026 su chokidar/micromatch/postcss-selector-parser).
+eq "frontend: dirette vulnerabili solo react-scripts / react-router-dom / tailwind" "" \
   "$(python3 -c "
 import json;d=json.load(open('$T/fe-audit.json'))
-print(','.join(sorted(k for k,v in d['vulnerabilities'].items() if v['isDirect'] and k not in ('react-scripts','react-router-dom'))))")"
+print(','.join(sorted(k for k,v in d['vulnerabilities'].items() if v['isDirect'] and k not in ('react-scripts','react-router-dom','tailwindcss','@tailwindcss/typography'))))")"
 
 echo
 echo "=== B. scrittore xlsx ==="

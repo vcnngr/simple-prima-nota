@@ -9,8 +9,9 @@ RUN apk add curl
 # Copia package.json e package-lock.json
 COPY package*.json ./
 
-# Installa le dipendenze
-RUN npm install
+# Installa le sole dipendenze di produzione: jest, nodemon e supertest non
+# servono a runtime e portano avvisi npm audit senza correzione a monte.
+RUN npm install --omit=dev --no-fund --no-audit
 
 # Copia il codice sorgente
 COPY . .
