@@ -20,8 +20,8 @@ codice di prima.
 
 | # | Blocco | Contenuto | Prova |
 |---|---|---|---|
-| U1 | Ricerca e paginazione | `GET /anagrafiche/cerca` (selettore), `GET /anagrafiche/elenco` (pagine, indice A–Z), movimenti con ordinamento applicato, cursore e saldo progressivo; indici (pg_trgm); id non interi → 400 | `scripts/smoke/u1-ricerca.sh` |
-| U2 | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica | da scrivere |
+| U1 ✅ | Ricerca e paginazione | `GET /anagrafiche/cerca` (selettore), `GET /anagrafiche/elenco` (pagine, indice A–Z), movimenti con ordinamento applicato, cursore e saldo progressivo; indici (pg_trgm); id non interi → 400 | `scripts/smoke/u1-ricerca.sh` |
+| U2 | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica; migrazione 013 | `scripts/smoke/u2-preferenze.sh` |
 | U3 | Base del frontend | Vite, TanStack Query v5, token dei due temi, un solo shell utente/studio | da scrivere |
 | U4 | Componenti | selettore con ricerca sul server, lista infinita, bottom sheet, campo importo, riga del registro | da scrivere |
 | U5 | Pagine dell'utente | Estratto, nuovo movimento, controparti, filtri, report a flusso, impostazioni | da scrivere |
@@ -68,3 +68,39 @@ rollback e riapplicazione della 012, copia nel chart.
 
 Aperti: la ricerca non ignora gli accenti («etna» non trova «Ètna»; servirebbe `unaccent` con una
 funzione immutabile); le iniziali accentate finiscono sotto `#` nell'indice.
+
+## U2 — Tema e aspetto sull'account
+
+**Il problema.** I due temi del nuovo frontend (Registro, Bottega) e l'aspetto (chiaro, scuro,
+automatico) devono seguire l'account: chi entra da un altro dispositivo ritrova la sua scelta. Il
+browser ne tiene solo una copia locale per disegnare la prima pagina senza sfarfallio.
+
+**Come funziona ora.**
+
+- Migrazione `013_preferenze_aspetto`: colonne `tema` (`registro` | `bottega`, predefinito
+  `registro`) e `aspetto` (`chiaro` | `scuro` | `automatico`, predefinito `automatico`) su `utenti`
+  e `commercialisti`, `NOT NULL` con `CHECK`. Gli account esistenti prendono i predefiniti. Il
+  rollback toglie le colonne.
+- `GET/PUT /api/auth/preferenze` (utente) e `GET/PUT /api/commercialisti/preferenze` (studio). Il
+  `PUT` accetta `tema`, `aspetto` o entrambi (almeno uno), solo i valori ammessi e in minuscolo;
+  aggiorna solo i campi inviati e restituisce le preferenze risultanti. Campi in più ignorati.
+- Il login restituisce `preferenze: { tema, aspetto }` (per lo studio accanto a `commercialista`,
+  non dentro); `GET /auth/profile` e `GET /commercialisti/profile` hanno `preferenze`. Login e
+  profilo non dipendono dalle colonne: se le preferenze non si leggono (schema sotto la 013 dopo un
+  rollback) arrivano `null` e il frontend usa i predefiniti. Senza questo, annullare la 013 con il
+  codice di U2 chiudeva fuori tutti (login 500).
+- `services/PreferenzeService.js`: tabella scelta dal tipo del token già verificato, mai dall'input.
+
+**Prova**: `scripts/smoke/u2-preferenze.sh` (46 controlli): token mancanti e dell'altro tipo,
+predefiniti, aggiornamenti parziali, sette corpi rifiutati (valore fuori elenco, vuoto, `null`,
+array, maiuscole, nessun campo), isolamento fra utenti e fra studio e utente con lo stesso id, login
+e profili, `CHECK` e `NOT NULL` nel database, rollback (API → 500 generico, senza messaggi pg) e
+riapplicazione (login e profili 200 anche senza colonne), copia nel chart. Sul codice di prima
+(`dc96c21`): 37 FAIL su 42; sul primo commit di U2 (`459c9e1`) 5 FAIL.
+
+**Dipendenze (avvisi usciti dopo K4).** Il 05/10 è uscito un avviso critical su `proxy-addr`
+(GHSA-jqcg-44mw-7w3h), corretto nella 2.0.8: il backend senza lockfile la prende già; nel frontend
+(dev server CRA) `npm audit fix` senza `--force`. jest e nodemon hanno avvisi (braces, sprintf-js)
+senza correzione a monte: l'immagine del backend ora installa solo le dipendenze di produzione
+(`--omit=dev`) e `k4-dipendenze.sh` conta quelle. tailwind 3 resta segnalato: solo build.
+
