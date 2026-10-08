@@ -33,7 +33,7 @@ codice di prima.
 |---|---|---|---|
 | U1 ✅ | Ricerca e paginazione | `GET /anagrafiche/cerca` (selettore), `GET /anagrafiche/elenco` (pagine, indice A–Z), movimenti con ordinamento applicato, cursore e saldo progressivo; indici (pg_trgm); id non interi → 400 | `scripts/smoke/u1-ricerca.sh` |
 | U2 ✅ | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica; migrazione 013 | `scripts/smoke/u2-preferenze.sh` |
-| U3 | Base del frontend | `web/`: Vite, TanStack Query v5, React Router 7, token dei due temi, un solo shell utente/studio, login, impostazioni di tema e aspetto | `scripts/smoke/u3-web.sh` |
+| U3 ✅ | Base del frontend | `web/`: Vite, TanStack Query v5, React Router 7, token dei due temi, un solo shell utente/studio, login, impostazioni di tema e aspetto | `scripts/smoke/u3-web.sh` |
 | U4 | Componenti | selettore con ricerca sul server, lista infinita, bottom sheet, campo importo, riga del registro | da scrivere |
 | U5 | Pagine dell'utente | Estratto, nuovo movimento, controparti, filtri, report a flusso, impostazioni | da scrivere |
 | U6 | Portale dello studio | pagine dello studio sul nuovo shell; via il vecchio frontend e gli endpoint rimasti per lui | da scrivere |
