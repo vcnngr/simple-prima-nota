@@ -1,0 +1,135 @@
+/* ==========================================================================
+   Token dei due temi (fase UX, U3). I temi cambiano solo questi valori:
+   colori e caratteri. Palette ratificate in docs/UX.md.
+   <html data-tema="registro|bottega" data-aspetto="chiaro|scuro|automatico">
+   ========================================================================== */
+@import '@fontsource/atkinson-hyperlegible/400.css';
+@import '@fontsource/atkinson-hyperlegible/700.css';
+@import '@fontsource/source-serif-4/400.css';
+@import '@fontsource/source-serif-4/600.css';
+@import '@fontsource/instrument-sans/400.css';
+@import '@fontsource/instrument-sans/600.css';
+@import '@fontsource/fraunces/400.css';
+@import '@fontsource/fraunces/600.css';
+
+/* ---- Registro, chiaro (predefinito anche senza attributi) ---------------- */
+:root,
+:root[data-tema='registro'] {
+  --pn-font-testo: 'Atkinson Hyperlegible', system-ui, sans-serif;
+  --pn-font-importi: 'Source Serif 4', Georgia, serif;
+  --pn-fondo: #f7f5ef;
+  --pn-superficie: #ffffff;
+  --pn-testo: #16213a;
+  --pn-testo-tenue: #5b6478;
+  --pn-bordo: #e2ded3;
+  --pn-principale: #1f45a0;
+  --pn-su-principale: #ffffff;
+  --pn-secondario: #16213a;
+  --pn-accento: #f2b825;
+  --pn-su-accento: #16213a;
+  --pn-entrata: #1e7a46;
+  --pn-uscita: #b42318;
+  --pn-chiarire: #a16207;
+  --pn-info: #1f6fb2;
+  --pn-neutro: #6b7280;
+  color-scheme: light;
+}
+
+/* ---- Bottega, chiaro ----------------------------------------------------- */
+:root[data-tema='bottega'] {
+  --pn-font-testo: 'Instrument Sans', system-ui, sans-serif;
+  --pn-font-importi: 'Fraunces', Georgia, serif;
+  --pn-fondo: #f5f1e8;
+  --pn-superficie: #fffdf8;
+  --pn-testo: #1f2a23;
+  --pn-testo-tenue: #5e655f;
+  --pn-bordo: #e3dbcb;
+  --pn-principale: #2f4b3c;
+  --pn-su-principale: #ffffff;
+  --pn-secondario: #8a6a4a;
+  --pn-accento: #d9622b;
+  --pn-su-accento: #ffffff;
+  --pn-entrata: #2e7d4f;
+  --pn-uscita: #b3261e;
+  --pn-chiarire: #a16207;
+  --pn-info: #2a6f97;
+  --pn-neutro: #6f6a60;
+  color-scheme: light;
+}
+
+/* ---- Scuri: aspetto "scuro", oppure "automatico" con il sistema scuro ---- */
+:root[data-tema='registro'][data-aspetto='scuro'] {
+  --pn-fondo: #0e1424;
+  --pn-superficie: #172036;
+  --pn-testo: #e8edf7;
+  --pn-testo-tenue: #9aa6bf;
+  --pn-bordo: #26314a;
+  --pn-principale: #86a6ff;
+  --pn-su-principale: #0e1424;
+  --pn-secondario: #c9d4ea;
+  --pn-accento: #f5c542;
+  --pn-su-accento: #0e1424;
+  --pn-entrata: #5bc98a;
+  --pn-uscita: #ff7a6e;
+  --pn-chiarire: #f2b451;
+  --pn-info: #6cb6f5;
+  --pn-neutro: #9ca3af;
+  color-scheme: dark;
+}
+:root[data-tema='bottega'][data-aspetto='scuro'] {
+  --pn-fondo: #121813;
+  --pn-superficie: #1b241d;
+  --pn-testo: #ece7dc;
+  --pn-testo-tenue: #a3a89f;
+  --pn-bordo: #2b372e;
+  --pn-principale: #84b898;
+  --pn-su-principale: #121813;
+  --pn-secondario: #cda67f;
+  --pn-accento: #ee7a43;
+  --pn-su-accento: #121813;
+  --pn-entrata: #6cc28f;
+  --pn-uscita: #ff8577;
+  --pn-chiarire: #e9b25a;
+  --pn-info: #7fb8d8;
+  --pn-neutro: #a8a296;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-tema='registro'][data-aspetto='automatico'],
+  :root:not([data-tema])[data-aspetto='automatico'] {
+    --pn-fondo: #0e1424;
+    --pn-superficie: #172036;
+    --pn-testo: #e8edf7;
+    --pn-testo-tenue: #9aa6bf;
+    --pn-bordo: #26314a;
+    --pn-principale: #86a6ff;
+    --pn-su-principale: #0e1424;
+    --pn-secondario: #c9d4ea;
+    --pn-accento: #f5c542;
+    --pn-su-accento: #0e1424;
+    --pn-entrata: #5bc98a;
+    --pn-uscita: #ff7a6e;
+    --pn-chiarire: #f2b451;
+    --pn-info: #6cb6f5;
+    --pn-neutro: #9ca3af;
+    color-scheme: dark;
+  }
+  :root[data-tema='bottega'][data-aspetto='automatico'] {
+    --pn-fondo: #121813;
+    --pn-superficie: #1b241d;
+    --pn-testo: #ece7dc;
+    --pn-testo-tenue: #a3a89f;
+    --pn-bordo: #2b372e;
+    --pn-principale: #84b898;
+    --pn-su-principale: #121813;
+    --pn-secondario: #cda67f;
+    --pn-accento: #ee7a43;
+    --pn-su-accento: #121813;
+    --pn-entrata: #6cc28f;
+    --pn-uscita: #ff8577;
+    --pn-chiarire: #e9b25a;
+    --pn-info: #7fb8d8;
+    --pn-neutro: #a8a296;
+    color-scheme: dark;
+  }
+}

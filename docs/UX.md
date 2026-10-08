@@ -33,7 +33,7 @@ codice di prima.
 |---|---|---|---|
 | U1 ✅ | Ricerca e paginazione | `GET /anagrafiche/cerca` (selettore), `GET /anagrafiche/elenco` (pagine, indice A–Z), movimenti con ordinamento applicato, cursore e saldo progressivo; indici (pg_trgm); id non interi → 400 | `scripts/smoke/u1-ricerca.sh` |
 | U2 ✅ | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica; migrazione 013 | `scripts/smoke/u2-preferenze.sh` |
-| U3 | Base del frontend | Vite, TanStack Query v5, token dei due temi, un solo shell utente/studio | da scrivere |
+| U3 | Base del frontend | `web/`: Vite, TanStack Query v5, React Router 7, token dei due temi, un solo shell utente/studio, login, impostazioni di tema e aspetto | `scripts/smoke/u3-web.sh` |
 | U4 | Componenti | selettore con ricerca sul server, lista infinita, bottom sheet, campo importo, riga del registro | da scrivere |
 | U5 | Pagine dell'utente | Estratto, nuovo movimento, controparti, filtri, report a flusso, impostazioni | da scrivere |
 | U6 | Portale dello studio | pagine dello studio sul nuovo shell; via il vecchio frontend e gli endpoint rimasti per lui | da scrivere |
@@ -114,4 +114,47 @@ riapplicazione (login e profili 200 anche senza colonne), copia nel chart. Sul c
 (dev server CRA) `npm audit fix` senza `--force`. jest e nodemon hanno avvisi (braces, sprintf-js)
 senza correzione a monte: l'immagine del backend ora installa solo le dipendenze di produzione
 (`--omit=dev`) e `k4-dipendenze.sh` conta quelle. tailwind 3 resta segnalato: solo build.
+
+## U3 — Base del nuovo frontend
+
+**Il problema.** Il frontend attuale (CRA, react-query 3, axios, Tailwind 3) porta gli avvisi di
+`npm audit` di `react-scripts` e non ha né temi né shell unico per utente e studio. Si riscrive da
+capo (decisione del titolare), quindi il nuovo frontend nasce accanto al vecchio e lo sostituisce in
+U6; fino ad allora compose e chart servono ancora `frontend/`.
+
+**Come funziona ora.**
+
+- `web/`: Vite 8, React 19, React Router 7, TanStack Query v5, Tailwind 4, lucide-react. Lockfile
+  versionato; `npm audit --omit=dev` pulito. Build in `web/dist`: file con hash in `/static/` (la
+  regola di cache immutabile di nginx vale già), niente mappe dei sorgenti, niente script in linea.
+- Temi: `src/tema/token.css` definisce i token (`--pn-…`: colori e caratteri) per Registro e Bottega,
+  chiaro e scuro; `automatico` segue `prefers-color-scheme`. Tailwind li espone come classi
+  (`bg-principale`, `text-uscita`, `font-importi`, …): i componenti non scrivono mai un colore. I
+  caratteri sono serviti dal sito (`@fontsource`), nessuna richiesta a Google.
+- Tema prima del primo disegno: `public/tema-iniziale.js` (file del sito, non in linea: CSP) legge
+  la copia locale `pn_preferenze`. Dopo login o ricarica vincono le preferenze dell'account (U2);
+  se il server risponde `null` resta la copia locale, poi i predefiniti.
+- Sessione (`src/sessione/Sessione.jsx`): un tipo alla volta. Login utente → `localStorage.token`,
+  studio → `localStorage.commercialista_token`; ogni login toglie il token dell'altro tipo. Un 401
+  con un token chiude la sessione e riporta al login del suo tipo. Le pagine di un tipo rifiutano
+  la sessione dell'altro.
+- Un solo client (`src/api/client.js`, `fetch`): l'unico punto che chiama `/api`.
+- Shell (`src/shell/`): a 390 px intestazione in alto e barra in basso (Estratto, Movimenti, «+»
+  al centro, Report, Studio); da `md` colonna a sinistra. Lo studio ha le sue voci, senza «+».
+- Pagine: login utente e studio, impostazioni (tema e aspetto, salvati con `PUT …/preferenze`,
+  applicati subito e annullati se il server rifiuta, uscita). Le altre sono segnaposto con il
+  campionario dei token, sostituite in U5 e U6.
+- `scripts/smoke/lib/cdp.mjs`: pilota di Chrome headless via DevTools, senza dipendenze, per gli
+  smoke del frontend; registra ogni violazione della CSP.
+
+**Prova**: `scripts/smoke/u3-web.sh` (50 controlli): progetto e dipendenze, build (mappe, script in
+linea, font esterni, `/static/`), colori ratificati nei token, `fetch` solo nel client; poi la build
+servita da nginx con `frontend/nginx/default.conf.template` e Chrome headless: login sbagliato e
+giusto dei due tipi, token separati, tema dall'account e non dalla copia locale, cambio di tema e
+aspetto salvato sull'account, `automatico` che segue il sistema, pagine dell'altro tipo rifiutate,
+uscita, token rifiutato → login, 390 px senza scroll orizzontale, desktop, zero violazioni CSP
+(controprova: uno script in linea nella build dà 12 violazioni e FAIL).
+
+Aperti: `web/` non ha ancora Dockerfile né posto in compose e chart (U6); i segnaposto mostrano
+importi di esempio.
 

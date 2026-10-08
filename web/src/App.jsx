@@ -1,0 +1,73 @@
+import { Navigate, Outlet, createBrowserRouter, RouterProvider } from 'react-router';
+import { useSessione } from './sessione/Sessione';
+import { VOCI } from './shell/voci';
+import Shell from './shell/Shell';
+import Accedi from './pagine/Accedi';
+import Impostazioni from './pagine/Impostazioni';
+import Segnaposto from './pagine/Segnaposto';
+
+function Attesa() {
+  return <div className="flex min-h-full items-center justify-center text-tenue" role="status">Caricamento…</div>;
+}
+
+// Le pagine di un tipo di account si aprono solo con una sessione di quel tipo.
+function Richiede({ tipo }) {
+  const s = useSessione();
+  if (s.fase === 'caricamento') return <Attesa />;
+  if (s.fase === 'errore') {
+    return (
+      <div className="flex min-h-full flex-col items-center justify-center gap-3 p-4 text-center">
+        <p>Il server non risponde.</p>
+        <button type="button" onClick={s.ricarica} className="rounded-lg bg-principale px-4 py-2 text-su-principale">Riprova</button>
+      </div>
+    );
+  }
+  if (s.fase !== 'attiva') return <Navigate to={tipo === 'commercialista' ? '/studio/accedi' : '/accedi'} replace />;
+  if (s.tipo !== tipo) return <Navigate to={VOCI[s.tipo].home} replace />;
+  return <Outlet />;
+}
+
+function Pubblica() {
+  const s = useSessione();
+  return s.fase === 'caricamento' ? <Attesa /> : <Outlet />;
+}
+
+const router = createBrowserRouter([
+  {
+    element: <Pubblica />,
+    children: [
+      { path: '/accedi', element: <Accedi tipo="user" /> },
+      { path: '/studio/accedi', element: <Accedi tipo="commercialista" /> }
+    ]
+  },
+  {
+    element: <Richiede tipo="user" />,
+    children: [{
+      element: <Shell />,
+      children: [
+        { path: '/', element: <Segnaposto titolo="Estratto" blocco="U5" /> },
+        { path: '/movimenti', element: <Segnaposto titolo="Movimenti" blocco="U5" /> },
+        { path: '/nuovo', element: <Segnaposto titolo="Nuovo movimento" blocco="U5" /> },
+        { path: '/report', element: <Segnaposto titolo="Report" blocco="U5" /> },
+        { path: '/studio', element: <Segnaposto titolo="Il tuo studio" blocco="U5" /> },
+        { path: '/impostazioni', element: <Impostazioni /> }
+      ]
+    }]
+  },
+  {
+    element: <Richiede tipo="commercialista" />,
+    children: [{
+      element: <Shell />,
+      children: [
+        { path: '/studio/clienti', element: <Segnaposto titolo="Clienti" blocco="U6" /> },
+        { path: '/studio/messaggi', element: <Segnaposto titolo="Messaggi" blocco="U6" /> },
+        { path: '/studio/impostazioni', element: <Impostazioni /> }
+      ]
+    }]
+  },
+  { path: '*', element: <Navigate to="/" replace /> }
+]);
+
+export default function App() {
+  return <RouterProvider router={router} />;
+}

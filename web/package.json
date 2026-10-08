@@ -1,0 +1,29 @@
+{
+  "name": "prima-nota-web",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Nuovo frontend di Simple Prima Nota (fase UX, da U3). Sostituisce frontend/ in U6.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible": "^5.3.0",
+    "@fontsource/fraunces": "^5.3.0",
+    "@fontsource/instrument-sans": "^5.3.0",
+    "@fontsource/source-serif-4": "^5.3.0",
+    "@tanstack/react-query": "^5.104.1",
+    "lucide-react": "^1.53.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router": "^7.18.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.4"
+  }
+}

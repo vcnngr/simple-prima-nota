@@ -1,0 +1,35 @@
+@import 'tailwindcss';
+@import './tema/token.css';
+
+/* Classi Tailwind sui token: bg-fondo, text-principale, font-importi, ... */
+@theme inline {
+  --color-fondo: var(--pn-fondo);
+  --color-superficie: var(--pn-superficie);
+  --color-testo: var(--pn-testo);
+  --color-tenue: var(--pn-testo-tenue);
+  --color-bordo: var(--pn-bordo);
+  --color-principale: var(--pn-principale);
+  --color-su-principale: var(--pn-su-principale);
+  --color-secondario: var(--pn-secondario);
+  --color-accento: var(--pn-accento);
+  --color-su-accento: var(--pn-su-accento);
+  --color-entrata: var(--pn-entrata);
+  --color-uscita: var(--pn-uscita);
+  --color-chiarire: var(--pn-chiarire);
+  --color-info: var(--pn-info);
+  --color-neutro: var(--pn-neutro);
+  --font-testo: var(--pn-font-testo);
+  --font-importi: var(--pn-font-importi);
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--pn-fondo);
+  color: var(--pn-testo);
+  font-family: var(--pn-font-testo);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+.importo { font-family: var(--pn-font-importi); font-variant-numeric: tabular-nums lining-nums; }
+:focus-visible { outline: 2px solid var(--pn-principale); outline-offset: 2px; }
