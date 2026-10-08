@@ -11,6 +11,17 @@ Decisioni del titolare (29/09/2026):
 - nessuna tendina con l'elenco intero: ogni scelta di un'entità cerca sul server, con un tetto;
 - due temi, **Registro** (predefinito) e **Bottega**, ciascuno chiaro, scuro o automatico, scelti
   per account dalle impostazioni; i temi cambiano solo i token (colori, caratteri);
+- palette dei temi (principale / secondario / accento):
+
+  | Tema | Chiaro | Scuro | Caratteri |
+  |---|---|---|---|
+  | Registro | `#1F45A0` blu penna / `#16213A` inchiostro / `#F2B825` evidenziatore | `#86A6FF` / `#C9D4EA` / `#F5C542` | Source Serif (importi), Atkinson Hyperlegible (testo) |
+  | Bottega | `#2F4B3C` verde bottega / `#8A6A4A` cuoio / `#D9622B` terracotta | `#84B898` / `#CDA67F` / `#EE7A43` | Fraunces (importi), Instrument Sans (testo) |
+
+  Principale: azione primaria, voce attiva della barra, link. Secondario: intestazioni, pulsanti
+  secondari. Accento: il «+» al centro della barra, la controparte scelta, «Chiedi allo studio».
+  Stati comuni ai temi: entrata (verde), uscita/pericolo (rosso), da chiarire (ambra), info/studio
+  (azzurro), neutro (grigio). Il tema «Notte» è escluso;
 - frontend ricostruito con Vite e TanStack Query v5;
 - parte backend della UX dopo la sicurezza, prima del frontend;
 - ogni scelta visiva si decide su screenshot renderizzati (3-4 varianti), prima del codice.
@@ -21,7 +32,7 @@ codice di prima.
 | # | Blocco | Contenuto | Prova |
 |---|---|---|---|
 | U1 ✅ | Ricerca e paginazione | `GET /anagrafiche/cerca` (selettore), `GET /anagrafiche/elenco` (pagine, indice A–Z), movimenti con ordinamento applicato, cursore e saldo progressivo; indici (pg_trgm); id non interi → 400 | `scripts/smoke/u1-ricerca.sh` |
-| U2 | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica; migrazione 013 | `scripts/smoke/u2-preferenze.sh` |
+| U2 ✅ | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica; migrazione 013 | `scripts/smoke/u2-preferenze.sh` |
 | U3 | Base del frontend | Vite, TanStack Query v5, token dei due temi, un solo shell utente/studio | da scrivere |
 | U4 | Componenti | selettore con ricerca sul server, lista infinita, bottom sheet, campo importo, riga del registro | da scrivere |
 | U5 | Pagine dell'utente | Estratto, nuovo movimento, controparti, filtri, report a flusso, impostazioni | da scrivere |
