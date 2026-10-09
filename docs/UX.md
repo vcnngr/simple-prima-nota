@@ -169,6 +169,50 @@ uscita, token rifiutato → login, 390 px senza scroll orizzontale, desktop, zer
 Aperti: `web/` non ha ancora Dockerfile né posto in compose e chart (U6); i segnaposto mostrano
 importi di esempio.
 
+## U4 — Componenti e registrazione
+
+**Il problema.** Le pagine del nuovo frontend hanno bisogno di pezzi comuni (finestra dal basso,
+scelta della controparte fra migliaia, lista che carica a pagine, importo senza errori di
+arrotondamento) e della prima funzione vera: guardare l'estratto e registrare un movimento.
+
+**Come funziona ora.**
+
+- Migrazione `014_vista_estratto`: colonna `vista_estratto` (`due_righe` | `colonne` | `iniziali` |
+  `mastro`, predefinita `due_righe`) su `utenti` e `commercialisti`, `NOT NULL` con `CHECK`; letta e
+  scritta da `GET/PUT …/preferenze` (U2) insieme a tema e aspetto, nel login e nei profili. Il
+  rollback toglie la colonna; senza colonna le preferenze rispondono 500 generico e login e
+  profili 200 con `preferenze: null` (il frontend usa la copia locale, poi i predefiniti).
+- `GET /movimenti`, `GET /movimenti/:id`, `POST /movimenti` portano anche `giorno` (`YYYY-MM-DD`).
+  `data` resta com'era per il vecchio frontend, ma pg la serializza dalla mezzanotte del fuso del
+  server: con il backend in Europe/Rome il 9 ottobre arriva come `2026-10-08T22:00:00.000Z`.
+- `web/src/util/`: importi in centesimi interi (dal testo del server al testo per l'API, mai
+  `parseFloat`), tastierino con + − = come funzione pura, giorni nel fuso del dispositivo (mai
+  `toISOString`).
+- Componenti: `BottomSheet` (`<dialog>` nativo: focus dentro, Esc chiude), `SelettoreControparte`
+  (`GET /anagrafiche/cerca`: senza testo le più usate, poi la ricerca, tetto 20), `ListaInfinita`
+  (cursore di U1, `IntersectionObserver` e pulsante), `Tastierino`, le quattro righe in
+  `componenti/righe/Righe.jsx` (stessi dati, raggruppati per giorno; C mostra il saldo a fine
+  giornata).
+- Estratto (`/`): saldo del conto, scelta del conto nel bottom sheet (ricordata sul dispositivo),
+  righe nella vista dell'account. Nuovo movimento (`/nuovo`, il «+»): controparte, poi importo con
+  tipo dalla controparte, data di oggi, conto dell'Estratto, descrizione predefinita = controparte;
+  un tocco su Registra registra una volta sola anche se ripetuto.
+- `src/api/client.js`: base dell'API da `VITE_API_BASE` (vuota = stesso sito), per la fase APP.
+
+**Prova**: `scripts/smoke/u4-componenti.sh` (100 controlli): logica pura (22: 0,1 + 0,2 = 0,30,
+decimali, tetto di 10 cifre, cancella, segni, giorni a cavallo del mese) con `TZ=Europe/Rome`;
+vista sull'account (valori rifiutati, login, profilo, studio, token dell'altro tipo, isolamento);
+`giorno` uguale alla data del database su 75 movimenti; `CHECK`, rollback e riapplicazione della 014;
+build; nel browser con la CSP vera: Estratto a cursore fino in fondo senza righe ripetute, saldo
+uguale a `calcola_saldo_conto`, le quattro viste scelte dalle impostazioni a 390 px, cambio di
+conto, nuovo movimento con ricerca sul server e somma 12,40 + 6,50, totale negativo rifiutato, Esc,
+tre tocchi su Registra; poi nel database importo, tipo, controparte, giorno e conto. Sul codice di
+prima (`548fd64`): 23 FAIL. Il doppio tocco l'ha trovato lo smoke: prima della correzione tre tocchi
+registravano tre movimenti.
+
+Aperti: lo stato «da chiarire» dei mockup non esiste nello schema (nessuna colonna): le righe
+mostrano solo entrata e uscita; modifica ed eliminazione del movimento arrivano in U5.
+
 ## Fase APP — app iOS (dopo U6)
 
 Ratificata il 09/10/2026; non parte prima della fine di U6.
