@@ -166,9 +166,9 @@ echo "  fotografie: $FOTO"
 echo
 echo "=== F. database dopo il browser ==="
 eq "18,90 registrato: Entrata, Bianchi, oggi, Banca Intesa" "18.90|Entrata|$BIANCHI|$OGGI|$C1|Bianchi e Rossi srl" \
-  "$(q "SELECT importo||'|'||tipo||'|'||anagrafica_id||'|'||to_char(data,'YYYY-MM-DD')||'|'||conto_id||'|'||descrizione FROM movimenti WHERE user_id=$UID_ AND importo=18.90")"
+  "$(q "SELECT importo||'|'||tipo||'|'||anagrafica_id||'|'||to_char(data,'YYYY-MM-DD')||'|'||conto_id||'|'||descrizione FROM movimenti WHERE user_id=$UID_ AND importo=18.90 AND descrizione NOT LIKE 'mov %'")"
 eq "totale negativo e Esc: nulla registrato" "0" "$(q "SELECT count(*) FROM movimenti WHERE user_id=$UID_ AND descrizione='prova negativa'")"
-eq "tre tocchi su Registra: un solo movimento da 7,77 (Uscita)" "1|Uscita" "$(q "SELECT count(*)||'|'||string_agg(DISTINCT tipo, ',') FROM movimenti WHERE user_id=$UID_ AND importo=7.77")"
+eq "tre tocchi su Registra: un solo movimento da 7,77 (Uscita)" "1|Uscita" "$(q "SELECT count(*)||'|'||string_agg(DISTINCT tipo, ',') FROM movimenti WHERE user_id=$UID_ AND importo=7.77 AND descrizione NOT LIKE 'mov %'")"
 eq "vista lasciata dal browser: due_righe" "due_righe" "$(q "SELECT vista_estratto FROM utenti WHERE id=$UID_")"
 
 echo
