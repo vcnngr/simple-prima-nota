@@ -56,7 +56,7 @@ try {
   await p.vai(WEB + '/impostazioni');
   await p.aspetta("document.querySelector('[data-valore=registro]')");
   eq('pulsanti sullo stato salvato', 'bottega|scuro',
-    await p.valuta("[...document.querySelectorAll('[aria-pressed=true]')].map(e => e.dataset.valore).join('|')"));
+    await p.valuta("[...document.querySelectorAll('[aria-pressed=true]')].map(e => e.dataset.valore).filter(v => !['due_righe', 'colonne', 'iniziali', 'mastro'].includes(v)).join('|')"));
   await p.clic('[data-valore=registro]');
   await p.aspetta("document.documentElement.dataset.tema === 'registro' && !document.querySelector('button[disabled]')");
   await p.clic('[data-valore=chiaro]');

@@ -667,9 +667,13 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
         const nLim = paramsPagina.length - 1;
         
         // Query principale con tipologie (AGGIORNATA)
+        // `giorno`: la data come testo (YYYY-MM-DD). `data` resta un Date di pg,
+        // serializzato in UTC a partire dalla mezzanotte del fuso del server: con
+        // un fuso diverso da UTC slitta al giorno prima (U4).
         const movimenti = await queryAll(`
       SELECT 
         m.*,
+        to_char(m.data, 'YYYY-MM-DD') AS giorno,
         a.nome as anagrafica_nome,
         ta.nome as tipologia_nome,
         ta.tipo_movimento_default,
@@ -744,6 +748,7 @@ router.get('/recenti', async (req, res) => {
               const movimenti = await queryAll(`
       SELECT 
         m.*,
+        to_char(m.data, 'YYYY-MM-DD') AS giorno,
         a.nome as anagrafica_nome,
         ta.nome as tipologia_nome,
         ta.colore as tipologia_colore,
@@ -773,6 +778,7 @@ router.get('/:id', async (req, res) => {
                 const movimento = await queryOne(`
       SELECT 
         m.*,
+        to_char(m.data, 'YYYY-MM-DD') AS giorno,
         a.nome as anagrafica_nome,
         ta.nome as tipologia_nome,
         ta.tipo_movimento_default,
@@ -857,6 +863,7 @@ req.user.id
                   const movimentoCompleto = await queryOne(`
       SELECT 
         m.*,
+        to_char(m.data, 'YYYY-MM-DD') AS giorno,
         a.nome as anagrafica_nome,
         ta.nome as tipologia_nome,
         ta.colore as tipologia_colore,

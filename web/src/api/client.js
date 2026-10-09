@@ -1,7 +1,9 @@
 // Unico punto di accesso all'API. Ogni chiamata porta il token del tipo di
 // sessione attivo: utente -> localStorage.token, studio ->
 // localStorage.commercialista_token (mai l'uno al posto dell'altro).
-const BASE = '/api';
+// Indirizzo del server: lo stesso sito (predefinito) o VITE_API_BASE alla build
+// (app iOS, fase APP). E' l'unico punto da cambiare.
+const BASE = `${import.meta.env.VITE_API_BASE || ''}/api`;
 
 export const CHIAVI = {
   user: { token: 'token', account: 'user' },

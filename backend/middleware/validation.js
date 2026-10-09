@@ -389,8 +389,10 @@ const schemas = {
     tema: Joi.string().valid('registro', 'bottega')
       .messages({ 'any.only': 'Tema non valido (registro, bottega)' }),
     aspetto: Joi.string().valid('chiaro', 'scuro', 'automatico')
-      .messages({ 'any.only': 'Aspetto non valido (chiaro, scuro, automatico)' })
-  }).or('tema', 'aspetto').options({ stripUnknown: true }),
+      .messages({ 'any.only': 'Aspetto non valido (chiaro, scuro, automatico)' }),
+    vista_estratto: Joi.string().valid('due_righe', 'colonne', 'iniziali', 'mastro')
+      .messages({ 'any.only': 'Vista non valida (due_righe, colonne, iniziali, mastro)' })
+  }).or('tema', 'aspetto', 'vista_estratto').options({ stripUnknown: true }),
 
   profiloCommercialista: Joi.object({
     ragione_sociale: Joi.string().trim().max(200).allow('', null).optional(),

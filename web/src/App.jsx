@@ -5,6 +5,8 @@ import Shell from './shell/Shell';
 import Accedi from './pagine/Accedi';
 import Impostazioni from './pagine/Impostazioni';
 import Segnaposto from './pagine/Segnaposto';
+import Estratto from './pagine/Estratto';
+import NuovoMovimento from './pagine/NuovoMovimento';
 
 function Attesa() {
   return <div className="flex min-h-full items-center justify-center text-tenue" role="status">Caricamento…</div>;
@@ -45,9 +47,9 @@ const router = createBrowserRouter([
     children: [{
       element: <Shell />,
       children: [
-        { path: '/', element: <Segnaposto titolo="Estratto" blocco="U5" /> },
+        { path: '/', element: <Estratto /> },
         { path: '/movimenti', element: <Segnaposto titolo="Movimenti" blocco="U5" /> },
-        { path: '/nuovo', element: <Segnaposto titolo="Nuovo movimento" blocco="U5" /> },
+        { path: '/nuovo', element: <NuovoMovimento /> },
         { path: '/report', element: <Segnaposto titolo="Report" blocco="U5" /> },
         { path: '/studio', element: <Segnaposto titolo="Il tuo studio" blocco="U5" /> },
         { path: '/impostazioni', element: <Impostazioni /> }
