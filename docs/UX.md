@@ -26,6 +26,17 @@ Decisioni del titolare (29/09/2026):
 - parte backend della UX dopo la sicurezza, prima del frontend;
 - ogni scelta visiva si decide su screenshot renderizzati (3-4 varianti), prima del codice.
 
+Decisioni del titolare (09/10/2026, su screenshot delle varianti U4):
+
+- riga dell'Estratto: tutte e quattro le varianti (A due righe, B colonne, C iniziale e categoria,
+  D libro mastro) scegliibili per account nelle impostazioni, come il tema; predefinita **A**;
+- nuovo movimento: un solo percorso, «chi, poi quanto» (variante 3: prima la controparte, più usate
+  in cima e ricerca sul server; poi l'importo con tipo e conto dedotti) con i tasti + − = della
+  variante 2 per sommare gli scontrini;
+- app iOS: sì, come fase **APP** dopo U6 (sezione in fondo). Da U4 il frontend si scrive già pronto
+  per l'app: indirizzo del server in un solo punto, niente che dipenda dallo stesso dominio, margini
+  sicuri del telefono.
+
 Ogni blocco è un branch `feat/u…` con review `pn-gpt`; ogni correzione ha uno smoke che fallisce sul
 codice di prima.
 
@@ -34,8 +45,8 @@ codice di prima.
 | U1 ✅ | Ricerca e paginazione | `GET /anagrafiche/cerca` (selettore), `GET /anagrafiche/elenco` (pagine, indice A–Z), movimenti con ordinamento applicato, cursore e saldo progressivo; indici (pg_trgm); id non interi → 400 | `scripts/smoke/u1-ricerca.sh` |
 | U2 ✅ | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica; migrazione 013 | `scripts/smoke/u2-preferenze.sh` |
 | U3 ✅ | Base del frontend | `web/`: Vite, TanStack Query v5, React Router 7, token dei due temi, un solo shell utente/studio, login, impostazioni di tema e aspetto | `scripts/smoke/u3-web.sh` |
-| U4 | Componenti | selettore con ricerca sul server, lista infinita, bottom sheet, campo importo, riga del registro | da scrivere |
-| U5 | Pagine dell'utente | Estratto, nuovo movimento, controparti, filtri, report a flusso, impostazioni | da scrivere |
+| U4 | Componenti e registrazione | bottom sheet, selettore della controparte sul server, lista infinita a cursore, tastierino con somma, quattro righe dell'Estratto scelte per account (migrazione 014); Estratto per conto e nuovo movimento collegati all'API | `scripts/smoke/u4-componenti.sh` |
+| U5 | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | da scrivere |
 | U6 | Portale dello studio | pagine dello studio sul nuovo shell; via il vecchio frontend e gli endpoint rimasti per lui | da scrivere |
 
 ## U1 — Ricerca e paginazione
@@ -157,4 +168,21 @@ uscita, token rifiutato → login, 390 px senza scroll orizzontale, desktop, zer
 
 Aperti: `web/` non ha ancora Dockerfile né posto in compose e chart (U6); i segnaposto mostrano
 importi di esempio.
+
+## Fase APP — app iOS (dopo U6)
+
+Ratificata il 09/10/2026; non parte prima della fine di U6.
+
+- **Modalità A, app collegata a un server**: Capacitor impacchetta `web/`; l'indirizzo del server si
+  sceglie nelle impostazioni dell'app (`src/api/client.js` è l'unico punto da cambiare); CORS del
+  backend con l'origine dell'app; token nel Keychain invece che in `localStorage`.
+- Funzioni native, anche per la regola 4.2 della review di Apple (un sito impacchettato viene
+  respinto): Face ID all'apertura, fotocamera per gli scontrini allegati al movimento, menu di
+  condivisione per gli export, notifiche dei messaggi dello studio.
+- Per Apple: account demo su un server pubblico, cancellazione dell'account dall'app
+  (`DELETE /auth/account`, esiste già).
+- Prova intermedia dopo U5: app nel simulatore collegata a un backend di prova, screenshot al
+  titolare.
+- **Modalità B** (dati sul telefono, sincronizzazione facoltativa): da decidere dopo; richiede
+  replica locale di saldi e categorie e gestione dei conflitti.
 
