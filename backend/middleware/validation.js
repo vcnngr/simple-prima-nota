@@ -31,8 +31,9 @@ const tokenAccount = Joi.string().pattern(/^[0-9a-f]{64}$/).required()
 // Joi.date() lo trasformava in una Date a mezzanotte UTC e pg la riscriveva nel
 // fuso del backend: con TZ a ovest di UTC "2026-10-10" diventava 2026-10-09 nel
 // database (e nei filtri). Come stringa arriva a pg cosi' com'e'. Giorni
-// impossibili (2026-02-30) -> 400, non 500 da pg.
-const giorno = () => Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+// impossibili (2026-02-30) -> 400, non 500 da pg. L'anno 0000 esiste per Date
+// ma non per pg (dopo l'1 a.C. viene l'1 d.C.): anni da 0001 (review t_5c3ad1c0).
+const giorno = () => Joi.string().pattern(/^(?!0000)\d{4}-\d{2}-\d{2}$/)
   .custom((v, helpers) => {
     const t = new Date(`${v}T00:00:00Z`);
     return Number.isNaN(t.getTime()) || t.toISOString().slice(0, 10) !== v ? helpers.error('any.invalid') : v;

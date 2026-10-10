@@ -143,11 +143,16 @@ eq "POST data $G1: 201, salvata $G1, giorno $G1" "201|$G1|$G1" "$(cat "$T/st")|$
 hit "${AU[@]}" "$API/movimenti?conto_id=$C2&data_inizio=$G1&data_fine=$G1" > "$T/st"
 eq "filtro data_inizio=data_fine=$G1: proprio quel movimento" "200|$GID" "$(cat "$T/st")|$(py "print(','.join(str(m['id']) for m in d['movimenti']))")"
 hit -X PUT "${AU[@]}" "${JSON[@]}" "$API/movimenti/$GID" -d "{\"data\":\"$G2\"}" > "$T/st"
-eq "PUT data $G2: salvata $G2" "200|$G2" "$(cat "$T/st")|$(q "SELECT to_char(data,'YYYY-MM-DD') FROM movimenti WHERE id=${GID//[^0-9]/0}")"
-for v in 2026-02-30 2026-13-01 10/03/2026 2026-03-08T00:00:00Z 20260308; do
+eq "PUT data $G2: salvata $G2, giorno $G2 nella risposta" "200|$G2|$G2" "$(cat "$T/st")|$(q "SELECT to_char(data,'YYYY-MM-DD') FROM movimenti WHERE id=${GID//[^0-9]/0}")|$(py "print(d['data']['giorno'])")"
+# Anno 0000: valido per Date, non per pg (review t_5c3ad1c0: 500). 0001 si'.
+for v in 2026-02-30 2026-13-01 10/03/2026 2026-03-08T00:00:00Z 20260308 0000-01-01 0000-02-29; do
   eq "data $v rifiutata (400)" "400" "$(hit -X POST "${AU[@]}" "${JSON[@]}" "$API/movimenti" -d "{\"data\":\"$v\",\"conto_id\":$C2,\"descrizione\":\"prova giorno\",\"importo\":1,\"tipo\":\"Uscita\"}")"
 done
+eq "PUT con anno 0000: 400, data invariata" "400|$G2" "$(hit -X PUT "${AU[@]}" "${JSON[@]}" "$API/movimenti/$GID" -d '{"data":"0000-01-01"}')|$(q "SELECT to_char(data,'YYYY-MM-DD') FROM movimenti WHERE id=${GID//[^0-9]/0}")"
 eq "filtro con giorno impossibile: 400" "400" "$(hit "${AU[@]}" "$API/movimenti?data_inizio=2026-02-30")"
+eq "filtro con anno 0000: 400" "400|400" "$(hit "${AU[@]}" "$API/movimenti?data_inizio=0000-01-01")|$(hit "${AU[@]}" "$API/movimenti?data_fine=0000-12-31")"
+hit -X PUT "${AU[@]}" "${JSON[@]}" "$API/movimenti/$GID" -d '{"data":"0001-01-01"}' > "$T/st"
+eq "PUT anno 0001 (minimo): 200, salvata, giorno nella risposta" "200|0001-01-01|0001-01-01" "$(cat "$T/st")|$(q "SELECT to_char(data,'YYYY-MM-DD') FROM movimenti WHERE id=${GID//[^0-9]/0}")|$(py "print(d['data']['giorno'])")"
 eq "nessun movimento in piu' dai rifiuti" "1" "$(q "SELECT count(*) FROM movimenti WHERE user_id=$UID_ AND descrizione='prova giorno'")"
 q "DELETE FROM movimenti WHERE id=${GID//[^0-9]/0}" >/dev/null
 

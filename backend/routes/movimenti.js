@@ -959,7 +959,7 @@ const updateQuery = `
       UPDATE movimenti 
       SET ${fields.join(', ')}
       WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
-      RETURNING *
+      RETURNING *, to_char(data, 'YYYY-MM-DD') AS giorno
     `;
 
 const result = await queryOne(updateQuery, values);
