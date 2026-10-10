@@ -27,6 +27,18 @@ const passwordRegistrazione = passwordNuova.messages({
 const tokenAccount = Joi.string().pattern(/^[0-9a-f]{64}$/).required()
   .messages({ 'string.pattern.base': 'Link non valido o scaduto', 'any.required': 'Link non valido o scaduto' });
 
+// Giorno di calendario (YYYY-MM-DD), lasciato come stringa (U4, review t_34501f24).
+// Joi.date() lo trasformava in una Date a mezzanotte UTC e pg la riscriveva nel
+// fuso del backend: con TZ a ovest di UTC "2026-10-10" diventava 2026-10-09 nel
+// database (e nei filtri). Come stringa arriva a pg cosi' com'e'. Giorni
+// impossibili (2026-02-30) -> 400, non 500 da pg.
+const giorno = () => Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/)
+  .custom((v, helpers) => {
+    const t = new Date(`${v}T00:00:00Z`);
+    return Number.isNaN(t.getTime()) || t.toISOString().slice(0, 10) !== v ? helpers.error('any.invalid') : v;
+  })
+  .messages({ 'string.pattern.base': '{{#label}} deve essere una data YYYY-MM-DD', 'any.invalid': '{{#label}} non e\' una data valida' });
+
 const schemas = {
   // ============================================================================
   // SCHEMA UTENTI E AUTH (INVARIATI)
@@ -141,7 +153,7 @@ const schemas = {
   // SCHEMA MOVIMENTI (INVARIATI)
   // ============================================================================
   movimento: Joi.object({
-    data: Joi.date().required(),
+    data: giorno().required(),
     anagrafica_id: Joi.number().integer().allow(null).optional(),
     conto_id: Joi.number().integer().required(),
     descrizione: Joi.string().max(255).required(),
@@ -152,7 +164,7 @@ const schemas = {
   }).options({ stripUnknown: true }),
 
   movimentoUpdate: Joi.object({
-    data: Joi.date().optional(),
+    data: giorno().optional(),
     anagrafica_id: Joi.number().integer().allow(null).optional(),
     conto_id: Joi.number().integer().optional(),
     descrizione: Joi.string().max(255).optional(),
@@ -222,8 +234,8 @@ const schemas = {
   // SCHEMA UTILITY (INVARIATI)
   // ============================================================================
   dateRange: Joi.object({
-    data_inizio: Joi.date().required(),
-    data_fine: Joi.date().required()
+    data_inizio: giorno().required(),
+    data_fine: giorno().required()
   }),
 
   // ============================================================================
@@ -233,10 +245,11 @@ const schemas = {
   // Ambito che l'utente sceglie quando accetta una richiesta di collegamento.
   // Tutti i campi sono opzionali: assenti = accesso senza limiti.
   collegamentoAccetta: Joi.object({
-    ambito_dal: Joi.date().iso().allow(null).optional(),
-    ambito_al: Joi.date().iso().allow(null).min(Joi.ref('ambito_dal')).optional(),
+    ambito_dal: giorno().allow(null).optional(),
+    ambito_al: giorno().allow(null).optional(),
     conti_ammessi: Joi.array().items(Joi.number().integer().positive()).max(50).allow(null).optional()
-  }).messages({
+  }).custom((v, helpers) => (v.ambito_dal && v.ambito_al && v.ambito_al < v.ambito_dal
+    ? helpers.error('date.min') : v)).messages({
     'date.min': 'La data di fine ambito non puo\' precedere quella di inizio'
   }),
 
@@ -307,8 +320,8 @@ const schemas = {
       )
     ).optional(),
     conto_id: Joi.alternatives().try(Joi.number().integer().positive(), Joi.string().allow('')).optional(),
-    data_inizio: Joi.date().optional(),
-    data_fine: Joi.date().optional(),
+    data_inizio: giorno().optional(),
+    data_fine: giorno().optional(),
     tutto_storico: Joi.boolean().default(false),
     ordina_per: Joi.string().valid('data', 'importo', 'anagrafica').default('data'),
     ordine: Joi.string().valid('asc', 'desc').default('desc')
@@ -491,6 +504,7 @@ const validateParams = (schema) => {
 };
 
 module.exports = {
+  giorno,
   validate,
   validateQuery,
   validateParams,

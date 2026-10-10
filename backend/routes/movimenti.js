@@ -2,7 +2,7 @@
 const express = require('express');
 const { query, queryOne, queryAll, withTransaction } = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { validate, validateQuery, schemas } = require('../middleware/validation');
+const { validate, validateQuery, schemas, giorno } = require('../middleware/validation');
 const moment = require('moment');
 const UnifiedImportProcessor = require('../services/UnifiedImportProcessor');
 const { logErrore } = require('../utils/errori');
@@ -31,8 +31,8 @@ router.use((req, res, next) => {
 
 // Schema per filtri movimenti (AGGIORNATO)
 const movimentiFiltersSchema = require('joi').object({
-  data_inizio: require('joi').date().optional(),
-  data_fine: require('joi').date().optional(),
+  data_inizio: giorno().optional(),
+  data_fine: giorno().optional(),
   conto_id: require('joi').number().integer().optional(),
   anagrafica_id: require('joi').number().integer().optional(),
   tipologia_id: require('joi').number().integer().optional(), // NUOVO

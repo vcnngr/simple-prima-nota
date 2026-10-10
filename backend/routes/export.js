@@ -2,7 +2,7 @@
 const express = require('express');
 const { queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { validateQuery, schemas } = require('../middleware/validation');
+const { validateQuery, schemas, giorno } = require('../middleware/validation');
 const moment = require('moment');
 const { cartellaXlsx } = require('../utils/xlsx');
 const PDFDocument = require('pdfkit');
@@ -24,8 +24,8 @@ const exportConfigSchema = require('joi').object({
   campi_personalizzati: require('joi').array().items(require('joi').string()).optional(),
   
   // Filtri periodo (solo per movimenti)
-  data_inizio: require('joi').date().optional(),
-  data_fine: require('joi').date().optional(),
+  data_inizio: giorno().optional(),
+  data_fine: giorno().optional(),
   tutto_storico: require('joi').boolean().default(false),
   
   // Filtri specifici

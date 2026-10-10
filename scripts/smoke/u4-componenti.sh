@@ -7,7 +7,8 @@
 #   B. API: vista dell'Estratto sull'account (GET/PUT .../preferenze, valori
 #      rifiutati, login, studio, isolamento);
 #   C. API: `giorno` (YYYY-MM-DD) nei movimenti, uguale alla data del database
-#      anche con il backend in un fuso diverso da UTC;
+#      anche con il backend in un fuso diverso da UTC; la data inviata (POST,
+#      PUT, filtri) e' quella salvata e cercata, giorni impossibili -> 400;
 #   D. migrazione 014: CHECK, rollback (API -> 500 generico, login 200) e
 #      riapplicazione;
 #   E. build e browser (Chrome headless, nginx con la CSP vera): Estratto a
@@ -18,7 +19,11 @@
 #   F. database dopo il browser: importo, tipo, giorno e conto registrati;
 #   G. copia della 014 nel chart.
 #
-#   API=http://127.0.0.1:3220/api DB_CONTAINER=pn-u4-db ./scripts/smoke/u4-componenti.sh
+#   API=http://127.0.0.1:3220/api DB_CONTAINER=pn-u4-db TZ_BACKEND=America/Los_Angeles \
+#     ./scripts/smoke/u4-componenti.sh
+#
+# Il backend va avviato con TZ a ovest di UTC (es. TZ=America/Los_Angeles) e lo si
+# dichiara in TZ_BACKEND: con il backend in UTC lo spostamento di giorno non si vede.
 #
 # La sezione D toglie e rimette la 014 sul database indicato: solo database di
 # prova. Fotografie in FOTO (predefinito: temporanea). Esce 1 se un caso fallisce.
@@ -127,6 +132,24 @@ MID=$(q "SELECT max(id) FROM movimenti WHERE conto_id=$C1")
 hit "${AU[@]}" "$API/movimenti/$MID" >/dev/null
 eq "giorno anche nel dettaglio" "$(q "SELECT to_char(data,'YYYY-MM-DD') FROM movimenti WHERE id=$MID")" "$(py "print(d['giorno'])")"
 SALDO=$(q "SELECT (calcola_saldo_conto($C1) * 100)::bigint")
+# Giorno inviato = giorno salvato, con il backend in qualunque fuso (review
+# t_34501f24: con TZ=America/Los_Angeles il 10 diventava il 9). Per provarlo
+# davvero il backend deve girare a ovest di UTC: TZ_BACKEND lo dichiara.
+eq "fuso del backend dichiarato (TZ_BACKEND)" "1" "$([ -n "${TZ_BACKEND:-}" ] && echo 1 || echo 0)"
+G1=2026-03-08; G2=2026-03-29
+hit -X POST "${AU[@]}" "${JSON[@]}" "$API/movimenti" -d "{\"data\":\"$G1\",\"conto_id\":$C2,\"descrizione\":\"prova giorno\",\"importo\":3.21,\"tipo\":\"Uscita\"}" > "$T/st"
+GID=$(py "print(d['id'])")
+eq "POST data $G1: 201, salvata $G1, giorno $G1" "201|$G1|$G1" "$(cat "$T/st")|$(q "SELECT to_char(data,'YYYY-MM-DD') FROM movimenti WHERE id=${GID//[^0-9]/0}")|$(py "print(d['giorno'])")"
+hit "${AU[@]}" "$API/movimenti?conto_id=$C2&data_inizio=$G1&data_fine=$G1" > "$T/st"
+eq "filtro data_inizio=data_fine=$G1: proprio quel movimento" "200|$GID" "$(cat "$T/st")|$(py "print(','.join(str(m['id']) for m in d['movimenti']))")"
+hit -X PUT "${AU[@]}" "${JSON[@]}" "$API/movimenti/$GID" -d "{\"data\":\"$G2\"}" > "$T/st"
+eq "PUT data $G2: salvata $G2" "200|$G2" "$(cat "$T/st")|$(q "SELECT to_char(data,'YYYY-MM-DD') FROM movimenti WHERE id=${GID//[^0-9]/0}")"
+for v in 2026-02-30 2026-13-01 10/03/2026 2026-03-08T00:00:00Z 20260308; do
+  eq "data $v rifiutata (400)" "400" "$(hit -X POST "${AU[@]}" "${JSON[@]}" "$API/movimenti" -d "{\"data\":\"$v\",\"conto_id\":$C2,\"descrizione\":\"prova giorno\",\"importo\":1,\"tipo\":\"Uscita\"}")"
+done
+eq "filtro con giorno impossibile: 400" "400" "$(hit "${AU[@]}" "$API/movimenti?data_inizio=2026-02-30")"
+eq "nessun movimento in piu' dai rifiuti" "1" "$(q "SELECT count(*) FROM movimenti WHERE user_id=$UID_ AND descrizione='prova giorno'")"
+q "DELETE FROM movimenti WHERE id=${GID//[^0-9]/0}" >/dev/null
 
 echo
 echo "=== D. migrazione 014 ==="

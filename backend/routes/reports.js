@@ -2,7 +2,7 @@
 const express = require('express');
 const { queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { validateQuery, schemas } = require('../middleware/validation');
+const { validateQuery, schemas, giorno } = require('../middleware/validation');
 const moment = require('moment');
 const csv = require('csv-writer');
 const PDFDocument = require('pdfkit');
@@ -14,8 +14,8 @@ router.use(auth);
 
 // Schema per filtri report (AGGIORNATO)
 const reportFiltersSchema = require('joi').object({
-  data_inizio: require('joi').date().required(),
-  data_fine: require('joi').date().required(),
+  data_inizio: giorno().required(),
+  data_fine: giorno().required(),
   conto_id: require('joi').number().integer().optional(),
   anagrafica_id: require('joi').number().integer().optional(),
   tipologia_id: require('joi').number().integer().optional(), // NUOVO
