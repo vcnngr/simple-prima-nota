@@ -185,6 +185,12 @@ arrotondamento) e della prima funzione vera: guardare l'estratto e registrare un
 - `GET /movimenti`, `GET /movimenti/:id`, `POST /movimenti` portano anche `giorno` (`YYYY-MM-DD`).
   `data` resta com'era per il vecchio frontend, ma pg la serializza dalla mezzanotte del fuso del
   server: con il backend in Europe/Rome il 9 ottobre arriva come `2026-10-08T22:00:00.000Z`.
+- In ingresso le date sono giorni di calendario (`YYYY-MM-DD`, helper `giorno()` in
+  `middleware/validation.js`) e arrivano a pg come stringhe: data del movimento (POST/PUT), filtri
+  `data_inizio`/`data_fine` (movimenti, report, export, export dello studio), ambito del
+  collegamento. Prima `Joi.date()` ne faceva una Date a mezzanotte UTC che pg riscriveva nel fuso
+  del backend: a ovest di UTC il movimento del 10 finiva sul 9 (RED di pn-gpt, `t_34501f24`).
+  Giorni impossibili (`2026-02-30`), timestamp e altri formati: 400.
 - `web/src/util/`: importi in centesimi interi (dal testo del server al testo per l'API, mai
   `parseFloat`), tastierino con + − = come funzione pura, giorni nel fuso del dispositivo (mai
   `toISOString`).
@@ -199,7 +205,8 @@ arrotondamento) e della prima funzione vera: guardare l'estratto e registrare un
   un tocco su Registra registra una volta sola anche se ripetuto.
 - `src/api/client.js`: base dell'API da `VITE_API_BASE` (vuota = stesso sito), per la fase APP.
 
-**Prova**: `scripts/smoke/u4-componenti.sh` (100 controlli): logica pura (22: 0,1 + 0,2 = 0,30,
+**Prova**: `scripts/smoke/u4-componenti.sh` (111 controlli, backend con `TZ=America/Los_Angeles`
+dichiarato in `TZ_BACKEND`): logica pura (22: 0,1 + 0,2 = 0,30,
 decimali, tetto di 10 cifre, cancella, segni, giorni a cavallo del mese) con `TZ=Europe/Rome`;
 vista sull'account (valori rifiutati, login, profilo, studio, token dell'altro tipo, isolamento);
 `giorno` uguale alla data del database su 75 movimenti; `CHECK`, rollback e riapplicazione della 014;
@@ -208,7 +215,9 @@ uguale a `calcola_saldo_conto`, le quattro viste scelte dalle impostazioni a 390
 conto, nuovo movimento con ricerca sul server e somma 12,40 + 6,50, totale negativo rifiutato, Esc,
 tre tocchi su Registra; poi nel database importo, tipo, controparte, giorno e conto. Sul codice di
 prima (`548fd64`): 23 FAIL. Il doppio tocco l'ha trovato lo smoke: prima della correzione tre tocchi
-registravano tre movimenti.
+registravano tre movimenti. Dopo il RED: data inviata = data salvata in POST e PUT, filtro sul
+giorno esatto, cinque formati rifiutati; sul backend di `5299a83` a Los Angeles 10 FAIL (il 18,90
+registrato «oggi» finiva su ieri).
 
 Aperti: lo stato «da chiarire» dei mockup non esiste nello schema (nessuna colonna): le righe
 mostrano solo entrata e uscita; modifica ed eliminazione del movimento arrivano in U5.
