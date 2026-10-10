@@ -46,7 +46,7 @@ codice di prima.
 | U2 ✅ | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica; migrazione 013 | `scripts/smoke/u2-preferenze.sh` |
 | U3 ✅ | Base del frontend | `web/`: Vite, TanStack Query v5, React Router 7, token dei due temi, un solo shell utente/studio, login, impostazioni di tema e aspetto | `scripts/smoke/u3-web.sh` |
 | U4 ✅ | Componenti e registrazione | bottom sheet, selettore della controparte sul server, lista infinita a cursore, tastierino con somma, quattro righe dell'Estratto scelte per account (migrazione 014); Estratto per conto e nuovo movimento collegati all'API | `scripts/smoke/u4-componenti.sh` |
-| U5 | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | da scrivere |
+| U5 | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | `scripts/smoke/u5-pagine.sh` |
 | U6 | Portale dello studio | pagine dello studio sul nuovo shell; via il vecchio frontend e gli endpoint rimasti per lui | da scrivere |
 
 ## U1 — Ricerca e paginazione
@@ -222,7 +222,47 @@ registrato «oggi» finiva su ieri). Dopo il secondo RED: `giorno` nella rispost
 `0000` rifiutato in POST, PUT e filtri, `0001-01-01` accettato; sul backend di `273205c` 6 FAIL.
 
 Aperti: lo stato «da chiarire» dei mockup non esiste nello schema (nessuna colonna): le righe
-mostrano solo entrata e uscita; modifica ed eliminazione del movimento arrivano in U5.
+mostrano solo entrata e uscita; modifica ed eliminazione del movimento arrivano in U5 (risolti in U5).
+
+## U5 — Pagine dell'utente
+
+**Scelte ratificate (10/10/2026, sui mockup in Registro chiaro).** Movimenti: etichette dei filtri
+sotto la ricerca (A con la ricerca di B). Dettaglio: scheda dal basso (A) con lo scorrimento della
+riga come scorciatoia (C). Controparti: schede con il totale, piu' movimentate in cima, A–Z come
+ordine (B), scheda della controparte al tocco (C). Report: mese per mese (C), tocco = il mese (A).
+Studio: riepilogo (C), chat con la fascia dei movimenti da chiarire (A).
+
+- «Da chiarire» senza migrazione: e' una richiesta di chiarimento aperta (W5, `chiarimento_stato =
+  'aperta'`) su un collegamento attivo. `GET /movimenti` e `GET /movimenti/:id` portano
+  `da_chiarire`; filtro `da_chiarire=true|false`. Collegamento sospeso: nessuna etichetta.
+- `GET /reports/mesi?fino=YYYY-MM&mesi=1..36[&conto_id][&anagrafica_id]`: mese per mese dal piu'
+  recente (predefinito: il mese del database). `GET /reports/mese?mese=YYYY-MM[&conto_id]`: entrate
+  per controparte, uscite per categoria (`categoria`, poi tipologia, poi «Senza categoria»). Mesi e
+  importi come testo, mai Date ne' virgola mobile; mesi fuori formato o anno < 1000: 400.
+- `GET /messaggi/chiarimenti`: per il cliente anche il movimento (giorno, importo, controparte);
+  lo studio continua a riceverne solo l'id (l'ambito puo' essere cambiato dopo la richiesta).
+- `GET /utenti/collegamenti`: `ambito_dal`/`ambito_al` come giorni `YYYY-MM-DD` (prima un Date che
+  slittava col fuso del server).
+- Frontend: `/movimenti` (filtri nell'indirizzo: `q`, `tipo`, `conto`, `dal`, `al`, `controparte`,
+  `chiarire`; valori non validi ignorati), `/controparti`, `/controparti/:id`, `/report`,
+  `/report/:mese`, `/studio`, `/chat`; `/nuovo?controparte=<id>` parte dall'importo. Componenti
+  `ModuloMovimento` (nuovo e modifica, PUT), `DettaglioMovimento` (Modifica, Elimina con conferma,
+  Chiedi allo studio), `RigaMovimento` (scorrimento: Studio, Elimina con 5 s per annullare; lasciando
+  la pagina l'eliminazione chiesta si compie). Le righe dell'Estratto si aprono col tocco.
+
+**Prova**: `scripts/smoke/u5-pagine.sh` (111 controlli, backend con `TZ=America/Los_Angeles`):
+somme dei report uguali al database per mese, conto e controparte; isolamento fra utenti; 11 valori
+rifiutati; `da_chiarire` con richiesta aperta, sospensione, riattivazione, risoluzione; poi nel browser
+con la CSP vera: ricerca, etichette, pannello, modifica col tastierino, eliminazione con conferma,
+scorrimento con Annulla (il movimento resta) e senza (sparisce dopo 5 s), «+ Movimento» dalla
+controparte, report, chat con invio e «Chiarito», 390 px su ogni pagina; poi nel database. Sul
+backend di `4ed57a8`: 50 FAIL.
+
+Aperti (prima di togliere il vecchio frontend in U6): gestione del collegamento lato utente
+(accetta con ambito, sospendi, revoca), allegati nella chat (invio e scaricamento), modifica e
+creazione delle controparti, conti. Orari della chat: `created_at` e' un `TIMESTAMP` senza fuso e
+pg lo legge nel fuso del backend; con il backend in UTC (immagini) e' giusto, con un backend in un
+altro fuso l'ora si sposta.
 
 ## Fase APP — app iOS (dopo U6)
 
