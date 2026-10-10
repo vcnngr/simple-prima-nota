@@ -19,6 +19,11 @@ function voceDa(c) {
   return `${Math.floor(a / 100)}${d ? `,${String(d).padStart(2, '0').replace(/0$/, '')}` : ''}`;
 }
 
+// Stato con un importo gia' scritto (modifica di un movimento, U5).
+export function daCentesimi(c) {
+  return c > 0 ? { termini: [], segno: 1, voce: voceDa(c) } : VUOTO;
+}
+
 export function totale(s) {
   return s.termini.reduce((a, b) => a + b, 0) + s.segno * centesimiVoce(s.voce);
 }

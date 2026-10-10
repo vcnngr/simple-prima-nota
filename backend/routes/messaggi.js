@@ -589,14 +589,22 @@ router.get('/chiarimenti', authEither, validateQuery(schemas.chiarimentiQuery), 
       });
     }
     const r = await query(
-      `SELECT id, mittente_tipo, messaggio, created_at, movimento_id,
-              chiarimento_stato, chiarimento_risolto_at, chiarimento_risolto_da
-       FROM messaggi_commercialista
-       WHERE collegamento_id = $1
-         AND chiarimento_stato = COALESCE($2::varchar, chiarimento_stato)
-       ORDER BY (chiarimento_stato = 'aperta') DESC, created_at DESC
+      `SELECT mc.id, mc.mittente_tipo, mc.messaggio, mc.created_at, mc.movimento_id,
+              mc.chiarimento_stato, mc.chiarimento_risolto_at, mc.chiarimento_risolto_da,
+              -- U5: per il cliente, il movimento da chiarire (e' suo). Lo studio
+              -- continua a riceverne solo l'id: l'ambito puo' essere cambiato.
+              CASE WHEN mv.id IS NOT NULL THEN json_build_object(
+                'id', mv.id, 'giorno', to_char(mv.data, 'YYYY-MM-DD'), 'descrizione', mv.descrizione,
+                'importo', mv.importo::text, 'tipo', mv.tipo, 'controparte', a.nome)
+              END AS movimento
+       FROM messaggi_commercialista mc
+       LEFT JOIN movimenti mv ON mv.id = mc.movimento_id AND mv.user_id = $3::int
+       LEFT JOIN anagrafiche a ON a.id = mv.anagrafica_id AND a.user_id = mv.user_id
+       WHERE mc.collegamento_id = $1
+         AND mc.chiarimento_stato = COALESCE($2::varchar, mc.chiarimento_stato)
+       ORDER BY (mc.chiarimento_stato = 'aperta') DESC, mc.created_at DESC
        LIMIT 200`,
-      [req.collegamento_id, req.query.stato || null]
+      [req.collegamento_id, req.query.stato || null, req.user ? req.user.id : null]
     );
     res.json({ success: true, chiarimenti: r.rows });
   } catch (error) {

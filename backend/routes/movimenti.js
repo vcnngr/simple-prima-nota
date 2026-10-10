@@ -47,6 +47,8 @@ const movimentiFiltersSchema = require('joi').object({
   // U1: cursore per le liste infinite ("data_id" dell'ultima riga ricevuta), solo
   // con order_by=data. Con il cursore offset si ignora: righe inserite nel
   // frattempo non fanno saltare ne' ripetere righe.
+  // U5: solo i movimenti con una richiesta di chiarimento aperta dello studio.
+  da_chiarire: require('joi').boolean().optional(),
   dopo: require('joi').string().pattern(/^\d{4}-\d{2}-\d{2}_[1-9]\d{0,9}$/).custom(cursoreValido).optional()
 });
 
@@ -564,7 +566,8 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           offset,
           order_by,
           order_direction,
-          dopo
+          dopo,
+          da_chiarire
         } = req.query;
         
         let whereConditions = ['m.user_id = $1'];
@@ -621,6 +624,13 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           paramIndex++;
         }
         
+        if (da_chiarire !== undefined) {
+          whereConditions.push(`${da_chiarire ? '' : 'NOT '}EXISTS (SELECT 1 FROM messaggi_commercialista mc
+            JOIN collegamenti_commercialista cl ON cl.id = mc.collegamento_id
+            WHERE mc.movimento_id = m.id AND cl.user_id = m.user_id AND cl.stato = 'attiva'
+              AND mc.chiarimento_stato = 'aperta')`);
+        }
+
         if (search) {
           whereConditions.push(`(m.descrizione ILIKE $${paramIndex} OR m.note ILIKE $${paramIndex} OR a.nome ILIKE $${paramIndex})`);
           params.push(`%${search}%`);
@@ -675,6 +685,11 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
         m.*,
         to_char(m.data, 'YYYY-MM-DD') AS giorno,
         a.nome as anagrafica_nome,
+        -- U5: etichetta «da chiarire» (W5, richieste aperte su un collegamento attivo).
+        EXISTS (SELECT 1 FROM messaggi_commercialista mc
+                JOIN collegamenti_commercialista cl ON cl.id = mc.collegamento_id
+                WHERE mc.movimento_id = m.id AND cl.user_id = m.user_id AND cl.stato = 'attiva'
+                  AND mc.chiarimento_stato = 'aperta') AS da_chiarire,
         ta.nome as tipologia_nome,
         ta.tipo_movimento_default,
         ta.colore as tipologia_colore,
@@ -784,6 +799,10 @@ router.get('/:id', async (req, res) => {
         ta.tipo_movimento_default,
         ta.colore as tipologia_colore,
         ta.icona as tipologia_icona,
+        EXISTS (SELECT 1 FROM messaggi_commercialista mc
+                JOIN collegamenti_commercialista cl ON cl.id = mc.collegamento_id
+                WHERE mc.movimento_id = m.id AND cl.user_id = m.user_id AND cl.stato = 'attiva'
+                  AND mc.chiarimento_stato = 'aperta') AS da_chiarire,
         a.categoria as anagrafica_categoria,
         cc.nome_banca,
         cc.intestatario,

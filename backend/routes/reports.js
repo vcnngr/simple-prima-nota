@@ -24,6 +24,95 @@ const reportFiltersSchema = require('joi').object({
   formato: require('joi').string().valid('json', 'csv', 'xlsx', 'pdf').default('json')
 });
 
+// Report a flusso del nuovo frontend (U5). Mesi come testo YYYY-MM, importi
+// come testo (DECIMAL): niente Date fra pg e il client, niente virgola mobile.
+const Joi = require('joi');
+const meseTesto = () => Joi.string().pattern(/^[1-9]\d{3}-(0[1-9]|1[0-2])$/)
+  .messages({ 'string.pattern.base': '{{#label}} deve essere un mese YYYY-MM' });
+const mesiSchema = Joi.object({
+  fino: meseTesto().optional(),
+  mesi: Joi.number().integer().min(1).max(36).default(12),
+  conto_id: Joi.number().integer().positive().optional(),
+  anagrafica_id: Joi.number().integer().positive().optional()
+});
+const meseSchema = Joi.object({
+  mese: meseTesto().required(),
+  conto_id: Joi.number().integer().positive().optional()
+});
+
+// GET /api/reports/mesi?fino=YYYY-MM&mesi=12 - Entrate e uscite mese per mese,
+// dal piu' recente (fino, predefinito il mese corrente del database). Anche per
+// un conto o una controparte (scheda della controparte).
+router.get('/mesi', validateQuery(mesiSchema), async (req, res) => {
+  try {
+    const { fino, mesi, conto_id, anagrafica_id } = req.query;
+    const righe = await queryAll(`
+      WITH elenco AS (
+        SELECT (date_trunc('month', coalesce(to_date($2 || '-01', 'YYYY-MM-DD'), CURRENT_DATE))
+                - make_interval(months => g))::date AS inizio
+        FROM generate_series(0, $3::int - 1) g
+      )
+      SELECT to_char(e.inizio, 'YYYY-MM') AS mese,
+             count(x.id)::int AS numero,
+             coalesce(sum(x.importo) FILTER (WHERE x.tipo = 'Entrata'), 0.00) AS entrate,
+             coalesce(sum(x.importo) FILTER (WHERE x.tipo = 'Uscita'), 0.00) AS uscite
+      FROM elenco e
+      LEFT JOIN movimenti x ON x.user_id = $1
+        AND x.data >= e.inizio AND x.data < (e.inizio + interval '1 month')::date
+        AND ($4::int IS NULL OR x.conto_id = $4::int)
+        AND ($5::int IS NULL OR x.anagrafica_id = $5::int)
+      GROUP BY e.inizio
+      ORDER BY e.inizio DESC
+    `, [req.user.id, fino ?? null, mesi, conto_id ?? null, anagrafica_id ?? null]);
+    res.json({ mesi: righe });
+  } catch (error) {
+    logErrore('Error fetching report mesi', error);
+    res.status(500).json({ error: 'Errore durante il caricamento del report' });
+  }
+});
+
+// GET /api/reports/mese?mese=YYYY-MM - Chi ha pagato (entrate per controparte)
+// e dove sono andati i soldi (uscite per categoria) in un mese.
+router.get('/mese', validateQuery(meseSchema), async (req, res) => {
+  try {
+    const { mese, conto_id } = req.query;
+    const params = [req.user.id, mese, conto_id ?? null];
+    const dove = `m.user_id = $1
+        AND m.data >= to_date($2 || '-01', 'YYYY-MM-DD')
+        AND m.data < (to_date($2 || '-01', 'YYYY-MM-DD') + interval '1 month')::date
+        AND ($3::int IS NULL OR m.conto_id = $3::int)`;
+    const entrate = await queryAll(`
+      SELECT a.id AS anagrafica_id, coalesce(a.nome, 'Senza controparte') AS nome,
+             count(*)::int AS numero, sum(m.importo) AS totale
+      FROM movimenti m
+      LEFT JOIN anagrafiche a ON a.id = m.anagrafica_id AND a.user_id = m.user_id
+      WHERE ${dove} AND m.tipo = 'Entrata'
+      GROUP BY a.id, a.nome
+      ORDER BY sum(m.importo) DESC, nome
+    `, params);
+    const uscite = await queryAll(`
+      SELECT coalesce(nullif(trim(m.categoria), ''), ta.nome, 'Senza categoria') AS nome,
+             count(*)::int AS numero, sum(m.importo) AS totale
+      FROM movimenti m
+      LEFT JOIN anagrafiche a ON a.id = m.anagrafica_id AND a.user_id = m.user_id
+      LEFT JOIN tipologie_anagrafiche ta ON ta.id = a.tipologia_id AND ta.user_id = m.user_id
+      WHERE ${dove} AND m.tipo = 'Uscita'
+      GROUP BY 1
+      ORDER BY sum(m.importo) DESC, 1
+    `, params);
+    const totali = await queryOne(`
+      SELECT count(*)::int AS numero,
+             coalesce(sum(m.importo) FILTER (WHERE m.tipo = 'Entrata'), 0.00) AS entrate,
+             coalesce(sum(m.importo) FILTER (WHERE m.tipo = 'Uscita'), 0.00) AS uscite
+      FROM movimenti m WHERE ${dove}
+    `, params);
+    res.json({ mese, totali, entrate, uscite });
+  } catch (error) {
+    logErrore('Error fetching report mese', error);
+    res.status(500).json({ error: 'Errore durante il caricamento del report' });
+  }
+});
+
 // GET /api/reports/estratto-conto - Estratto conto per periodo (AGGIORNATO)
 router.get('/estratto-conto', validateQuery(reportFiltersSchema), async (req, res) => {
   try {

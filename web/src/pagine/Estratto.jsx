@@ -6,6 +6,7 @@ import { useSessione } from '../sessione/Sessione';
 import BottomSheet from '../componenti/BottomSheet';
 import ListaInfinita from '../componenti/ListaInfinita';
 import RigheEstratto from '../componenti/righe/Righe';
+import DettaglioMovimento from '../componenti/DettaglioMovimento';
 import { centesimiDa, formatta } from '../util/importi';
 
 // Ultimo conto guardato: lo propone anche il nuovo movimento.
@@ -27,6 +28,7 @@ export default function Estratto() {
   const { preferenze } = useSessione();
   const { conti, conto, scegli, isLoading, isError } = useConti();
   const [sceltaConto, setSceltaConto] = useState(false);
+  const [aperto, setAperto] = useState(null);
 
   const lista = useInfiniteQuery({
     queryKey: ['estratto', conto?.id],
@@ -69,8 +71,10 @@ export default function Estratto() {
         )}
       >
         {lista.isError && <p role="alert" className="px-4 text-uscita">Movimenti non caricati, riprova.</p>}
-        <RigheEstratto movimenti={movimenti} vista={preferenze?.vista_estratto} />
+        <RigheEstratto movimenti={movimenti} vista={preferenze?.vista_estratto} onApri={setAperto} />
       </ListaInfinita>
+
+      {aperto && <DettaglioMovimento id={aperto} onChiudi={() => setAperto(null)} />}
 
       <BottomSheet aperto={sceltaConto} onChiudi={() => setSceltaConto(false)} titolo="Scegli il conto">
         <ul className="divide-y divide-bordo">

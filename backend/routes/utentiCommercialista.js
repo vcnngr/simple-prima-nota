@@ -220,7 +220,9 @@ router.get('/collegamenti', auth, async (req, res) => {
       `SELECT c.id, c.stato, c.richiesto_da,
               c.data_richiesta, c.data_accettazione, c.data_revoca,
               c.revocato_da, c.motivo_revoca,
-              c.ambito_dal, c.ambito_al, c.conti_ammessi,
+              -- Giorni come testo (U5): un Date di pg slitta col fuso del server.
+              to_char(c.ambito_dal, 'YYYY-MM-DD') AS ambito_dal,
+              to_char(c.ambito_al, 'YYYY-MM-DD') AS ambito_al, c.conti_ammessi,
               com.id AS commercialista_id, com.username, com.email,
               com.ragione_sociale, com.partita_iva, com.telefono,
               (com.eliminato_il IS NOT NULL) AS studio_eliminato

@@ -7,6 +7,11 @@ import Impostazioni from './pagine/Impostazioni';
 import Segnaposto from './pagine/Segnaposto';
 import Estratto from './pagine/Estratto';
 import NuovoMovimento from './pagine/NuovoMovimento';
+import Movimenti from './pagine/Movimenti';
+import Controparti from './pagine/Controparti';
+import Controparte from './pagine/Controparte';
+import { Report, ReportMese } from './pagine/Report';
+import { Chat, Studio } from './pagine/Studio';
 
 function Attesa() {
   return <div className="flex min-h-full items-center justify-center text-tenue" role="status">Caricamento…</div>;
@@ -48,10 +53,14 @@ const router = createBrowserRouter([
       element: <Shell />,
       children: [
         { path: '/', element: <Estratto /> },
-        { path: '/movimenti', element: <Segnaposto titolo="Movimenti" blocco="U5" /> },
+        { path: '/movimenti', element: <Movimenti /> },
         { path: '/nuovo', element: <NuovoMovimento /> },
-        { path: '/report', element: <Segnaposto titolo="Report" blocco="U5" /> },
-        { path: '/studio', element: <Segnaposto titolo="Il tuo studio" blocco="U5" /> },
+        { path: '/controparti', element: <Controparti /> },
+        { path: '/controparti/:id', element: <Controparte /> },
+        { path: '/report', element: <Report /> },
+        { path: '/report/:mese', element: <ReportMese /> },
+        { path: '/studio', element: <Studio /> },
+        { path: '/chat', element: <Chat /> },
         { path: '/impostazioni', element: <Impostazioni /> }
       ]
     }]
