@@ -182,7 +182,7 @@ arrotondamento) e della prima funzione vera: guardare l'estratto e registrare un
   scritta da `GET/PUT …/preferenze` (U2) insieme a tema e aspetto, nel login e nei profili. Il
   rollback toglie la colonna; senza colonna le preferenze rispondono 500 generico e login e
   profili 200 con `preferenze: null` (il frontend usa la copia locale, poi i predefiniti).
-- `GET /movimenti`, `GET /movimenti/:id`, `POST /movimenti` portano anche `giorno` (`YYYY-MM-DD`).
+- `GET /movimenti`, `GET /movimenti/:id`, `POST` e `PUT /movimenti` portano anche `giorno` (`YYYY-MM-DD`).
   `data` resta com'era per il vecchio frontend, ma pg la serializza dalla mezzanotte del fuso del
   server: con il backend in Europe/Rome il 9 ottobre arriva come `2026-10-08T22:00:00.000Z`.
 - In ingresso le date sono giorni di calendario (`YYYY-MM-DD`, helper `giorno()` in
@@ -190,7 +190,8 @@ arrotondamento) e della prima funzione vera: guardare l'estratto e registrare un
   `data_inizio`/`data_fine` (movimenti, report, export, export dello studio), ambito del
   collegamento. Prima `Joi.date()` ne faceva una Date a mezzanotte UTC che pg riscriveva nel fuso
   del backend: a ovest di UTC il movimento del 10 finiva sul 9 (RED di pn-gpt, `t_34501f24`).
-  Giorni impossibili (`2026-02-30`), timestamp e altri formati: 400.
+  Giorni impossibili (`2026-02-30`), timestamp e altri formati: 400. Anche l'anno `0000`: per `Date`
+  esiste, per pg no (500 prima del secondo RED, `t_5c3ad1c0`); si parte da `0001-01-01`.
 - `web/src/util/`: importi in centesimi interi (dal testo del server al testo per l'API, mai
   `parseFloat`), tastierino con + − = come funzione pura, giorni nel fuso del dispositivo (mai
   `toISOString`).
@@ -205,7 +206,7 @@ arrotondamento) e della prima funzione vera: guardare l'estratto e registrare un
   un tocco su Registra registra una volta sola anche se ripetuto.
 - `src/api/client.js`: base dell'API da `VITE_API_BASE` (vuota = stesso sito), per la fase APP.
 
-**Prova**: `scripts/smoke/u4-componenti.sh` (111 controlli, backend con `TZ=America/Los_Angeles`
+**Prova**: `scripts/smoke/u4-componenti.sh` (116 controlli, backend con `TZ=America/Los_Angeles`
 dichiarato in `TZ_BACKEND`): logica pura (22: 0,1 + 0,2 = 0,30,
 decimali, tetto di 10 cifre, cancella, segni, giorni a cavallo del mese) con `TZ=Europe/Rome`;
 vista sull'account (valori rifiutati, login, profilo, studio, token dell'altro tipo, isolamento);
@@ -217,7 +218,8 @@ tre tocchi su Registra; poi nel database importo, tipo, controparte, giorno e co
 prima (`548fd64`): 23 FAIL. Il doppio tocco l'ha trovato lo smoke: prima della correzione tre tocchi
 registravano tre movimenti. Dopo il RED: data inviata = data salvata in POST e PUT, filtro sul
 giorno esatto, cinque formati rifiutati; sul backend di `5299a83` a Los Angeles 10 FAIL (il 18,90
-registrato «oggi» finiva su ieri).
+registrato «oggi» finiva su ieri). Dopo il secondo RED: `giorno` nella risposta del PUT, anno
+`0000` rifiutato in POST, PUT e filtri, `0001-01-01` accettato; sul backend di `273205c` 6 FAIL.
 
 Aperti: lo stato «da chiarire» dei mockup non esiste nello schema (nessuna colonna): le righe
 mostrano solo entrata e uscita; modifica ed eliminazione del movimento arrivano in U5.
