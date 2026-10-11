@@ -46,7 +46,7 @@ codice di prima.
 | U2 ✅ | Preferenze | tema e aspetto sull'account (utente e studio), API di lettura e modifica; migrazione 013 | `scripts/smoke/u2-preferenze.sh` |
 | U3 ✅ | Base del frontend | `web/`: Vite, TanStack Query v5, React Router 7, token dei due temi, un solo shell utente/studio, login, impostazioni di tema e aspetto | `scripts/smoke/u3-web.sh` |
 | U4 ✅ | Componenti e registrazione | bottom sheet, selettore della controparte sul server, lista infinita a cursore, tastierino con somma, quattro righe dell'Estratto scelte per account (migrazione 014); Estratto per conto e nuovo movimento collegati all'API | `scripts/smoke/u4-componenti.sh` |
-| U5 | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | `scripts/smoke/u5-pagine.sh` |
+| U5 ✅ | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | `scripts/smoke/u5-pagine.sh` |
 | U6 | Portale dello studio | pagine dello studio sul nuovo shell; via il vecchio frontend e gli endpoint rimasti per lui | da scrivere |
 
 ## U1 — Ricerca e paginazione
