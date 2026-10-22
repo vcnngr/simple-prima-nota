@@ -647,8 +647,8 @@ router.post('/', validate(schemas.anagrafica), async (req, res) => {
     
     const result = await query(`
       INSERT INTO anagrafiche 
-      (nome, tipologia_id, categoria, email, telefono, piva, indirizzo, attivo, user_id, tipo_movimento_preferito) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+      (nome, tipologia_id, categoria, email, telefono, piva, indirizzo, attivo, user_id, tipo_movimento_preferito)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [
       nome, 
