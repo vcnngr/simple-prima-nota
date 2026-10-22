@@ -37,6 +37,18 @@ Decisioni del titolare (09/10/2026, su screenshot delle varianti U4):
   per l'app: indirizzo del server in un solo punto, niente che dipenda dallo stesso dominio, margini
   sicuri del telefono.
 
+Decisioni del titolare (22/10/2026, su screenshot delle varianti U6): **C** su tutte e sei le tavole.
+Dove la C da sola non copre il caso, il complemento indicato dalla tavola stessa:
+
+- collegamento: richiesta accettata in 3 passi (chi è → cosa vede → conferma); dopo, la gestione
+  (periodo, conti, Sospendi, Revoca) come scheda dello studio (A);
+- allegati: scheda «Documenti» accanto ai messaggi; l'invio resta dalla 📎 della chat;
+- controparti: «+ Crea» nel selettore «Chi?» mentre si registra; la modifica dalla scheda con il
+  pannello breve (A);
+- conti: carte da sfogliare con i movimenti sotto; ✎ e ＋ aprono la pagina del conto (B);
+- studio: home «Da fare» di tutti i clienti; scheda del cliente come riepilogo da cui si entra nel
+  dettaglio.
+
 Ogni blocco è un branch `feat/u…` con review `pn-gpt`; ogni correzione ha uno smoke che fallisce sul
 codice di prima.
 
