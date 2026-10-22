@@ -574,6 +574,48 @@ router.get('/allegati/:id', authEither, validateQuery(schemas.messaggiQuery), ge
   }
 });
 
+// GET /api/messaggi/documenti - i file del collegamento, piu' recenti prima (U6a)
+// Scheda «Documenti» della chat. Il movimento citato segue le regole di GET /:
+// per lo studio solo se ancora dentro l'ambito.
+router.get('/documenti', authEither, validateQuery(schemas.messaggiQuery), getCollegamentoId, async (req, res) => {
+  try {
+    if (req.commercialista) {
+      await registraAccessoOrario({
+        collegamentoId: req.collegamento_id,
+        commercialistaId: req.commercialista.id,
+        userId: req.collegamento.user_id,
+        tipo: 'chat'
+      });
+    }
+    const r = await query(
+      `SELECT a.id, a.nome_originale AS nome, a.mime, a.dimensione, m.id AS messaggio_id,
+              m.mittente_tipo, m.created_at,
+              CASE WHEN mv.id IS NOT NULL THEN json_build_object(
+                'id', mv.id, 'giorno', to_char(mv.data, 'YYYY-MM-DD'), 'descrizione', mv.descrizione)
+              END AS movimento
+       FROM allegati_messaggio a
+       JOIN messaggi_commercialista m ON m.id = a.messaggio_id
+       JOIN collegamenti_commercialista c ON c.id = m.collegamento_id
+       LEFT JOIN movimenti mv0 ON mv0.id = m.movimento_id
+       LEFT JOIN conti_correnti cc ON cc.id = mv0.conto_id AND cc.user_id = c.user_id
+       LEFT JOIN movimenti mv ON mv.id = mv0.id AND cc.id IS NOT NULL
+         AND ($2::boolean = FALSE OR (
+               (c.conti_ammessi IS NULL OR cardinality(c.conti_ammessi) = 0
+                OR cc.id = ANY(c.conti_ammessi))
+           AND (c.ambito_dal IS NULL OR mv0.data >= c.ambito_dal)
+           AND (c.ambito_al  IS NULL OR mv0.data <= c.ambito_al)))
+       WHERE m.collegamento_id = $1
+       ORDER BY m.created_at DESC, a.id DESC
+       LIMIT 200`,
+      [req.collegamento_id, Boolean(req.commercialista)]
+    );
+    res.json({ success: true, documenti: r.rows });
+  } catch (error) {
+    logErrore('Get documenti error', error);
+    res.status(500).json({ error: 'Errore nel recupero dei documenti' });
+  }
+});
+
 // ==============================================================================
 // Richieste di chiarimento
 // ==============================================================================

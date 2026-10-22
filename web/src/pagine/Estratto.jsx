@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { registroApi } from '../api/registro';
@@ -46,6 +47,7 @@ export default function Estratto() {
       <div className="space-y-2 py-10 text-center" data-estratto="senza-conti">
         <h1 className="font-importi text-2xl text-secondario">Nessun conto</h1>
         <p className="text-tenue">Aggiungi un conto per iniziare a registrare i movimenti.</p>
+        <Link to="/conti/nuovo" data-primo-conto className="inline-block rounded-xl bg-principale px-4 py-2.5 font-bold text-su-principale">+ Nuovo conto</Link>
       </div>
     );
   }
@@ -88,6 +90,7 @@ export default function Estratto() {
             </li>
           ))}
         </ul>
+        <Link to="/conti" data-gestisci-conti className="mt-2 block py-2 text-center text-sm font-semibold text-principale">Gestisci i conti</Link>
       </BottomSheet>
     </div>
   );

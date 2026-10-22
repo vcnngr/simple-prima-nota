@@ -12,7 +12,7 @@ const TIPI = ['Uscita', 'Entrata'];
 
 // Ogni lista e scheda che mostra movimenti, saldi o totali si ricarica.
 export function aggiornaRegistro(qc) {
-  for (const k of ['estratto', 'conti', 'cerca-controparti', 'movimenti', 'movimento', 'controparti', 'controparte', 'report']) {
+  for (const k of ['estratto', 'conti', 'conto', 'cerca-controparti', 'movimenti', 'movimento', 'controparti', 'controparte', 'report']) {
     qc.invalidateQueries({ queryKey: [k] });
   }
 }

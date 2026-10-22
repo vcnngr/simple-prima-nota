@@ -12,6 +12,9 @@ import Controparti from './pagine/Controparti';
 import Controparte from './pagine/Controparte';
 import { Report, ReportMese } from './pagine/Report';
 import { Chat, Studio } from './pagine/Studio';
+import Permessi from './pagine/Permessi';
+import Conti from './pagine/Conti';
+import Conto from './pagine/Conto';
 
 function Attesa() {
   return <div className="flex min-h-full items-center justify-center text-tenue" role="status">Caricamento…</div>;
@@ -61,6 +64,9 @@ const router = createBrowserRouter([
         { path: '/report/:mese', element: <ReportMese /> },
         { path: '/studio', element: <Studio /> },
         { path: '/chat', element: <Chat /> },
+        { path: '/studio/permessi/:id', element: <Permessi /> },
+        { path: '/conti', element: <Conti /> },
+        { path: '/conti/:id', element: <Conto /> },
         { path: '/impostazioni', element: <Impostazioni /> }
       ]
     }]

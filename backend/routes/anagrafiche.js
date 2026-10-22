@@ -18,6 +18,11 @@ router.use(auth);
 // ENDPOINTS TIPOLOGIE ANAGRAFICHE (ORDINAMENTO IMPORTANTE!)
 // ==============================================================================
 
+// La tipologia indicata appartiene all'utente?
+async function tipologiaPropria(id, userId) {
+  return Boolean(await queryOne('SELECT 1 FROM tipologie_anagrafiche WHERE id = $1 AND user_id = $2', [id, userId]));
+}
+
 // GET /api/anagrafiche/tipologie - Lista tipologie
 router.get('/tipologie', async (req, res) => {
   try {
@@ -607,7 +612,12 @@ router.get('/:id', async (req, res) => {
 // POST /api/anagrafiche - Crea nuova anagrafica (AGGIORNATO)
 router.post('/', validate(schemas.anagrafica), async (req, res) => {
   try {
-    const { nome, tipologia_id, categoria, email, telefono, piva, indirizzo, attivo } = req.body;
+    const { nome, tipologia_id, tipo_movimento_preferito, categoria, email, telefono, piva, indirizzo, attivo } = req.body;
+
+    // La tipologia deve essere dell'utente (U6a: prima si accettava quella di un altro).
+    if (tipologia_id && !(await tipologiaPropria(tipologia_id, req.user.id))) {
+      return res.status(400).json({ error: 'Tipologia non trovata' });
+    }
     
     // Verifica se esiste già un'anagrafica con stesso nome
     const existingAnagrafica = await queryOne(
@@ -637,8 +647,8 @@ router.post('/', validate(schemas.anagrafica), async (req, res) => {
     
     const result = await query(`
       INSERT INTO anagrafiche 
-      (nome, tipologia_id, categoria, email, telefono, piva, indirizzo, attivo, user_id) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+      (nome, tipologia_id, categoria, email, telefono, piva, indirizzo, attivo, user_id, tipo_movimento_preferito) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
       RETURNING *
     `, [
       nome, 
@@ -649,13 +659,18 @@ router.post('/', validate(schemas.anagrafica), async (req, res) => {
       piva || null, 
       indirizzo || null, 
       attivo !== false, 
-      req.user.id
+      req.user.id,
+      tipo_movimento_preferito || null
     ]);
     
     const newAnagrafica = result.rows[0];
     
     res.status(201).json(newAnagrafica);
   } catch (error) {
+    // Due creazioni simultanee con lo stesso nome: il vincolo UNIQUE(user_id, nome).
+    if (error.code === '23505') {
+      return res.status(400).json({ error: `Esiste già un'anagrafica con questo nome: ${req.body.nome}` });
+    }
     logErrore('Error creating anagrafica', error);
     res.status(500).json({ error: 'Errore durante la creazione dell\'anagrafica' });
   }
@@ -677,6 +692,19 @@ router.put('/:id', validate(schemas.anagraficaUpdate), async (req, res) => {
 
     if (!existingAnagrafica) {
       return res.status(404).json({ error: 'Anagrafica non trovata' });
+    }
+
+    // U6a: stesse regole della creazione (prima: tipologia altrui accettata,
+    // nome doppio -> 500, P.IVA doppia accettata).
+    if (updateData.tipologia_id && !(await tipologiaPropria(updateData.tipologia_id, userId))) {
+      return res.status(400).json({ error: 'Tipologia non trovata' });
+    }
+    if (updateData.piva && updateData.piva.trim()) {
+      const doppia = await queryOne(
+        'SELECT nome FROM anagrafiche WHERE piva = $1 AND user_id = $2 AND id <> $3',
+        [updateData.piva.trim(), userId, anagraficaId]
+      );
+      if (doppia) return res.status(400).json({ error: `P.IVA già associata a: ${doppia.nome}` });
     }
 
     // Costruisci query di update dinamica
@@ -716,6 +744,9 @@ router.put('/:id', validate(schemas.anagraficaUpdate), async (req, res) => {
     });
 
   } catch (error) {
+    if (error.code === '23505') {
+      return res.status(400).json({ error: `Esiste già un'anagrafica con questo nome: ${req.body.nome}` });
+    }
     logErrore('❌ Error updating anagrafica', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento dell\'anagrafica' });
   }

@@ -30,7 +30,9 @@ function tokenDi(tipo) {
 // Chi ascolta (la sessione) riporta al login quando il server rifiuta il token.
 export const eventi = new EventTarget();
 
-export async function chiama(percorso, { metodo = 'GET', corpo, params, segnale, anonimo = false } = {}) {
+// corpo FormData (allegati): il browser mette da se' il Content-Type multipart.
+// comeFile: la risposta e' un file -> { blob, nome } (download con il token).
+export async function chiama(percorso, { metodo = 'GET', corpo, params, segnale, anonimo = false, comeFile = false } = {}) {
   const url = new URL(BASE + percorso, window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -40,15 +42,21 @@ export async function chiama(percorso, { metodo = 'GET', corpo, params, segnale,
   const tipo = tipoSessione();
   const token = anonimo ? null : tokenDi(tipo);
   const headers = { Accept: 'application/json' };
-  if (corpo !== undefined) headers['Content-Type'] = 'application/json';
+  const modulo = typeof FormData !== 'undefined' && corpo instanceof FormData;
+  if (corpo !== undefined && !modulo) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const r = await fetch(url, {
     method: metodo,
     headers,
-    body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    body: corpo === undefined ? undefined : modulo ? corpo : JSON.stringify(corpo),
     signal: segnale
   });
+  if (comeFile && r.ok) {
+    const cd = r.headers.get('Content-Disposition') || '';
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    return { blob: await r.blob(), nome: m ? decodeURIComponent(m[1]) : 'documento' };
+  }
   const testo = await r.text();
   let dati = null;
   try { dati = testo ? JSON.parse(testo) : null; } catch { dati = null; }
@@ -57,4 +65,16 @@ export async function chiama(percorso, { metodo = 'GET', corpo, params, segnale,
     throw new ErroreApi(r.status, dati);
   }
   return dati;
+}
+
+// Salva un file ricevuto con chiama(..., { comeFile: true }) nei download.
+export function salvaFile({ blob, nome }) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nome;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

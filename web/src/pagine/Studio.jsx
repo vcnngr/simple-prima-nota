@@ -1,88 +1,123 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Paperclip, Send } from 'lucide-react';
+import { ChevronLeft, Download, Paperclip, Send } from 'lucide-react';
 import { studioApi } from '../api/studio';
-import { useConti } from './Estratto';
+import { salvaFile } from '../api/client';
 import Iniziale from '../componenti/Iniziale';
 import DettaglioMovimento from '../componenti/DettaglioMovimento';
+import Richiesta, { nomeStudio } from '../componenti/Richiesta';
+import { daCollegamento, frase, useTuttiConti } from '../componenti/Ambito';
 import { centesimiDa, conSegno } from '../util/importi';
 import { breve } from '../util/date';
 
-const nomeStudio = c => c.ragione_sociale || c.username;
-
-// Cosa vede lo studio: l'ambito accettato dal cliente (W1).
-function ambito(c, conti) {
-  const quali = c.conti_ammessi?.length
-    ? c.conti_ammessi.map(id => conti.find(x => x.id === id)?.nome_banca || 'un conto disattivato').join(', ')
-    : 'tutti i conti';
-  const dal = c.ambito_dal ? ` dal ${breve(c.ambito_dal)}` : '';
-  const al = c.ambito_al ? ` al ${breve(c.ambito_al)}` : '';
-  return `vede: ${quali}${dal}${al}${!dal && !al ? ', tutto lo storico' : ''}`;
-}
-
 const STATI = { in_attesa: 'in attesa di risposta', sospesa: 'sospeso', revocata: 'chiuso', rifiutata: 'rifiutato' };
+// Tipi ammessi dal server (AllegatiService); dimensione e quota le controlla lui.
+const ACCETTA = '.pdf,.png,.jpg,.jpeg,.xlsx,.csv,application/pdf,image/png,image/jpeg,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function useStudio() {
   const coll = useQuery({ queryKey: ['studio', 'collegamenti'], queryFn: studioApi.collegamenti });
-  const attivo = coll.data?.collegamenti?.find(c => c.stato === 'attiva') || null;
-  return { coll, attivo };
+  const tutti = coll.data?.collegamenti ?? [];
+  const attivo = tutti.find(c => c.stato === 'attiva') || null;
+  return { coll, tutti, attivo };
 }
 
-// Studio, lato utente (U5, variante C): cosa vede lo studio, cosa c'e' da fare,
-// ultimo messaggio. La chat e' a /chat.
+const peso = b => (b >= 1048576 ? `${(b / 1048576).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1024))} kB`);
+
+// Download con il token: il file arriva come blob e si salva col suo nome.
+function useScarica() {
+  return useMutation({ mutationFn: id => studioApi.scarica(id).then(salvaFile) });
+}
+
+// Studio, lato utente (U5 variante C; U6a): richieste da accettare in 3 passi,
+// cosa vede lo studio, cosa c'e' da fare, ultimo messaggio. La chat e' a /chat,
+// periodo, conti, sospensione e chiusura a /studio/permessi/:id.
 export function Studio() {
-  const { coll, attivo } = useStudio();
-  const { conti } = useConti();
+  const { coll, tutti, attivo } = useStudio();
+  const conti = useTuttiConti();
+  const [richiesta, setRichiesta] = useState(null);
+  const principale = attivo || tutti.find(c => c.stato === 'sospesa') || null;
   const msg = useQuery({ queryKey: ['studio', 'messaggi'], queryFn: studioApi.messaggi, enabled: !!attivo });
+  const qc = useQueryClient();
+  const riattiva = useMutation({ mutationFn: studioApi.riattiva, onSuccess: () => qc.invalidateQueries({ queryKey: ['studio'] }) });
   const ultimo = msg.data?.messaggi?.at(-1);
 
   if (coll.isLoading) return <p className="text-tenue" role="status">Caricamento…</p>;
   if (coll.isError) return <p role="alert" className="text-uscita">{coll.error.message}</p>;
-  if (!attivo) {
-    const altri = (coll.data?.collegamenti ?? []).filter(c => STATI[c.stato] && c.stato !== 'revocata' && c.stato !== 'rifiutata');
-    return (
-      <div className="space-y-3 py-6 text-center" data-studio="nessuno">
-        <h1 className="font-importi text-2xl text-secondario">Nessuno studio collegato</h1>
-        <p className="text-tenue">Quando colleghi il tuo commercialista, qui trovi i suoi messaggi e i movimenti da chiarire.</p>
-        {altri.map(c => <p key={c.id} className="text-sm">{nomeStudio(c)}: collegamento {STATI[c.stato]}.</p>)}
-        <p className="text-sm text-tenue">Le richieste di collegamento si gestiscono ancora dalla versione precedente dell'app.</p>
-      </div>
-    );
-  }
+  const richieste = tutti.filter(c => c.stato === 'in_attesa');
+  const altri = tutti.filter(c => c !== principale && c.stato === 'sospesa');
+
   return (
-    <div className="space-y-3" data-studio={attivo.id}>
-      <section className="rounded-2xl border border-bordo bg-superficie p-4">
-        <div className="flex items-center gap-3">
-          <Iniziale nome={nomeStudio(attivo)} />
-          <div className="min-w-0">
-            <h1 className="truncate font-importi text-lg font-semibold">{nomeStudio(attivo)}</h1>
-            <p className="text-xs text-tenue" data-ambito>{ambito(attivo, conti)}</p>
+    <div className="space-y-3" data-studio={principale ? principale.id : 'nessuno'}>
+      {richieste.map(c => (
+        <section key={c.id} className="flex items-center gap-3 rounded-2xl border border-info bg-info/10 p-3" data-richiesta={c.id}>
+          <Iniziale nome={nomeStudio(c)} />
+          <p className="min-w-0 flex-1 text-sm"><b className="block truncate">{nomeStudio(c)}</b>chiede di collegarsi</p>
+          <button type="button" data-rispondi={c.id} onClick={() => setRichiesta(c)} className="shrink-0 rounded-xl bg-principale px-3 py-2 text-sm font-bold text-su-principale">Rispondi</button>
+        </section>
+      ))}
+      {richiesta && <Richiesta key={richiesta.id} c={richiesta} onChiudi={() => setRichiesta(null)} />}
+
+      {!principale && (
+        <div className="space-y-3 py-6 text-center">
+          <h1 className="font-importi text-2xl text-secondario">Nessuno studio collegato</h1>
+          <p className="text-tenue">Quando il tuo commercialista ti manda una richiesta di collegamento, la trovi qui: scegli tu cosa può vedere.</p>
+          {tutti.filter(c => c.stato === 'revocata' || c.stato === 'rifiutata').slice(0, 3).map(c => <p key={c.id} className="text-sm text-tenue">{nomeStudio(c)}: collegamento {STATI[c.stato]}.</p>)}
+        </div>
+      )}
+
+      {principale && (
+        <section className="rounded-2xl border border-bordo bg-superficie p-4">
+          <div className="flex items-center gap-3">
+            <Iniziale nome={nomeStudio(principale)} />
+            <div className="min-w-0">
+              <h1 className="truncate font-importi text-lg font-semibold">{nomeStudio(principale)}</h1>
+              <p className="text-xs text-tenue" data-ambito>vede: {frase(daCollegamento(principale), conti)}</p>
+            </div>
           </div>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <Link to="/chat" className="rounded-xl bg-chiarire/10 p-2.5" data-tessera="chiarire">
-            <p className="importo text-2xl font-semibold text-chiarire">{msg.data?.chiarimenti_aperti ?? '–'}</p>
-            <p className="text-xs">da chiarire</p>
-          </Link>
-          <Link to="/chat" className="rounded-xl bg-info/10 p-2.5" data-tessera="non-letti">
-            <p className="importo text-2xl font-semibold text-info">{msg.data?.unread_count ?? '–'}</p>
-            <p className="text-xs">messaggi nuovi</p>
-          </Link>
-        </div>
-      </section>
-      {ultimo && (
-        <section className="rounded-2xl border border-bordo bg-superficie p-4" data-ultimo={ultimo.id}>
-          <p className="text-xs font-bold uppercase tracking-wide text-tenue">Ultimo messaggio · {ultimo.mittente_tipo === 'user' ? 'tu' : 'lo studio'}</p>
-          <p className="mt-1 line-clamp-3 text-sm">{ultimo.messaggio}</p>
+          {principale.stato === 'sospesa' ? (
+            <div className="mt-3 space-y-2 rounded-xl bg-chiarire/10 p-3 text-sm" data-sospeso>
+              <p>Collegamento sospeso: lo studio non vede i tuoi dati e la chat è ferma.</p>
+              <button type="button" data-riattiva disabled={riattiva.isPending} onClick={() => riattiva.mutate(principale.id)}
+                className="rounded-lg bg-principale px-3 py-1.5 font-bold text-su-principale">Riattiva</button>
+              {riattiva.isError && <p role="alert" className="text-uscita">{riattiva.error.message}</p>}
+            </div>
+          ) : (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <Link to="/chat" className="rounded-xl bg-chiarire/10 p-2.5" data-tessera="chiarire">
+                <p className="importo text-2xl font-semibold text-chiarire">{msg.data?.chiarimenti_aperti ?? '–'}</p>
+                <p className="text-xs">da chiarire</p>
+              </Link>
+              <Link to="/chat" className="rounded-xl bg-info/10 p-2.5" data-tessera="non-letti">
+                <p className="importo text-2xl font-semibold text-info">{msg.data?.unread_count ?? '–'}</p>
+                <p className="text-xs">messaggi nuovi</p>
+              </Link>
+            </div>
+          )}
         </section>
       )}
-      <Link to="/chat" data-apri-chat className="block rounded-xl bg-principale py-3 text-center font-bold text-su-principale">Apri la chat</Link>
+      {attivo && ultimo && (
+        <section className="rounded-2xl border border-bordo bg-superficie p-4" data-ultimo={ultimo.id}>
+          <p className="text-xs font-bold uppercase tracking-wide text-tenue">Ultimo messaggio · {ultimo.mittente_tipo === 'user' ? 'tu' : 'lo studio'}</p>
+          <p className="mt-1 line-clamp-3 text-sm">{ultimo.messaggio || ultimo.allegati?.[0]?.nome}</p>
+        </section>
+      )}
+      {principale && (
+        <div className="flex gap-2">
+          {attivo && <Link to="/chat" data-apri-chat className="flex-1 rounded-xl bg-principale py-3 text-center font-bold text-su-principale">Apri la chat</Link>}
+          <Link to={`/studio/permessi/${principale.id}`} data-apri-permessi className="flex-1 rounded-xl border border-bordo bg-superficie py-3 text-center font-bold">Permessi</Link>
+        </div>
+      )}
+      {altri.map(c => (
+        <Link key={c.id} to={`/studio/permessi/${c.id}`} data-altro-studio={c.id} className="block rounded-xl border border-bordo p-3 text-sm">
+          {nomeStudio(c)}: collegamento sospeso · permessi
+        </Link>
+      ))}
     </div>
   );
 }
 
-function Bolla({ m }) {
+function Bolla({ m, onScarica }) {
   const mio = m.mittente_tipo === 'user';
   const c = m.movimento ? centesimiDa(m.movimento.importo) ?? 0 : 0;
   return (
@@ -93,8 +128,14 @@ function Bolla({ m }) {
         </p>
       )}
       {m.movimento_nascosto && <p className="mb-1 text-xs italic opacity-80">movimento non più visibile</p>}
-      <p className="whitespace-pre-wrap break-words">{m.messaggio}</p>
-      {m.allegati?.map(a => <p key={a.id} className="mt-1 flex items-center gap-1 text-xs opacity-90"><Paperclip size={12} aria-hidden="true" />{a.nome}</p>)}
+      {m.messaggio && <p className="whitespace-pre-wrap break-words">{m.messaggio}</p>}
+      {m.allegati?.map(a => (
+        <button key={a.id} type="button" data-allegato={a.id} onClick={() => onScarica(a.id)}
+          className={`mt-1 flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs ${mio ? 'bg-white/15' : 'bg-fondo'}`}>
+          <Paperclip size={14} aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{a.nome}</span><span className="shrink-0 opacity-75">{peso(a.dimensione)}</span>
+        </button>
+      ))}
       <p className="mt-0.5 text-right text-[10px] opacity-70">
         {new Date(m.created_at).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
         {m.chiarimento_stato === 'aperta' ? ' · da chiarire' : m.chiarimento_stato === 'risolta' ? ' · chiarito' : ''}
@@ -109,12 +150,22 @@ export function Chat() {
   const { coll, attivo } = useStudio();
   const [testo, setTesto] = useState('');
   const [aperto, setAperto] = useState(null);
+  const [scheda, setScheda] = useState('messaggi');
   const fondo = useRef(null);
+  const file = useRef(null);
+  const scarica = useScarica();
+  const doc = useQuery({ queryKey: ['studio', 'documenti'], queryFn: studioApi.documenti, enabled: !!attivo && scheda === 'documenti' });
   const msg = useQuery({ queryKey: ['studio', 'messaggi'], queryFn: studioApi.messaggi, enabled: !!attivo, refetchInterval: 15000 });
   const chi = useQuery({ queryKey: ['studio', 'chiarimenti'], queryFn: studioApi.chiarimenti, enabled: !!attivo });
   const aggiorna = () => { qc.invalidateQueries({ queryKey: ['studio'] }); qc.invalidateQueries({ queryKey: ['movimenti'] }); qc.invalidateQueries({ queryKey: ['estratto'] }); };
   const invia = useMutation({ mutationFn: () => studioApi.invia({ messaggio: testo.trim() }), onSuccess: () => { setTesto(''); aggiorna(); } });
   const risolvi = useMutation({ mutationFn: studioApi.risolvi, onSuccess: aggiorna });
+  // 📎: il file parte subito, con il testo gia' scritto come messaggio.
+  const allega = useMutation({
+    mutationFn: f => studioApi.allega({ file: f, messaggio: testo.trim() }),
+    onSuccess: () => { setTesto(''); aggiorna(); },
+    onSettled: () => { if (file.current) file.current.value = ''; }
+  });
   const nonLetti = msg.data?.unread_count;
   // Aprendo la chat i messaggi dello studio sono letti.
   useEffect(() => {
@@ -134,6 +185,37 @@ export function Chat() {
         <Iniziale nome={nomeStudio(attivo)} />
         <p className="min-w-0 truncate font-bold">{nomeStudio(attivo)}</p>
       </div>
+      <div className="flex border-b border-bordo bg-superficie" role="tablist">
+        {[['messaggi', 'Messaggi'], ['documenti', 'Documenti']].map(([k, t]) => (
+          <button key={k} type="button" role="tab" aria-selected={scheda === k} data-scheda={k} onClick={() => setScheda(k)}
+            className={`flex-1 py-2.5 text-sm ${scheda === k ? 'border-b-[3px] border-principale font-bold text-principale' : 'text-tenue'}`}>{t}</button>
+        ))}
+      </div>
+      {scheda === 'documenti' && (
+        <div className="flex-1 px-4 py-3" data-documenti={doc.data?.documenti?.length ?? ''}>
+          {doc.isLoading && <p className="text-tenue" role="status">Caricamento…</p>}
+          {doc.isError && <p role="alert" className="text-uscita">{doc.error.message}</p>}
+          {doc.data?.documenti?.length === 0 && <p className="py-6 text-center text-tenue">Nessun documento. Si mandano dalla 📎 della chat.</p>}
+          <ul className="divide-y divide-bordo">
+            {doc.data?.documenti?.map(d => (
+              <li key={d.id}>
+                <button type="button" data-documento={d.id} onClick={() => scarica.mutate(d.id)} className="flex w-full items-center gap-3 py-3 text-left">
+                  <Download size={18} aria-hidden="true" className="shrink-0 text-principale" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{d.nome}</span>
+                    <span className="block truncate text-xs text-tenue">
+                      {d.mittente_tipo === 'user' ? 'tu' : 'lo studio'} · {new Date(d.created_at).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' })} · {peso(d.dimensione)}
+                      {d.movimento ? ` · ${d.movimento.descrizione}, ${breve(d.movimento.giorno)}` : ''}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {scarica.isError && <p role="alert" className="text-sm text-uscita">{scarica.error.message}</p>}
+        </div>
+      )}
+      {scheda === 'messaggi' && <>
       {aperti.length > 0 && (
         <section className="mx-4 mt-3 rounded-2xl border border-chiarire bg-chiarire/10 px-3 py-2" data-fascia-chiarire={aperti.length}>
           <p className="text-xs font-bold uppercase tracking-wide text-chiarire">{aperti.length} da chiarire</p>
@@ -157,17 +239,23 @@ export function Chat() {
       <ul className="flex-1 space-y-2 px-4 py-3" aria-live="polite">
         {msg.isError && <p role="alert" className="text-uscita">{msg.error.message}</p>}
         {msg.data?.messaggi?.length === 0 && <p className="py-6 text-center text-tenue">Scrivi il primo messaggio allo studio.</p>}
-        {msg.data?.messaggi?.map(m => <Bolla key={m.id} m={m} />)}
+        {msg.data?.messaggi?.map(m => <Bolla key={m.id} m={m} onScarica={id => scarica.mutate(id)} />)}
         <li ref={fondo} aria-hidden="true" />
       </ul>
       <form className="sticky bottom-0 flex items-end gap-2 border-t border-bordo bg-superficie px-3 py-2"
         onSubmit={e => { e.preventDefault(); if (testo.trim() && !invia.isPending) invia.mutate(); }}>
+        <input ref={file} type="file" name="file" accept={ACCETTA} hidden data-file
+          onChange={e => { const f = e.target.files?.[0]; if (f && !allega.isPending) allega.mutate(f); }} />
+        <button type="button" aria-label="Allega un file" data-allega disabled={allega.isPending} onClick={() => file.current?.click()}
+          className="rounded-full p-2.5 text-principale disabled:opacity-40"><Paperclip size={20} aria-hidden="true" /></button>
         <textarea name="messaggio" value={testo} onChange={e => setTesto(e.target.value)} rows={1} maxLength={5000}
           placeholder="Scrivi allo studio" aria-label="Messaggio" className="max-h-32 min-w-0 flex-1 resize-none rounded-xl border border-bordo bg-fondo px-3 py-2" />
         <button type="submit" aria-label="Invia" data-invia disabled={!testo.trim() || invia.isPending}
           className="rounded-full bg-principale p-2.5 text-su-principale disabled:opacity-40"><Send size={18} aria-hidden="true" /></button>
       </form>
-      {invia.isError && <p role="alert" className="px-4 text-sm text-uscita">{invia.error.message}</p>}
+      {(invia.isError || allega.isError || scarica.isError) && <p role="alert" className="px-4 text-sm text-uscita">{(invia.error || allega.error || scarica.error).message}</p>}
+      {allega.isPending && <p role="status" className="px-4 text-sm text-tenue">Invio del file…</p>}
+      </>}
       {aperto && <DettaglioMovimento id={aperto} onChiudi={() => setAperto(null)} />}
     </div>
   );

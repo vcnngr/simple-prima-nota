@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { LogOut } from 'lucide-react';
+import { Link } from 'react-router';
+import { ChevronRight, LogOut } from 'lucide-react';
 import { useSessione } from '../sessione/Sessione';
 import { ASPETTI, TEMI, VISTE } from '../tema/tema';
 
@@ -28,7 +29,7 @@ function Scelta({ nome, valori, attuale, onScegli, occupato, colonne = 3 }) {
 }
 
 export default function Impostazioni() {
-  const { preferenze, cambiaPreferenze, esci } = useSessione();
+  const { preferenze, cambiaPreferenze, esci, tipo } = useSessione();
   const [occupato, setOccupato] = useState(false);
   const [errore, setErrore] = useState('');
 
@@ -50,6 +51,13 @@ export default function Impostazioni() {
         {errore && <p role="alert" className="text-sm text-uscita">{errore}</p>}
         <p className="text-xs text-tenue">La scelta vale per il tuo account, su ogni dispositivo.</p>
       </section>
+      {tipo === 'user' && (
+        <nav className="divide-y divide-bordo rounded-2xl border border-bordo bg-superficie" aria-label="Registro">
+          {[['/conti', 'Conti'], ['/controparti', 'Controparti'], ['/studio', 'Studio e permessi']].map(([a, t]) => (
+            <Link key={a} to={a} className="flex items-center justify-between px-4 py-3">{t}<ChevronRight size={18} aria-hidden="true" className="text-tenue" /></Link>
+          ))}
+        </nav>
+      )}
       <button type="button" onClick={esci} className="flex items-center gap-2 rounded-lg border border-bordo px-4 py-2 text-sm text-uscita">
         <LogOut size={18} aria-hidden="true" /> Esci
       </button>

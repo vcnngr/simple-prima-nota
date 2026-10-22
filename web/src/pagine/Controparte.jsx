@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Pencil } from 'lucide-react';
 import { registroApi } from '../api/registro';
 import Iniziale from '../componenti/Iniziale';
 import ListaInfinita from '../componenti/ListaInfinita';
 import RigaMovimento from '../componenti/RigaMovimento';
 import DettaglioMovimento from '../componenti/DettaglioMovimento';
+import PannelloControparte from '../componenti/PannelloControparte';
 import { datiRiga } from '../componenti/righe/comune';
 import { centesimiDa, conSegno, formatta } from '../util/importi';
 import { meseDi, oggi } from '../util/date';
@@ -19,6 +20,7 @@ export default function Controparte() {
   const id = Number(useParams().id);
   const valido = Number.isInteger(id) && id > 0 && id <= 2147483647;
   const [aperto, setAperto] = useState(null);
+  const [modifica, setModifica] = useState(false);
   const a = useQuery({ queryKey: ['controparte', id], queryFn: () => registroApi.controparte(id), enabled: valido });
   const mesi = useQuery({
     queryKey: ['report', 'mesi', 'controparte', id],
@@ -51,10 +53,12 @@ export default function Controparte() {
       <section className="border-y border-bordo bg-superficie px-4 py-4">
         <div className="flex items-center gap-3">
           <Iniziale nome={c.nome} tono={tono} grande />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="truncate font-importi text-[22px] font-semibold">{c.nome}</h1>
-            <p className="truncate text-sm text-tenue">{[c.tipologia_nome, tipo && tipo !== 'Entrambi' ? `di solito ${tipo}` : null, c.categoria].filter(Boolean).join(' · ') || '—'}</p>
+            <p className="truncate text-sm text-tenue">{[c.attivo === false ? 'disattivata' : null, c.tipologia_nome, tipo && tipo !== 'Entrambi' ? `di solito ${tipo}` : null, c.categoria].filter(Boolean).join(' · ') || '—'}</p>
           </div>
+          <button type="button" onClick={() => setModifica(true)} data-modifica-controparte aria-label="Modifica controparte"
+            className="shrink-0 rounded-full border border-bordo p-2 text-principale"><Pencil size={18} aria-hidden="true" /></button>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-xl bg-fondo p-2.5">
@@ -97,6 +101,7 @@ export default function Controparte() {
           ))}
         </ul>
       </ListaInfinita>
+      {modifica && <PannelloControparte key={c.updated_at} c={c} aperto onChiudi={() => setModifica(false)} />}
       {aperto && <DettaglioMovimento key={`${aperto.id}-${aperto.modo}`} id={aperto.id} modo={aperto.modo} onChiudi={() => setAperto(null)} />}
     </div>
   );

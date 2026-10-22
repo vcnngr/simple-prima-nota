@@ -18,6 +18,16 @@ export const registroApi = {
   elenco: ({ q, ordina, offset = 0, limite = 30 }) =>
     chiama('/anagrafiche/elenco', { params: { q, ordina, offset, limit: limite } }),
   controparte: id => chiama(`/anagrafiche/${id}`),
+  creaControparte: a => chiama('/anagrafiche', { metodo: 'POST', corpo: a }),
+  modificaControparte: (id, a) => chiama(`/anagrafiche/${id}`, { metodo: 'PUT', corpo: a }),
+  eliminaControparte: id => chiama(`/anagrafiche/${id}`, { metodo: 'DELETE' }),
+
+  // Conti (U6a): tutti, anche disattivati, con saldo e numero di movimenti.
+  tuttiConti: () => chiama('/conti-bancari'),
+  conto: id => chiama(`/conti-bancari/${id}`),
+  creaConto: c => chiama('/conti-bancari', { metodo: 'POST', corpo: c }),
+  modificaConto: (id, c) => chiama(`/conti-bancari/${id}`, { metodo: 'PUT', corpo: c }),
+  eliminaConto: id => chiama(`/conti-bancari/${id}`, { metodo: 'DELETE' }),
 
   // Report a flusso (U5): mese per mese e dettaglio di un mese (YYYY-MM).
   mesi: ({ fino, mesi = 12, conto, controparte }) =>

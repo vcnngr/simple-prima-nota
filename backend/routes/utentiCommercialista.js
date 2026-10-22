@@ -357,6 +357,50 @@ router.put('/collegamenti/:id/accetta', auth, validate(schemas.collegamentoAccet
 });
 
 // ==============================================================================
+// PUT /api/utenti/collegamenti/:id/ambito - cambia periodo e conti (U6a)
+// ==============================================================================
+// Solo su un collegamento gia' accettato (attivo o sospeso): non cambia lo stato.
+// Stesse regole dell'accettazione: conti dell'utente, fine non prima dell'inizio.
+router.put('/collegamenti/:id/ambito', auth, validate(schemas.collegamentoAccetta), async (req, res) => {
+  try {
+    const { ambito_dal = null, ambito_al = null, conti_ammessi = null } = req.body;
+    if (Array.isArray(conti_ammessi) && conti_ammessi.length > 0) {
+      const verifica = await queryOne(
+        'SELECT COUNT(DISTINCT id)::int AS n FROM conti_correnti WHERE user_id = $1 AND id = ANY($2::int[])',
+        [req.user.id, conti_ammessi]
+      );
+      if (verifica.n !== new Set(conti_ammessi).size) {
+        return res.status(400).json({ error: 'Uno o piu\' conti indicati nell\'ambito non esistono' });
+      }
+    }
+    const esito = await transizioneAtomica(
+      req.user.id, req.params.id, ['attiva', 'sospesa'],
+      'ambito_dal = $4, ambito_al = $5, conti_ammessi = $6',
+      [ambito_dal, ambito_al,
+       Array.isArray(conti_ammessi) && conti_ammessi.length > 0 ? [...new Set(conti_ammessi)] : null]
+    );
+    if (esito.esito === 'non_trovato') {
+      return res.status(404).json({ error: 'Collegamento non trovato' });
+    }
+    if (esito.esito === 'conflitto') {
+      return res.status(409).json({
+        error: `Un collegamento in stato "${esito.stato}" non ha un ambito da cambiare`,
+        stato: esito.stato
+      });
+    }
+    const c = esito.collegamento;
+    res.json({
+      success: true,
+      message: 'Ambito aggiornato',
+      collegamento: { id: c.id, stato: c.stato, conti_ammessi: c.conti_ammessi }
+    });
+  } catch (error) {
+    logErrore('Ambito collegamento error', error);
+    res.status(500).json({ error: 'Errore nel cambio dell\'ambito' });
+  }
+});
+
+// ==============================================================================
 // PUT /api/utenti/collegamenti/:id/rifiuta
 // ==============================================================================
 router.put('/collegamenti/:id/rifiuta', auth, validate(schemas.collegamentoMotivo), async (req, res) => {

@@ -243,6 +243,15 @@ router.put('/:id', validate(schemas.contoBancarioUpdate), async (req, res) => {
       return res.status(404).json({ error: 'Conto bancario non trovato' });
     }
 
+    // Stessa regola della creazione: un IBAN, un conto (U6a).
+    if (updateData.iban && updateData.iban.trim()) {
+      const doppio = await queryOne(
+        'SELECT id FROM conti_correnti WHERE iban = $1 AND user_id = $2 AND id <> $3',
+        [updateData.iban.trim(), userId, contoId]
+      );
+      if (doppio) return res.status(400).json({ error: 'Esiste già un conto con questo IBAN' });
+    }
+
     // Costruisci query di update dinamica
     const fields = [];
     const values = [];

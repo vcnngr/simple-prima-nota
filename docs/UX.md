@@ -59,7 +59,10 @@ codice di prima.
 | U3 ✅ | Base del frontend | `web/`: Vite, TanStack Query v5, React Router 7, token dei due temi, un solo shell utente/studio, login, impostazioni di tema e aspetto | `scripts/smoke/u3-web.sh` |
 | U4 ✅ | Componenti e registrazione | bottom sheet, selettore della controparte sul server, lista infinita a cursore, tastierino con somma, quattro righe dell'Estratto scelte per account (migrazione 014); Estratto per conto e nuovo movimento collegati all'API | `scripts/smoke/u4-componenti.sh` |
 | U5 ✅ | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | `scripts/smoke/u5-pagine.sh` |
-| U6 | Portale dello studio | pagine dello studio sul nuovo shell; via il vecchio frontend e gli endpoint rimasti per lui | da scrivere |
+| U6a | Registro dell'utente | collegamento con lo studio (richiesta in 3 passi, permessi: periodo e conti, sospendi, chiudi; `PUT /utenti/collegamenti/:id/ambito`), 📎 e Documenti nella chat (`GET /messaggi/documenti`), «+ Crea» nel selettore e modifica della controparte, conti come carte e pagina del conto | `scripts/smoke/u6a-registro.sh` |
+| U6b | Account e archivio | registrazione, password dimenticata, conferma email, profilo (password, email, eliminazione), inviti allo studio, categorie e tipologie, import ed export, per utente e studio | da scrivere |
+| U6c | Portale dello studio | home «Da fare», scheda del cliente come riepilogo, chat, report ed export registrati | da scrivere |
+| U6d | Via il vecchio frontend | `web/` in compose e chart al posto di `frontend/`; tolti gli endpoint rimasti per lui | da scrivere |
 
 ## U1 — Ricerca e paginazione
 
@@ -275,6 +278,36 @@ Aperti (prima di togliere il vecchio frontend in U6): gestione del collegamento 
 creazione delle controparti, conti. Orari della chat: `created_at` e' un `TIMESTAMP` senza fuso e
 pg lo legge nel fuso del backend; con il backend in UTC (immagini) e' giusto, con un backend in un
 altro fuso l'ora si sposta.
+
+## U6a — Registro dell'utente
+
+U6 diviso in quattro blocchi (22/10/2026, scelta lasciata a pn-claude dal titolare): prima tutto
+cio' che il vecchio frontend sa fare e il nuovo no, poi il portale dello studio, poi via il vecchio.
+Il vecchio frontend resta servito da compose e chart fino a U6d.
+
+- `PUT /utenti/collegamenti/:id/ambito` `{ ambito_dal, ambito_al, conti_ammessi }`: solo da
+  `attiva` o `sospesa` (409 altrimenti), stato invariato, stesse regole dell'accettazione (conti
+  dell'utente, fine non prima dell'inizio, conti doppi salvati una volta). Prima l'ambito si
+  sceglieva solo accettando: per cambiarlo bisognava chiudere e ricollegarsi.
+- `GET /messaggi/documenti`: i file del collegamento, piu' recenti prima; per lo studio il
+  movimento citato solo se ancora dentro l'ambito (come `GET /messaggi`), accesso registrato come
+  `chat` (una volta all'ora).
+- Correzioni trovate scrivendo le pagine: `POST /anagrafiche` ignorava `tipo_movimento_preferito`;
+  `POST`/`PUT /anagrafiche` accettavano la tipologia di un altro utente; `PUT` con nome doppio dava
+  500 e con P.IVA doppia passava; `PUT /conti-bancari` accettava l'IBAN di un altro conto.
+- Frontend: `/studio` (richieste in cima, «Rispondi» = chi è → cosa vede → conferma; sospeso con
+  «Riattiva»), `/studio/permessi/:id` (cosa vede, ultimi accessi, sospendi, chiudi con spiegazione),
+  chat con 📎 e scheda Documenti (download col token: blob, mai link diretto), `/conti` (carte),
+  `/conti/nuovo`, `/conti/:id` (saldo iniziale con avviso), pannello «Modifica» della controparte
+  (disattiva, elimina solo senza movimenti), «+ Crea «nome»» nel selettore «Chi?». Ingressi: Impostazioni
+  (Conti, Controparti, Studio), «Gestisci i conti» nel pannello dei conti dell'Estratto.
+
+**Prova**: `scripts/smoke/u6a-registro.sh` (105 controlli, backend `TZ=America/Los_Angeles`). Sul
+codice di prima (`a2cc71c`): 41 FAIL.
+
+Aperti: gli orari (richiesta, documenti, chat, accessi) sono `TIMESTAMP` senza fuso letti nel fuso
+del backend: con il backend a Los Angeles la richiesta del 22 sera appare del 23. Si corregge in
+U6c insieme alla chat dello studio.
 
 ## Fase APP — app iOS (dopo U6)
 

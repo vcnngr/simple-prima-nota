@@ -28,5 +28,21 @@ export function conSegno(c) {
 
 // Centesimi -> testo per l'API ("1234.50").
 export function perApi(c) {
-  return `${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
+  const a = Math.abs(c);
+  return `${c < 0 ? '-' : ''}${Math.floor(a / 100)}.${String(a % 100).padStart(2, '0')}`;
+}
+
+// Testo scritto da una persona -> centesimi. "1.234,50", "1234,5", "-12",
+// "1234.50" (un punto con una o due cifre dopo e' la virgola). null se illeggibile.
+export function leggi(testo) {
+  let t = String(testo ?? '').replace(/[\s€]/g, '').replace('−', '-');
+  if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+  else if (!/^-?\d+\.\d{1,2}$/.test(t)) t = t.replace(/\./g, '');
+  if (!/^-?\d{1,10}(\.\d{1,2})?$/.test(t)) return null;
+  return centesimiDa(t);
+}
+
+// Centesimi -> testo da modificare in un campo ("1234,50").
+export function inCampo(c) {
+  return `${c < 0 ? '-' : ''}${Math.floor(Math.abs(c) / 100)},${String(Math.abs(c) % 100).padStart(2, '0')}`;
 }
