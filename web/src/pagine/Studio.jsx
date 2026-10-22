@@ -22,7 +22,12 @@ function useStudio() {
   return { coll, tutti, attivo };
 }
 
-const peso = b => (b >= 1048576 ? `${(b / 1048576).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1024))} kB`);
+// Peso in decimi di MB come interi (regola U4: niente virgola mobile formattata).
+const peso = b => {
+  if (b < 1048576) return `${Math.max(1, Math.round(b / 1024))} kB`;
+  const d = Math.round(b / 104857.6);
+  return `${Math.floor(d / 10)},${d % 10} MB`;
+};
 
 // Download con il token: il file arriva come blob e si salva col suo nome.
 function useScarica() {
