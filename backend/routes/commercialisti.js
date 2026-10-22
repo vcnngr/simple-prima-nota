@@ -179,9 +179,11 @@ router.post('/login', async (req, res) => {
 // ==============================================================================
 router.get('/profile', authCommercialista, async (req, res) => {
   try {
+    // U6b: anche partita IVA e telefono, che la pagina dell'account modifica.
+    const altri = await queryOne('SELECT partita_iva, telefono FROM commercialisti WHERE id = $1', [req.commercialista.id]);
     res.json({
       success: true,
-      commercialista: req.commercialista,
+      commercialista: { ...req.commercialista, partita_iva: altri?.partita_iva ?? null, telefono: altri?.telefono ?? null },
       preferenze: await preferenze.perRisposta('commercialista', req.commercialista.id)
     });
   } catch (error) {

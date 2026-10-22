@@ -51,6 +51,10 @@ export default function Impostazioni() {
         {errore && <p role="alert" className="text-sm text-uscita">{errore}</p>}
         <p className="text-xs text-tenue">La scelta vale per il tuo account, su ogni dispositivo.</p>
       </section>
+      <Link to={tipo === 'user' ? '/account' : '/studio/account'} data-link-account
+        className="flex items-center justify-between rounded-2xl border border-bordo bg-superficie px-4 py-3">
+        Account: email, password, eliminazione<ChevronRight size={18} aria-hidden="true" className="text-tenue" />
+      </Link>
       {tipo === 'user' && (
         <nav className="divide-y divide-bordo rounded-2xl border border-bordo bg-superficie" aria-label="Registro">
           {[['/conti', 'Conti'], ['/controparti', 'Controparti'], ['/studio', 'Studio e permessi']].map(([a, t]) => (

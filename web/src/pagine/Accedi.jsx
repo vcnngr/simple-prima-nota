@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate } from 'react-router';
 import { useSessione } from '../sessione/Sessione';
 import { VOCI } from '../shell/voci';
+import { PERCORSI } from './Pubbliche';
 
 const TESTI = {
   user: { titolo: 'Accedi', altro: { a: '/studio/accedi', testo: 'Sei uno studio? Accedi qui' } },
@@ -50,6 +51,10 @@ export default function Accedi({ tipo }) {
           className="w-full rounded-lg bg-principale px-4 py-2.5 font-semibold text-su-principale disabled:opacity-60">
           {invio ? 'Accesso…' : 'Entra'}
         </button>
+        <p className="flex justify-between text-sm">
+          <Link className="text-principale underline" to={PERCORSI[tipo].registrati} data-link-registrati>Crea un account</Link>
+          <Link className="text-principale underline" to={PERCORSI[tipo].dimenticata} data-link-dimenticata>Password dimenticata?</Link>
+        </p>
         <p className="text-center text-sm"><Link className="text-principale underline" to={t.altro.a}>{t.altro.testo}</Link></p>
       </form>
     </div>

@@ -3,6 +3,8 @@ import { useSessione } from './sessione/Sessione';
 import { VOCI } from './shell/voci';
 import Shell from './shell/Shell';
 import Accedi from './pagine/Accedi';
+import Account from './pagine/Account';
+import { ConfermaEmail, PasswordDimenticata, Registrati, Reimposta } from './pagine/Pubbliche';
 import Impostazioni from './pagine/Impostazioni';
 import Segnaposto from './pagine/Segnaposto';
 import Estratto from './pagine/Estratto';
@@ -47,7 +49,16 @@ const router = createBrowserRouter([
     element: <Pubblica />,
     children: [
       { path: '/accedi', element: <Accedi tipo="user" /> },
-      { path: '/studio/accedi', element: <Accedi tipo="commercialista" /> }
+      { path: '/studio/accedi', element: <Accedi tipo="commercialista" /> },
+      { path: '/registrati', element: <Registrati tipo="user" /> },
+      { path: '/studio/registrati', element: <Registrati tipo="commercialista" /> },
+      { path: '/password-dimenticata', element: <PasswordDimenticata tipo="user" /> },
+      { path: '/studio/password-dimenticata', element: <PasswordDimenticata tipo="commercialista" /> },
+      // Link delle mail (AccountService): /reimposta-password e /commercialista/... (W6).
+      { path: '/reimposta-password', element: <Reimposta tipo="user" /> },
+      { path: '/commercialista/reimposta-password', element: <Reimposta tipo="commercialista" /> },
+      { path: '/conferma-email', element: <ConfermaEmail tipo="user" /> },
+      { path: '/commercialista/conferma-email', element: <ConfermaEmail tipo="commercialista" /> }
     ]
   },
   {
@@ -67,7 +78,8 @@ const router = createBrowserRouter([
         { path: '/studio/permessi/:id', element: <Permessi /> },
         { path: '/conti', element: <Conti /> },
         { path: '/conti/:id', element: <Conto /> },
-        { path: '/impostazioni', element: <Impostazioni /> }
+        { path: '/impostazioni', element: <Impostazioni /> },
+        { path: '/account', element: <Account /> }
       ]
     }]
   },
@@ -78,7 +90,8 @@ const router = createBrowserRouter([
       children: [
         { path: '/studio/clienti', element: <Segnaposto titolo="Clienti" blocco="U6" /> },
         { path: '/studio/messaggi', element: <Segnaposto titolo="Messaggi" blocco="U6" /> },
-        { path: '/studio/impostazioni', element: <Impostazioni /> }
+        { path: '/studio/impostazioni', element: <Impostazioni /> },
+        { path: '/studio/account', element: <Account /> }
       ]
     }]
   },

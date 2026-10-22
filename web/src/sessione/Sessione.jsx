@@ -60,16 +60,38 @@ export function SessioneProvider({ children }) {
     return () => eventi.removeEventListener('scaduta', scaduta);
   }, [esci]);
 
-  const accedi = useCallback(async (tipo, username, password) => {
-    const r = await accountApi.login(tipo, username, password);
+  // Risposta di login o registrazione: token e account del tipo indicato.
+  const entra = useCallback((tipo, r) => {
     pulisci(); // una sola sessione alla volta: il token dell'altro tipo se ne va
+    const account = tipo === 'user' ? r.user : r.commercialista;
     localStorage.setItem(CHIAVI[tipo].token, r.token);
-    localStorage.setItem(CHIAVI[tipo].account, JSON.stringify(tipo === 'user' ? r.user : r.commercialista));
+    localStorage.setItem(CHIAVI[tipo].account, JSON.stringify(account));
     localStorage.setItem('user_type', tipo);
     qc.clear();
     const p = applica(r.preferenze || copiaLocale() || PREDEFINITE);
-    setStato({ fase: 'attiva', tipo, account: tipo === 'user' ? r.user : r.commercialista, preferenze: p });
+    setStato({ fase: 'attiva', tipo, account, preferenze: p });
   }, [qc]);
+
+  const accedi = useCallback(async (tipo, username, password) => {
+    entra(tipo, await accountApi.login(tipo, username, password));
+  }, [entra]);
+
+  const registra = useCallback(async (tipo, dati) => {
+    entra(tipo, await accountApi.registra(tipo, dati));
+  }, [entra]);
+
+  // Cambio password: il server invalida i token vecchi e ne manda uno nuovo.
+  const nuovoToken = useCallback((token) => {
+    if (token && stato.tipo) localStorage.setItem(CHIAVI[stato.tipo].token, token);
+  }, [stato.tipo]);
+
+  const aggiornaAccount = useCallback((modifiche) => {
+    setStato(s => {
+      const account = { ...s.account, ...modifiche };
+      if (s.tipo) localStorage.setItem(CHIAVI[s.tipo].account, JSON.stringify(account));
+      return { ...s, account };
+    });
+  }, []);
 
   // Si applica subito, si salva sull'account; se il server rifiuta si torna indietro.
   const cambiaPreferenze = useCallback(async (modifiche) => {
@@ -86,8 +108,8 @@ export function SessioneProvider({ children }) {
     }
   }, [stato.preferenze, stato.tipo]);
 
-  const valore = useMemo(() => ({ ...stato, accedi, esci, ricarica: carica, cambiaPreferenze }),
-    [stato, accedi, esci, carica, cambiaPreferenze]);
+  const valore = useMemo(() => ({ ...stato, accedi, registra, esci, ricarica: carica, cambiaPreferenze, nuovoToken, aggiornaAccount }),
+    [stato, accedi, registra, esci, carica, cambiaPreferenze, nuovoToken, aggiornaAccount]);
   return <Contesto.Provider value={valore}>{children}</Contesto.Provider>;
 }
 
