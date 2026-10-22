@@ -55,7 +55,8 @@ export async function chiama(percorso, { metodo = 'GET', corpo, params, segnale,
   if (comeFile && r.ok) {
     const cd = r.headers.get('Content-Disposition') || '';
     const m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
-    return { blob: await r.blob(), nome: m ? decodeURIComponent(m[1]) : 'documento' };
+    const q = /filename="([^"]+)"/i.exec(cd);
+    return { blob: await r.blob(), nome: m ? decodeURIComponent(m[1]) : q ? q[1] : 'documento' };
   }
   const testo = await r.text();
   let dati = null;

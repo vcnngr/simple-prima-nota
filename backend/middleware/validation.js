@@ -94,7 +94,7 @@ const schemas = {
   // SCHEMA TIPOLOGIE ANAGRAFICHE (NUOVI)
   // ============================================================================
   tipologiaAnagrafica: Joi.object({
-    nome: Joi.string().max(100).required().messages({
+    nome: Joi.string().trim().max(100).required().messages({
       'string.max': 'Nome tipologia non può superare 100 caratteri',
       'any.required': 'Nome tipologia è richiesto'
     }),
@@ -109,7 +109,7 @@ const schemas = {
   }).options({ stripUnknown: true }),
 
   tipologiaAnagraficaUpdate: Joi.object({
-    nome: Joi.string().max(100).optional().messages({
+    nome: Joi.string().trim().max(100).optional().messages({
       'string.max': 'Nome tipologia non può superare 100 caratteri'
     }),
     descrizione: Joi.string().max(500).allow('', null).optional(),
@@ -203,8 +203,25 @@ const schemas = {
   // ============================================================================
   // SCHEMA CATEGORIE MOVIMENTI (INVARIATI)
   // ============================================================================
+  // Categorie delle controparti (U6b): niente tipo, la tabella non lo ha.
+  categoriaAnagrafica: Joi.object({
+    nome: Joi.string().trim().max(100).required()
+      .messages({ 'string.max': 'Nome categoria non può superare 100 caratteri', 'any.required': 'Nome categoria è richiesto' }),
+    descrizione: Joi.string().max(500).allow('', null).optional(),
+    colore: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional()
+      .messages({ 'string.pattern.base': 'Colore deve essere in formato hex (#RRGGBB)' })
+  }),
+  categoriaAnagraficaUpdate: Joi.object({
+    nome: Joi.string().trim().max(100).optional()
+      .messages({ 'string.max': 'Nome categoria non può superare 100 caratteri' }),
+    descrizione: Joi.string().max(500).allow('', null).optional(),
+    colore: Joi.string().pattern(/^#[0-9A-Fa-f]{6}$/).optional()
+      .messages({ 'string.pattern.base': 'Colore deve essere in formato hex (#RRGGBB)' }),
+    attiva: Joi.boolean().optional()
+  }).min(1),
+
   categoriaMovimento: Joi.object({
-    nome: Joi.string().max(100).required().messages({
+    nome: Joi.string().trim().max(100).required().messages({
       'string.max': 'Nome categoria non può superare 100 caratteri',
       'any.required': 'Nome categoria è richiesto'
     }),
@@ -218,7 +235,7 @@ const schemas = {
   }).options({ stripUnknown: true }),
 
   categoriaMovimentoUpdate: Joi.object({
-    nome: Joi.string().max(100).optional().messages({
+    nome: Joi.string().trim().max(100).optional().messages({
       'string.max': 'Nome categoria non può superare 100 caratteri'
     }),
     tipo: Joi.string().valid('Entrata', 'Uscita', 'Entrambi').optional().messages({

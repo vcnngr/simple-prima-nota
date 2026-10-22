@@ -4,7 +4,6 @@
 // Sostituisce la logica di import in routes/movimenti.js
 // ==============================================================================
 
-const { query, queryOne } = require('../config/database');
 const { logErrore, motivoRiga } = require('../utils/errori');
 
 // Errori dell'import scritti da noi (blocco K3): il testo si puo' mostrare
@@ -16,15 +15,39 @@ function erroreImport(messaggio) {
   return e;
 }
 
+// Centesimi -> testo per il database ("1234.50").
+function inTesto(c) {
+  return `${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
+}
+
+// "2026-02-28" | "28/02/2026" -> "2026-02-28"; null se non e' un giorno vero.
+function giornoDa(v) {
+  const t = String(v ?? '').trim();
+  let a, m, g, x;
+  if ((x = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t))) [, a, m, g] = x;
+  else if ((x = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t))) [, g, m, a] = x;
+  else return null;
+  const s = `${a}-${m.padStart(2, '0')}-${g.padStart(2, '0')}`;
+  if (a === '0000') return null;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s ? s : null;
+}
+
 /**
 * Processore unificato per import CSV con creazione automatica entità
 * Gestisce un singolo file CSV che può contenere tutte le informazioni necessarie
 */
 class UnifiedImportProcessor {
-  constructor(userId) {
+  // db: il client della transazione (U6b). L'import intero e' una transazione;
+  // ogni riga un savepoint: una riga sbagliata non lascia mezze scritture.
+  constructor(userId, db) {
     this.userId = userId;
+    this.db = db;
     this.stats = {
       movimenti_importati: 0,
+      // Somme delle righe importate, in centesimi interi (U6b).
+      entrate_centesimi: 0,
+      uscite_centesimi: 0,
       anagrafiche_create: 0,
       tipologie_create: 0,
       categorie_anagrafiche_create: 0,
@@ -44,6 +67,24 @@ class UnifiedImportProcessor {
     };
   }
   
+  async uno(text, params) {
+    return (await this.db.query(text, params)).rows[0] || null;
+  }
+
+  // Fotografia di cache e contatori: una riga annullata non lascia in cache
+  // entita' che il savepoint ha tolto dal database.
+  fotografia() {
+    const cache = {};
+    for (const [k, m] of Object.entries(this.cache)) cache[k] = new Map(m);
+    const { warnings, errori, ...contatori } = this.stats;
+    return { cache, contatori };
+  }
+
+  ripristina(f) {
+    this.cache = f.cache;
+    Object.assign(this.stats, f.contatori);
+  }
+
   /**
   * METODO PRINCIPALE: Processa il CSV e importa tutti i dati
   * @param {string} csvData - Contenuto del file CSV
@@ -60,6 +101,9 @@ class UnifiedImportProcessor {
       if (rows.length === 0) {
         throw erroreImport('Il file CSV non contiene dati da importare');
       }
+      if (rows.length > 10000) {
+        throw erroreImport(`Troppe righe: ${rows.length} (al massimo 10000 per file)`);
+      }
       
       // 2. Pre-caricamento cache per performance
       await this.preloadCache();
@@ -69,8 +113,11 @@ class UnifiedImportProcessor {
       for (let i = 0; i < rows.length; i++) {
         const rowNumber = i + 1;
         
+        const prima = this.fotografia();
+        await this.db.query('SAVEPOINT riga');
         try {
           const result = await this.processRow(rows[i], rowNumber);
+          await this.db.query('RELEASE SAVEPOINT riga');
           processedRows.push(result);
           this.stats.movimenti_importati++;
           
@@ -80,6 +127,8 @@ class UnifiedImportProcessor {
           }
           
         } catch (error) {
+          await this.db.query('ROLLBACK TO SAVEPOINT riga');
+          this.ripristina(prima);
           this.stats.errori++;
           this.stats.warnings.push(`Riga ${rowNumber}: ${error.applicativo ? error.message : motivoRiga(error)}`);
           logErrore(`❌ Errore riga ${rowNumber}`, error);
@@ -108,7 +157,7 @@ class UnifiedImportProcessor {
   * Supporta commenti, header variabili, mapping automatico
   */
   parseCSV(csvData) {
-    const lines = csvData.split('\n').map(line => line.trim()).filter(line => line);
+    const lines = csvData.replace(/^\uFEFF/, '').split('\n').map(line => line.trim()).filter(line => line);
     
     if (lines.length < 2) {
       throw erroreImport('File CSV deve contenere almeno header e una riga dati');
@@ -284,7 +333,7 @@ class UnifiedImportProcessor {
     
     try {
       // Cache conti correnti
-      const contiResult = await query(
+      const contiResult = await this.db.query(
         'SELECT id, nome_banca FROM conti_correnti WHERE user_id = $1 AND attivo = true ORDER BY nome_banca',
         [this.userId]
       );
@@ -293,7 +342,7 @@ class UnifiedImportProcessor {
       });
       
       // Cache tipologie anagrafiche
-      const tipologieResult = await query(
+      const tipologieResult = await this.db.query(
         'SELECT id, nome, tipo_movimento_default FROM tipologie_anagrafiche WHERE user_id = $1 ORDER BY nome',
         [this.userId]
       );
@@ -302,7 +351,7 @@ class UnifiedImportProcessor {
       });
       
       // Cache categorie anagrafiche
-      const catAnagraficheResult = await query(
+      const catAnagraficheResult = await this.db.query(
         'SELECT id, nome FROM categorie_anagrafiche WHERE user_id = $1 ORDER BY nome',
         [this.userId]
       );
@@ -311,7 +360,7 @@ class UnifiedImportProcessor {
       });
       
       // Cache categorie movimenti
-      const catMovimentiResult = await query(
+      const catMovimentiResult = await this.db.query(
         'SELECT id, nome, tipo FROM categorie_movimenti WHERE user_id = $1 ORDER BY nome, tipo',
         [this.userId]
       );
@@ -321,7 +370,7 @@ class UnifiedImportProcessor {
       });
       
       // Cache anagrafiche
-      const anagraficheResult = await query(
+      const anagraficheResult = await this.db.query(
         'SELECT id, nome, tipologia_id FROM anagrafiche WHERE user_id = $1 ORDER BY nome',
         [this.userId]
       );
@@ -368,6 +417,7 @@ class UnifiedImportProcessor {
       conto_id: conto.id,
       categoria: categoriaMovimento?.nome || null
     });
+    this.stats[parsed.tipo === 'Entrata' ? 'entrate_centesimi' : 'uscite_centesimi'] += parsed.centesimi;
     
     return movimento;
   }
@@ -450,7 +500,7 @@ class UnifiedImportProcessor {
     if (cleanedData.importo) {
       try {
         importo = this.parseImporto(cleanedData.importo);
-        if (importo <= 0) {
+        if (importo === 0) {
           errors.push('Importo deve essere maggiore di zero');
         }
       } catch (error) {
@@ -469,7 +519,8 @@ class UnifiedImportProcessor {
     return {
       data: this.parseDate(cleanedData.data),
       descrizione: (cleanedData.descrizione || '').trim() || 'Movimento importato',
-      importo: importo,
+      importo: inTesto(importo),
+      centesimi: importo,
       tipo: tipoNormalizzato, // Usa il tipo normalizzato
       anagrafica: (cleanedData.anagrafica || '').trim() || null,
       tipologia_anagrafica: (cleanedData.tipologia_anagrafica || '').trim() || null,
@@ -497,17 +548,12 @@ class UnifiedImportProcessor {
     return this.cache.conti.get(key);
   }
 
-  // Cerca match parziale in cache
-  for (const [cachedKey, conto] of this.cache.conti) {
-    if (cachedKey.includes(key) || key.includes(cachedKey)) {
-      this.cache.conti.set(key, conto);
-      return conto;
-    }
-  }
+  // Niente corrispondenze parziali (U6b): «Cassa» non e' «Cassa Rurale», e un
+  // movimento sul conto sbagliato sposta i saldi di due conti.
 
   // Verifica esistenza nel DB prima di creare
   try {
-    const existing = await queryOne(
+    const existing = await this.uno(
       'SELECT id, nome_banca FROM conti_correnti WHERE user_id = $1 AND LOWER(nome_banca) = $2 AND attivo = true',
       [this.userId, key]
     );
@@ -524,7 +570,7 @@ class UnifiedImportProcessor {
   console.log('➕ Creazione nuovo conto');
   
   try {
-    const result = await query(`
+    const result = await this.db.query(`
       INSERT INTO conti_correnti (nome_banca, intestatario, saldo_iniziale, user_id, created_at)
       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, nome_banca) 
@@ -545,7 +591,7 @@ class UnifiedImportProcessor {
     logErrore('⚠️ Errore creazione conto, tentativo recupero', error);
     
     try {
-      const fallback = await queryOne(
+      const fallback = await this.uno(
         'SELECT id, nome_banca FROM conti_correnti WHERE user_id = $1 AND LOWER(nome_banca) = $2',
         [this.userId, key]
       );
@@ -597,7 +643,7 @@ class UnifiedImportProcessor {
 
   // 2. SECONDO: Verifica esistenza nel DATABASE (evita race condition)
   try {
-    const existing = await queryOne(
+    const existing = await this.uno(
       'SELECT id, nome, tipo_movimento_default FROM tipologie_anagrafiche WHERE user_id = $1 AND LOWER(nome) = $2',
       [this.userId, nomeTipologia.toLowerCase()]
     );
@@ -615,7 +661,7 @@ class UnifiedImportProcessor {
   console.log(`➕ Creazione nuova tipologia (${tipoMovimento})`);
   
   try {
-    const result = await query(`
+    const result = await this.db.query(`
       INSERT INTO tipologie_anagrafiche (user_id, nome, tipo_movimento_default, descrizione, created_at)
       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, nome) 
@@ -640,7 +686,7 @@ class UnifiedImportProcessor {
     logErrore('⚠️ Errore creazione tipologia, tentativo recupero finale', error);
     
     try {
-      const fallback = await queryOne(
+      const fallback = await this.uno(
         'SELECT id, nome, tipo_movimento_default FROM tipologie_anagrafiche WHERE user_id = $1 AND LOWER(nome) = $2',
         [this.userId, nomeTipologia.toLowerCase()]
       );
@@ -673,7 +719,7 @@ class UnifiedImportProcessor {
 
   // Verifica esistenza nel DB
   try {
-    const existing = await queryOne(
+    const existing = await this.uno(
       'SELECT id, nome FROM categorie_anagrafiche WHERE user_id = $1 AND LOWER(nome) = $2',
       [this.userId, key]
     );
@@ -690,7 +736,7 @@ class UnifiedImportProcessor {
   console.log('➕ Creazione nuova categoria anagrafica');
   
   try {
-    const result = await query(`
+    const result = await this.db.query(`
       INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, created_at)
       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, nome) 
@@ -709,7 +755,7 @@ class UnifiedImportProcessor {
     
     try {
       // Fallback recovery
-      const fallback = await queryOne(
+      const fallback = await this.uno(
         'SELECT id, nome FROM categorie_anagrafiche WHERE user_id = $1 AND LOWER(nome) = $2',
         [this.userId, key]
       );
@@ -759,7 +805,7 @@ class UnifiedImportProcessor {
 
   // Verifica esistenza nel DB
   try {
-    const existing = await queryOne(
+    const existing = await this.uno(
       'SELECT id, nome, tipo FROM categorie_movimenti WHERE user_id = $1 AND LOWER(nome) = $2',
       [this.userId, nomeCategoria.toLowerCase()]
     );
@@ -776,7 +822,7 @@ class UnifiedImportProcessor {
   console.log(`➕ Creazione nuova categoria movimento (${tipoMovimento})`);
   
   try {
-    const result = await query(`
+    const result = await this.db.query(`
       INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, created_at)
       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
       ON CONFLICT (user_id, nome) 
@@ -797,7 +843,7 @@ class UnifiedImportProcessor {
     
     try {
       // Fallback recovery
-      const fallback = await queryOne(
+      const fallback = await this.uno(
         'SELECT id, nome, tipo FROM categorie_movimenti WHERE user_id = $1 AND LOWER(nome) = $2',
         [this.userId, nomeCategoria.toLowerCase()]
       );
@@ -835,7 +881,7 @@ class UnifiedImportProcessor {
             
             // Crea nuova anagrafica
             console.log(`➕ Creazione nuova anagrafica (tipologia ${tipologia.id})`);
-            const result = await query(`
+            const result = await this.db.query(`
       INSERT INTO anagrafiche (nome, tipologia_id, categoria, user_id, created_at)
       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
       RETURNING id, nome, tipologia_id
@@ -852,7 +898,7 @@ class UnifiedImportProcessor {
   * Crea movimento finale con tutte le relazioni
   */
   async createMovimento(movimentoData) {
-              const result = await query(`
+              const result = await this.db.query(`
       INSERT INTO movimenti 
       (data, anagrafica_id, conto_id, descrizione, categoria, importo, tipo, note, user_id, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
@@ -876,67 +922,42 @@ class UnifiedImportProcessor {
   // UTILITY FUNCTIONS
   // =============================================================================
             
+  // Date: AAAA-MM-GG o GG/MM/AAAA, giorni del calendario veri (U6b: prima il
+  // 30 febbraio diventava il 2 marzo e GG/MM/AAAA era rifiutata).
   isValidDate(dateString) {
-              if (!dateString) return false;
-              const regex = /^\d{4}-\d{2}-\d{2}$/;
-              if (!regex.test(dateString)) return false;
-              
-              const date = new Date(dateString);
-              return date instanceof Date && !isNaN(date.getTime());
+    return giornoDa(dateString) !== null;
   }
-            
+
   parseDate(dateString) {
-              if (!dateString) return null;
-              
-              // Supporta diversi formati
-              let date;
-              if (dateString.includes('-')) {
-                date = new Date(dateString);
-              } else if (dateString.includes('/')) {
-                // Converte DD/MM/YYYY in YYYY-MM-DD
-                const parts = dateString.split('/');
-                if (parts.length === 3) {
-                  date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-                }
-              }
-              
-              if (!date || isNaN(date.getTime())) {
-                throw erroreImport(`Data non valida: ${dateString}`);
-              }
-              
-              return date.toISOString().split('T')[0];
+    const g = giornoDa(dateString);
+    if (!g) throw erroreImport(`Data non valida: ${dateString}`);
+    return g;
   }
-            
+
+  // Importo -> centesimi interi, senza virgola mobile (U6b). Accetta 1234,50,
+  // 1.234,50, 1234.50, 1.234.567; rifiuta 1.234 (mille o uno virgola due?),
+  // piu' di due decimali, lettere, negativi, oltre 9.999.999.999,99.
   parseImporto(importoString) {
-              if (!importoString) return 0;
-              
-              // Normalizza: rimuovi simboli e spazi, sostituisci virgola con punto
-              let cleaned = importoString.toString()
-              .replace(/[€$£¥\s]/g, '')  // Rimuovi simboli valuta e spazi
-              .replace(',', '.');         // Virgola -> punto decimale
-              
-              // Gestisci formato italiano con punti migliaia: 1.234,56 -> 1234.56
-              const parts = cleaned.split('.');
-              if (parts.length > 2) {
-                // Più di un punto: considera l'ultimo come decimale
-                const decimalPart = parts.pop();
-                const integerPart = parts.join('');
-                cleaned = `${integerPart}.${decimalPart}`;
-              }
-              
-              const importo = parseFloat(cleaned);
-              
-              if (isNaN(importo)) {
-                throw erroreImport(`Formato importo non riconosciuto: ${importoString}`);
-              }
-              
-              if (importo < 0) {
-                throw erroreImport(`Importo non può essere negativo: ${importoString}`);
-              }
-              
-              return Math.round(importo * 100) / 100; // Arrotonda a 2 decimali
+    const t = String(importoString ?? '').replace(/[€$£¥\s]/g, '');
+    if (t.startsWith('-')) throw erroreImport(`Importo non può essere negativo: ${importoString}`);
+    let intera, dec;
+    let m;
+    if ((m = /^(\d{1,3}(?:\.\d{3})+|\d+),(\d{1,2})$/.exec(t)) || (m = /^(\d{1,3}(?:\.\d{3})+|\d+)$/.exec(t))) {
+      intera = m[1]; dec = m[2] || '';
+      if (/^\d{1,3}\.\d{3}$/.test(intera) && !t.includes(',')) {
+        throw erroreImport(`Importo ambiguo: ${importoString} (scrivi 1234,00 oppure 1,234)`);
+      }
+      intera = intera.replace(/\./g, '');
+    } else if ((m = /^(\d+)\.(\d{1,2})$/.exec(t))) {
+      intera = m[1]; dec = m[2];
+    } else {
+      throw erroreImport(`Formato importo non riconosciuto: ${importoString}`);
+    }
+    intera = intera.replace(/^0+(?=\d)/, '');
+    if (intera.length > 10) throw erroreImport(`Importo troppo grande: ${importoString}`);
+    return Number(intera) * 100 + Number(dec.padEnd(2, '0'));
   }
-            
+
   isTipologiaCompatibile(tipoTipologia, tipoMovimento) {
               return tipoTipologia === 'Entrambi' || tipoTipologia === tipoMovimento;
   }
@@ -953,6 +974,7 @@ class UnifiedImportProcessor {
                 ? `Import completato: ${this.stats.movimenti_importati} movimenti importati${this.stats.errori > 0 ? ` (${this.stats.errori} errori)` : ''}`
                 : `Import fallito: ${this.stats.errori} errori`,
                 stats: this.stats,
+                totali: { entrate: inTesto(this.stats.entrate_centesimi), uscite: inTesto(this.stats.uscite_centesimi) },
                 dettagli: {
                   movimenti_importati: this.stats.movimenti_importati,
                   entità_create: {

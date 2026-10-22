@@ -66,6 +66,8 @@ router.post('/tipologie', validate(schemas.tipologiaAnagrafica), async (req, res
     
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    // 23505: stesso nome arrivato fra il controllo e l'INSERT (U6b: era un 500).
+    if (error.code === '23505') return res.status(400).json({ error: 'Esiste già una tipologia con questo nome' });
     logErrore('Error creating tipologia', error);
     res.status(500).json({ error: 'Errore durante la creazione della tipologia' });
   }
@@ -163,6 +165,7 @@ router.put('/tipologie/:id', validate(schemas.tipologiaAnagraficaUpdate), async 
     });
 
   } catch (error) {
+    if (error.code === '23505') return res.status(400).json({ error: 'Esiste già una tipologia con questo nome' });
     logErrore('❌ Error updating tipologia', error);
     res.status(500).json({ error: 'Errore durante l\'aggiornamento della tipologia' });
   }

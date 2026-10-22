@@ -467,9 +467,22 @@ router.post('/import', auth, async (req, res) => {
     
     console.log('🚀 Avvio nuovo import unificato per utente:', userId);
     
-    // Inizializza e avvia processore
-    const processor = new UnifiedImportProcessor(userId);
-    const result = await processor.processCSV(csvData);
+    // Una transazione per tutto il file (U6b). Con ?anteprima=1 si fa lo
+    // stesso lavoro e si annulla: l'utente vede cosa succederebbe.
+    const anteprima = req.query.anteprima === '1';
+    const ANNULLA = Symbol('anteprima');
+    let result;
+    try {
+      result = await withTransaction(async (client) => {
+        const r = await new UnifiedImportProcessor(userId, client).processCSV(csvData);
+        if (anteprima || r.stats.movimenti_importati === 0) throw Object.assign(new Error('annulla'), { [ANNULLA]: r });
+        return r;
+      });
+    } catch (e) {
+      if (!e[ANNULLA]) throw e;
+      result = e[ANNULLA];
+    }
+    result.anteprima = anteprima;
     
     console.log('✅ Import completato con successo per utente:', userId, { ...result.stats, warnings: result.stats?.warnings?.length });
     

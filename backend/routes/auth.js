@@ -1,7 +1,7 @@
 // routes/auth.js
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { query, queryOne } = require('../config/database');
+const { query, queryOne, withTransaction } = require('../config/database');
 const { validate, schemas } = require('../middleware/validation');
 const { auth } = require('../middleware/auth');
 const account = require('../services/AccountService');
@@ -212,11 +212,14 @@ router.post('/email/conferma', validate(schemas.confermaEmail), async (req, res)
 
 // POST /api/auth/backup/import - Import backup senza transazioni manuali
 router.post('/backup/import', auth, async (req, res) => {
-  const { backupData, mode = 'replace' } = req.body;
+  const { backupData, mode = 'replace' } = req.body || {};
   const userId = req.user.id;
 
-  if (!backupData) {
+  if (!backupData || typeof backupData !== 'object' || Array.isArray(backupData)) {
     return res.status(400).json({ error: 'Dati backup richiesti' });
+  }
+  if (mode !== 'replace' && mode !== 'merge') {
+    return res.status(400).json({ error: 'Modalita\' non valida: replace o merge' });
   }
 
   try {
@@ -231,193 +234,210 @@ router.post('/backup/import', auth, async (req, res) => {
       });
     }
 
-    const results = {
-      mode,
-      import_date: new Date().toISOString(),
-      imported: {
-        conti_correnti: 0,
-        tipologie_anagrafiche: 0,
-        categorie_anagrafiche: 0,
-        categorie_movimenti: 0,
-        anagrafiche: 0,
-        movimenti: 0,
-        alerts: 0
-      },
-      errors: []
-    };
-
-    // 2. Se modalità replace, elimina dati esistenti
-    if (mode === 'replace') {
-      console.log('🗑️ Modalità replace: eliminazione dati esistenti...');
-      
-      try {
-        // L'ordine è importante per rispettare le foreign key
-        await query('DELETE FROM movimenti WHERE user_id = $1', [userId]);
-        await query('DELETE FROM anagrafiche WHERE user_id = $1', [userId]);
-        await query('DELETE FROM tipologie_anagrafiche WHERE user_id = $1', [userId]);
-        await query('DELETE FROM categorie_movimenti WHERE user_id = $1', [userId]);
-        await query('DELETE FROM categorie_anagrafiche WHERE user_id = $1', [userId]);
-        await query('DELETE FROM conti_correnti WHERE user_id = $1', [userId]);
-        
+    // Tutto o niente (U6b): prima, con «replace», i dati si cancellavano e le
+    // righe che non entravano si perdevano in silenzio. Ora una transazione; ogni
+    // riga in un savepoint per poter elencare tutti gli errori; se ce n'e' anche
+    // uno solo si annulla tutto e i dati di prima restano.
+    const results = await withTransaction(async (cl) => {
+      const riga = async (sql, params) => {
+        await cl.query('SAVEPOINT riga');
         try {
-          await query('DELETE FROM alerts WHERE user_id = $1', [userId]);
+          const r = await cl.query(sql, params);
+          await cl.query('RELEASE SAVEPOINT riga');
+          return r;
         } catch (e) {
+          await cl.query('ROLLBACK TO SAVEPOINT riga');
+          throw e;
         }
-        console.log('✅ Dati esistenti eliminati');
-      } catch (error) {
-        logErrore('❌ Errore eliminazione dati esistenti', error);
-        return res.status(500).json({ 
-          error: 'Errore durante l\'eliminazione dei dati esistenti'
-        });
-      }
-    }
+      };
 
-    // Mappature per ID (vecchio ID → nuovo ID)
-    const idMappings = {
-      conti: new Map(),
-      tipologie: new Map(),
-      anagrafiche: new Map()
-    };
+      const results = {
+        mode,
+        import_date: new Date().toISOString(),
+        imported: {
+          conti_correnti: 0,
+          tipologie_anagrafiche: 0,
+          categorie_anagrafiche: 0,
+          categorie_movimenti: 0,
+          anagrafiche: 0,
+          movimenti: 0,
+          alerts: 0
+        },
+        errors: []
+      };
 
-    // 3. Import conti correnti
-    if (backupData.conti_correnti?.length) {
-      console.log(`💳 Import ${backupData.conti_correnti.length} conti correnti...`);
-      for (const conto of backupData.conti_correnti) {
+      // 2. Se modalità replace, elimina dati esistenti
+      if (mode === 'replace') {
+        console.log('🗑️ Modalità replace: eliminazione dati esistenti...');
+
         try {
-          const result = await query(`
-            INSERT INTO conti_correnti (user_id, nome_banca, intestatario, iban, saldo_iniziale, attivo)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id
-          `, [userId, conto.nome_banca, conto.intestatario, conto.iban, conto.saldo_iniziale, conto.attivo]);
-          
-          idMappings.conti.set(conto.id, result.rows[0].id);
-          results.imported.conti_correnti++;
+          // L'ordine è importante per rispettare le foreign key
+          await riga('DELETE FROM movimenti WHERE user_id = $1', [userId]);
+          await riga('DELETE FROM anagrafiche WHERE user_id = $1', [userId]);
+          await riga('DELETE FROM tipologie_anagrafiche WHERE user_id = $1', [userId]);
+          await riga('DELETE FROM categorie_movimenti WHERE user_id = $1', [userId]);
+          await riga('DELETE FROM categorie_anagrafiche WHERE user_id = $1', [userId]);
+          await riga('DELETE FROM conti_correnti WHERE user_id = $1', [userId]);
+          await riga('DELETE FROM alerts WHERE user_id = $1', [userId]);
+          console.log('✅ Dati esistenti eliminati');
         } catch (error) {
-          results.errors.push(`Conto ${conto.nome_banca}: ${motivoRiga(error)}`);
+          logErrore('❌ Errore eliminazione dati esistenti', error);
+          throw error;
         }
       }
-    }
 
-    // 4. Import tipologie anagrafiche
-    if (backupData.tipologie_anagrafiche?.length) {
-      console.log(`🏷️ Import ${backupData.tipologie_anagrafiche.length} tipologie anagrafiche...`);
-      for (const tipologia of backupData.tipologie_anagrafiche) {
-        try {
-          const result = await query(`
-            INSERT INTO tipologie_anagrafiche (user_id, nome, descrizione, tipo_movimento_default, colore, icona, attiva)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id
-          `, [userId, tipologia.nome, tipologia.descrizione, tipologia.tipo_movimento_default, 
-              tipologia.colore, tipologia.icona, tipologia.attiva]);
-          
-          idMappings.tipologie.set(tipologia.id, result.rows[0].id);
-          results.imported.tipologie_anagrafiche++;
-        } catch (error) {
-          results.errors.push(`Tipologia ${tipologia.nome}: ${motivoRiga(error)}`);
-        }
-      }
-    }
+      // Mappature per ID (vecchio ID → nuovo ID)
+      const idMappings = {
+        conti: new Map(),
+        tipologie: new Map(),
+        anagrafiche: new Map()
+      };
 
-    // 5. Import categorie anagrafiche
-    if (backupData.categorie_anagrafiche?.length) {
-      console.log(`📂 Import ${backupData.categorie_anagrafiche.length} categorie anagrafiche...`);
-      for (const categoria of backupData.categorie_anagrafiche) {
-        try {
-          await query(`
-            INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, colore, attiva)
-            VALUES ($1, $2, $3, $4, $5)
-          `, [userId, categoria.nome, categoria.descrizione, categoria.colore, categoria.attiva]);
-          
-          results.imported.categorie_anagrafiche++;
-        } catch (error) {
-          results.errors.push(`Categoria anagrafica ${categoria.nome}: ${motivoRiga(error)}`);
-        }
-      }
-    }
+      // 3. Import conti correnti
+      if (backupData.conti_correnti?.length) {
+        console.log(`💳 Import ${backupData.conti_correnti.length} conti correnti...`);
+        for (const conto of backupData.conti_correnti) {
+          try {
+            const result = await riga(`
+              INSERT INTO conti_correnti (user_id, nome_banca, intestatario, iban, saldo_iniziale, attivo)
+              VALUES ($1, $2, $3, $4, $5, $6)
+              RETURNING id
+            `, [userId, conto.nome_banca, conto.intestatario, conto.iban, conto.saldo_iniziale, conto.attivo]);
 
-    // 6. Import categorie movimenti
-    if (backupData.categorie_movimenti?.length) {
-      console.log(`📂 Import ${backupData.categorie_movimenti.length} categorie movimenti...`);
-      for (const categoria of backupData.categorie_movimenti) {
-        try {
-          await query(`
-            INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore, attiva)
-            VALUES ($1, $2, $3, $4, $5, $6)
-          `, [userId, categoria.nome, categoria.tipo, categoria.descrizione, categoria.colore, categoria.attiva]);
-          
-          results.imported.categorie_movimenti++;
-        } catch (error) {
-          results.errors.push(`Categoria movimento ${categoria.nome}: ${motivoRiga(error)}`);
-        }
-      }
-    }
-
-    // 7. Import anagrafiche
-    if (backupData.anagrafiche?.length) {
-      console.log(`👥 Import ${backupData.anagrafiche.length} anagrafiche...`);
-      for (const anagrafica of backupData.anagrafiche) {
-        try {
-          const tipologiaId = anagrafica.tipologia_id ? idMappings.tipologie.get(anagrafica.tipologia_id) : null;
-          
-          const result = await query(`
-            INSERT INTO anagrafiche (user_id, nome, tipologia_id, tipo_movimento_preferito, categoria, email, telefono, piva, indirizzo, attivo)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id
-          `, [userId, anagrafica.nome, tipologiaId, anagrafica.tipo_movimento_preferito, 
-              anagrafica.categoria, anagrafica.email, anagrafica.telefono, anagrafica.piva, 
-              anagrafica.indirizzo, anagrafica.attivo]);
-          
-          idMappings.anagrafiche.set(anagrafica.id, result.rows[0].id);
-          results.imported.anagrafiche++;
-        } catch (error) {
-          results.errors.push(`Anagrafica ${anagrafica.nome}: ${motivoRiga(error)}`);
-        }
-      }
-    }
-
-    // 8. Import movimenti
-    if (backupData.movimenti?.length) {
-      console.log(`📊 Import ${backupData.movimenti.length} movimenti...`);
-      for (const movimento of backupData.movimenti) {
-        try {
-          const anagraficaId = movimento.anagrafica_id ? idMappings.anagrafiche.get(movimento.anagrafica_id) : null;
-          const contoId = idMappings.conti.get(movimento.conto_id);
-          
-          if (!contoId) {
-            results.errors.push(`Movimento ${movimento.descrizione}: conto non trovato`);
-            continue;
+            idMappings.conti.set(conto.id, result.rows[0].id);
+            results.imported.conti_correnti++;
+          } catch (error) {
+            results.errors.push(`Conto ${conto.nome_banca}: ${motivoRiga(error)}`);
           }
-          
-          await query(`
-            INSERT INTO movimenti (user_id, data, anagrafica_id, conto_id, descrizione, categoria, importo, tipo, note)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          `, [userId, movimento.data, anagraficaId, contoId, movimento.descrizione, 
-              movimento.categoria, movimento.importo, movimento.tipo, movimento.note]);
-          
-          results.imported.movimenti++;
-        } catch (error) {
-          results.errors.push(`Movimento ${movimento.descrizione}: ${motivoRiga(error)}`);
         }
       }
-    }
 
-    // 9. Import alerts (opzionale)
-    if (backupData.alerts?.length) {
-      console.log(`🔔 Import ${backupData.alerts.length} alerts...`);
-      for (const alert of backupData.alerts) {
-        try {
-          await query(`
-            INSERT INTO alerts (user_id, titolo, messaggio, tipo, priorita, letto, data_creazione, azione_link, azione_testo)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          `, [userId, alert.titolo, alert.messaggio, alert.tipo, alert.priorita, alert.letto, 
-              alert.data_creazione, alert.azione_link, alert.azione_testo]);
-          
-          results.imported.alerts++;
-        } catch (error) {
-          logErrore('Alert import error (ignorato)', error);
+      // 4. Import tipologie anagrafiche
+      if (backupData.tipologie_anagrafiche?.length) {
+        console.log(`🏷️ Import ${backupData.tipologie_anagrafiche.length} tipologie anagrafiche...`);
+        for (const tipologia of backupData.tipologie_anagrafiche) {
+          try {
+            const result = await riga(`
+              INSERT INTO tipologie_anagrafiche (user_id, nome, descrizione, tipo_movimento_default, colore, icona, attiva)
+              VALUES ($1, $2, $3, $4, $5, $6, $7)
+              RETURNING id
+            `, [userId, tipologia.nome, tipologia.descrizione, tipologia.tipo_movimento_default, 
+                tipologia.colore, tipologia.icona, tipologia.attiva]);
+
+            idMappings.tipologie.set(tipologia.id, result.rows[0].id);
+            results.imported.tipologie_anagrafiche++;
+          } catch (error) {
+            results.errors.push(`Tipologia ${tipologia.nome}: ${motivoRiga(error)}`);
+          }
         }
       }
-    }
+
+      // 5. Import categorie anagrafiche
+      if (backupData.categorie_anagrafiche?.length) {
+        console.log(`📂 Import ${backupData.categorie_anagrafiche.length} categorie anagrafiche...`);
+        for (const categoria of backupData.categorie_anagrafiche) {
+          try {
+            await riga(`
+              INSERT INTO categorie_anagrafiche (user_id, nome, descrizione, colore, attiva)
+              VALUES ($1, $2, $3, $4, $5)
+            `, [userId, categoria.nome, categoria.descrizione, categoria.colore, categoria.attiva]);
+
+            results.imported.categorie_anagrafiche++;
+          } catch (error) {
+            results.errors.push(`Categoria anagrafica ${categoria.nome}: ${motivoRiga(error)}`);
+          }
+        }
+      }
+
+      // 6. Import categorie movimenti
+      if (backupData.categorie_movimenti?.length) {
+        console.log(`📂 Import ${backupData.categorie_movimenti.length} categorie movimenti...`);
+        for (const categoria of backupData.categorie_movimenti) {
+          try {
+            await riga(`
+              INSERT INTO categorie_movimenti (user_id, nome, tipo, descrizione, colore, attiva)
+              VALUES ($1, $2, $3, $4, $5, $6)
+            `, [userId, categoria.nome, categoria.tipo, categoria.descrizione, categoria.colore, categoria.attiva]);
+
+            results.imported.categorie_movimenti++;
+          } catch (error) {
+            results.errors.push(`Categoria movimento ${categoria.nome}: ${motivoRiga(error)}`);
+          }
+        }
+      }
+
+      // 7. Import anagrafiche
+      if (backupData.anagrafiche?.length) {
+        console.log(`👥 Import ${backupData.anagrafiche.length} anagrafiche...`);
+        for (const anagrafica of backupData.anagrafiche) {
+          try {
+            const tipologiaId = anagrafica.tipologia_id ? idMappings.tipologie.get(anagrafica.tipologia_id) : null;
+
+            const result = await riga(`
+              INSERT INTO anagrafiche (user_id, nome, tipologia_id, tipo_movimento_preferito, categoria, email, telefono, piva, indirizzo, attivo)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+              RETURNING id
+            `, [userId, anagrafica.nome, tipologiaId, anagrafica.tipo_movimento_preferito, 
+                anagrafica.categoria, anagrafica.email, anagrafica.telefono, anagrafica.piva, 
+                anagrafica.indirizzo, anagrafica.attivo]);
+
+            idMappings.anagrafiche.set(anagrafica.id, result.rows[0].id);
+            results.imported.anagrafiche++;
+          } catch (error) {
+            results.errors.push(`Anagrafica ${anagrafica.nome}: ${motivoRiga(error)}`);
+          }
+        }
+      }
+
+      // 8. Import movimenti
+      if (backupData.movimenti?.length) {
+        console.log(`📊 Import ${backupData.movimenti.length} movimenti...`);
+        for (const movimento of backupData.movimenti) {
+          try {
+            const anagraficaId = movimento.anagrafica_id ? idMappings.anagrafiche.get(movimento.anagrafica_id) : null;
+            const contoId = idMappings.conti.get(movimento.conto_id);
+
+            if (!contoId) {
+              results.errors.push(`Movimento ${movimento.descrizione}: conto non trovato`);
+              continue;
+            }
+
+            await riga(`
+              INSERT INTO movimenti (user_id, data, anagrafica_id, conto_id, descrizione, categoria, importo, tipo, note)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `, [userId, movimento.data, anagraficaId, contoId, movimento.descrizione, 
+                movimento.categoria, movimento.importo, movimento.tipo, movimento.note]);
+
+            results.imported.movimenti++;
+          } catch (error) {
+            results.errors.push(`Movimento ${movimento.descrizione}: ${motivoRiga(error)}`);
+          }
+        }
+      }
+
+      // 9. Import alerts (opzionale)
+      if (backupData.alerts?.length) {
+        console.log(`🔔 Import ${backupData.alerts.length} alerts...`);
+        for (const alert of backupData.alerts) {
+          try {
+            await riga(`
+              INSERT INTO alerts (user_id, titolo, messaggio, tipo, priorita, letto, data_creazione, azione_link, azione_testo)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `, [userId, alert.titolo, alert.messaggio, alert.tipo, alert.priorita, alert.letto, 
+                alert.data_creazione, alert.azione_link, alert.azione_testo]);
+
+            results.imported.alerts++;
+          } catch (error) {
+            logErrore('Alert import error (ignorato)', error);
+          }
+        }
+      }
+
+      if (results.errors.length > 0) {
+        throw Object.assign(new Error('backup non importato'), { risultati: results });
+      }
+      return results;
+    });
 
     console.log('✅ Import backup completato:', results.imported);
     res.json({
@@ -427,6 +447,13 @@ router.post('/backup/import', auth, async (req, res) => {
     });
 
   } catch (error) {
+    if (error.risultati) {
+      return res.status(400).json({
+        error: 'Backup non importato: nessun dato e\' stato cambiato',
+        errori: error.risultati.errors.slice(0, 50),
+        numero_errori: error.risultati.errors.length
+      });
+    }
     logErrore('❌ Errore import backup', error);
     res.status(500).json({ 
       error: 'Errore durante l\'import del backup'

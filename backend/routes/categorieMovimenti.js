@@ -4,7 +4,7 @@
 // ==============================================================================
 
 const express = require('express');
-const { queryAll, queryOne, execute } = require('../config/database');
+const { queryAll, queryOne, execute, withTransaction } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 const { logErrore } = require('../utils/errori');
@@ -172,41 +172,31 @@ router.put('/:id', validate(schemas.categoriaMovimentoUpdate), async (req, res) 
   try {
     const categoriaId = parseInt(req.params.id);
     const userId = req.user.id;
-    const updateData = req.body;
-
-
-    // Costruisci query dinamica
-    const fields = [];
-    const values = [];
-    let paramIndex = 3;
-
-    Object.keys(updateData).forEach(key => {
-      if (updateData[key] !== undefined) {
-        fields.push(`${key} = $${paramIndex}`);
-        values.push(updateData[key]);
-        paramIndex++;
-      }
-    });
-
-    if (fields.length === 0) {
+    const campi = ['nome', 'tipo', 'descrizione', 'colore', 'attiva'].filter(k => req.body[k] !== undefined)
+      .filter(k => k !== 'tipo' || 'categorie_movimenti' === 'categorie_movimenti');
+    if (campi.length === 0) {
       return res.status(400).json({ error: 'Nessun campo da aggiornare' });
     }
 
-    fields.push('updated_at = NOW()');
-
-    const updateQuery = `
-      UPDATE categorie_movimenti 
-      SET ${fields.join(', ')}
-      WHERE id = $1 AND user_id = $2
-      RETURNING *
-    `;
-
-    const categoria = await queryOne(updateQuery, [categoriaId, userId, ...values]);
+    // movimenti.categoria tiene il NOME della categoria: rinominarla senza
+    // portarsi dietro le righe le lasciava orfane (U6b). Tutto in una transazione.
+    const categoria = await withTransaction(async (cl) => {
+      const prima = (await cl.query(
+        'SELECT nome FROM categorie_movimenti WHERE id = $1 AND user_id = $2 FOR UPDATE', [categoriaId, userId])).rows[0];
+      if (!prima) return null;
+      const set = campi.map((k, n) => `${k} = $${n + 3}`).join(', ');
+      const r = (await cl.query(
+        `UPDATE categorie_movimenti SET ${set}, updated_at = NOW() WHERE id = $1 AND user_id = $2 RETURNING *`,
+        [categoriaId, userId, ...campi.map(k => req.body[k])])).rows[0];
+      if (r.nome !== prima.nome) {
+        await cl.query('UPDATE movimenti SET categoria = $1 WHERE user_id = $2 AND categoria = $3', [r.nome, userId, prima.nome]);
+      }
+      return r;
+    });
 
     if (!categoria) {
       return res.status(404).json({ error: 'Categoria movimento non trovata' });
     }
-
 
     res.json({
       success: true,
@@ -234,7 +224,7 @@ router.delete('/:id', async (req, res) => {
     const utilizzi = await queryOne(`
       SELECT COUNT(*) as count
       FROM movimenti m
-      JOIN categorie_movimenti cm ON m.categoria = cm.nome
+      JOIN categorie_movimenti cm ON m.categoria = cm.nome AND m.user_id = cm.user_id
       WHERE cm.id = $1 AND cm.user_id = $2
     `, [categoriaId, userId]);
 

@@ -57,7 +57,7 @@ export default function Impostazioni() {
       </Link>
       {tipo === 'user' && (
         <nav className="divide-y divide-bordo rounded-2xl border border-bordo bg-superficie" aria-label="Registro">
-          {[['/conti', 'Conti'], ['/controparti', 'Controparti'], ['/studio', 'Studio e permessi']].map(([a, t]) => (
+          {[['/conti', 'Conti'], ['/controparti', 'Controparti'], ['/studio', 'Studio e permessi'], ['/categorie', 'Categorie'], ['/archivio', 'Import ed export']].map(([a, t]) => (
             <Link key={a} to={a} className="flex items-center justify-between px-4 py-3">{t}<ChevronRight size={18} aria-hidden="true" className="text-tenue" /></Link>
           ))}
         </nav>
