@@ -60,7 +60,7 @@ codice di prima.
 | U4 ✅ | Componenti e registrazione | bottom sheet, selettore della controparte sul server, lista infinita a cursore, tastierino con somma, quattro righe dell'Estratto scelte per account (migrazione 014); Estratto per conto e nuovo movimento collegati all'API | `scripts/smoke/u4-componenti.sh` |
 | U5 ✅ | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | `scripts/smoke/u5-pagine.sh` |
 | U6a ✅ | Registro dell'utente | collegamento con lo studio (richiesta in 3 passi, permessi: periodo e conti, sospendi, chiudi; `PUT /utenti/collegamenti/:id/ambito`), 📎 e Documenti nella chat (`GET /messaggi/documenti`), «+ Crea» nel selettore e modifica della controparte, conti come carte e pagina del conto | `scripts/smoke/u6a-registro.sh` |
-| U6b | Account e archivio | registrazione, password dimenticata, conferma email, profilo (password, email, eliminazione), inviti allo studio, categorie e tipologie, import ed export, per utente e studio | da scrivere |
+| U6b | Account e archivio | registrazione, password dimenticata, conferma email, profilo (password, email, eliminazione), inviti allo studio, categorie e tipologie, import con anteprima, export, copia di sicurezza | `scripts/smoke/u6b-account.sh`, `scripts/smoke/u6b-archivio.sh` |
 | U6c | Portale dello studio | home «Da fare», scheda del cliente come riepilogo, chat, report ed export registrati | da scrivere |
 | U6d | Via il vecchio frontend | `web/` in compose e chart al posto di `frontend/`; tolti gli endpoint rimasti per lui | da scrivere |
 
@@ -308,6 +308,38 @@ codice di prima (`a2cc71c`): 41 FAIL.
 Aperti: gli orari (richiesta, documenti, chat, accessi) sono `TIMESTAMP` senza fuso letti nel fuso
 del backend: con il backend a Los Angeles la richiesta del 22 sera appare del 23. Si corregge in
 U6c insieme alla chat dello studio.
+
+## U6b — Account e archivio
+
+- Account (parte 1, nessun cambio al server): `/registrati` e `/studio/registrati`, password
+  dimenticata e `/reimposta-password` (anche `/commercialista/...` dei link gia' spediti),
+  `/conferma-email`, `/account` (email, password con sessione che resta aperta, dati dello studio,
+  codice d'invito mostrato una volta e revocabile, eliminazione con password e conferma). Il codice
+  della mail si toglie dall'indirizzo della pagina appena letto.
+- Import CSV (`POST /movimenti/import`): tutto il file in una transazione, ogni riga in un savepoint
+  (una riga sbagliata non lascia controparti, conti o categorie a meta'); `?anteprima=1` fa lo stesso
+  lavoro e annulla. Risposta con `totali` (entrate, uscite) come testo. Importi in centesimi interi:
+  `1.234,50`, `6,5`, `1234.5`; rifiutati `1.234` (ambiguo), lettere, tre decimali, negativi, oltre
+  10 cifre (prima `parseFloat`: `12abc` diventava 12). Giorni veri, `AAAA-MM-GG` o `GG/MM/AAAA`
+  (prima il 30/02 diventava il 2 marzo). Il conto si trova per nome esatto (prima «Cassa» finiva su
+  «Cassa Rurale»). BOM tollerato, al massimo 10000 righe.
+- Categorie: rinominare porta con se' `movimenti.categoria` / `anagrafiche.categoria` (tengono il
+  nome) nella stessa transazione; `/categorie-anagrafiche` lavorava sulla tabella
+  `categorie_movimenti` (copia del file dei movimenti): ora usa `categorie_anagrafiche`; utilizzi ed
+  eliminazione contano solo i dati dell'utente; `DELETE /categorie-movimenti/:id` era sempre 500
+  (`execute` inesistente); nomi ripuliti dagli spazi; tipologia con nome doppio 400 (era 500).
+- Copia di sicurezza (`POST /auth/backup/import`): tutto o niente. Prima «replace» cancellava i dati e
+  le righe che non entravano si perdevano in silenzio; ora un solo errore annulla tutto (400 con
+  l'elenco, «nessun dato e' stato cambiato»). Modalita' solo `replace` o `merge`.
+- `POST /export/generate`: applica i predefiniti di Joi (senza `ordine` era 500).
+- Frontend: `/categorie` (movimenti, controparti, tipologie; nuova, rinomina con avviso sugli
+  utilizzi, disattiva, elimina solo se non in uso), `/archivio` (import con anteprima e conferma,
+  modello CSV, export Excel/CSV/PDF del periodo, copia e ripristino con avviso su «Sostituisci tutto»).
+  Ingressi da Impostazioni.
+
+**Prova**: `scripts/smoke/u6b-account.sh` (66 controlli) e `scripts/smoke/u6b-archivio.sh`
+(75 controlli), backend `TZ=America/Los_Angeles`. Sul codice di prima: account fermo al primo passo
+(nessuna registrazione dall'accesso), archivio 37 FAIL su 55.
 
 ## Fase APP — app iOS (dopo U6)
 

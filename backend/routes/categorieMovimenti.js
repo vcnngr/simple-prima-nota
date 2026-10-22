@@ -4,7 +4,7 @@
 // ==============================================================================
 
 const express = require('express');
-const { queryAll, queryOne, execute, withTransaction } = require('../config/database');
+const { query, queryAll, queryOne, withTransaction } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 const { logErrore } = require('../utils/errori');
@@ -236,7 +236,8 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
-    const result = await execute(`
+    // execute non esiste in config/database: ogni eliminazione era un 500 (U6b).
+    const result = await query(`
       DELETE FROM categorie_movimenti 
       WHERE id = $1 AND user_id = $2
     `, [categoriaId, userId]);

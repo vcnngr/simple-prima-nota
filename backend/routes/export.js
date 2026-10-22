@@ -96,7 +96,7 @@ const EXPORT_CONFIGS = {
 // Middleware per validazione body (non query)
 const validateBody = (schema) => {
   return (req, res, next) => {
-    const { error } = schema.validate(req.body);
+    const { error, value } = schema.validate(req.body);
     if (error) {
       return res.status(400).json({
         error: 'Validation failed',
@@ -106,6 +106,9 @@ const validateBody = (schema) => {
         }))
       });
     }
+    // Con i predefiniti (ordina_per, ordine...): senza, un export senza
+    // «ordine» finiva in un 500 (U6b).
+    req.body = value;
     next();
   };
 };

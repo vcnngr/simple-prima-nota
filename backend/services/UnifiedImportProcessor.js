@@ -492,7 +492,7 @@ class UnifiedImportProcessor {
     // =====================================================
     
     if (cleanedData.data && !this.isValidDate(cleanedData.data)) {
-      errors.push('Data non valida (formato richiesto: YYYY-MM-DD)');
+      errors.push('Data non valida (AAAA-MM-GG o GG/MM/AAAA, giorno esistente)');
     }
     
     // Validazione importo
@@ -945,16 +945,16 @@ class UnifiedImportProcessor {
     if ((m = /^(\d{1,3}(?:\.\d{3})+|\d+),(\d{1,2})$/.exec(t)) || (m = /^(\d{1,3}(?:\.\d{3})+|\d+)$/.exec(t))) {
       intera = m[1]; dec = m[2] || '';
       if (/^\d{1,3}\.\d{3}$/.test(intera) && !t.includes(',')) {
-        throw erroreImport(`Importo ambiguo: ${importoString} (scrivi 1234,00 oppure 1,234)`);
+        throw erroreImport(`${importoString} e' ambiguo: per mille euro scrivi 1.234,00`);
       }
       intera = intera.replace(/\./g, '');
     } else if ((m = /^(\d+)\.(\d{1,2})$/.exec(t))) {
       intera = m[1]; dec = m[2];
     } else {
-      throw erroreImport(`Formato importo non riconosciuto: ${importoString}`);
+      throw erroreImport(`formato non riconosciuto: ${importoString}`);
     }
     intera = intera.replace(/^0+(?=\d)/, '');
-    if (intera.length > 10) throw erroreImport(`Importo troppo grande: ${importoString}`);
+    if (intera.length > 10) throw erroreImport(`troppo grande: ${importoString}`);
     return Number(intera) * 100 + Number(dec.padEnd(2, '0'));
   }
 
