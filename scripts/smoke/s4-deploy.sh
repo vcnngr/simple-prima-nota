@@ -79,6 +79,11 @@ pronto() { # pronto <porta>
   done
   return 1
 }
+# Lo stub (node) puo' partire dopo nginx: il primo /api darebbe 502. Si aspetta.
+api_pronta() { # api_pronta <porta>
+  for _ in $(seq 1 20); do api "$1" | grep -q '"path":"/api/health"' && return 0; sleep 0.5; done
+  return 1
+}
 head -c 5000000 /dev/zero > "$T/5mb.bin"
 head -c 12000000 /dev/zero > "$T/12mb.bin"
 head -c 15000000 /dev/zero > "$T/15mb.bin"
@@ -123,6 +128,7 @@ stub be backend
 docker run -d --name "$S-img" --network "$NET" -p 127.0.0.1::80 "$IMG" >/dev/null
 P=$(porta "$S-img")
 pronto "$P"; eq "nginx risponde (/health)" "0" "$?"
+api_pronta "$P"
 contiene "/api arriva al backend" '"path":"/api/health"' "$(api "$P")"
 eq "allegato da 5 MB: arriva al backend" "200|True" "$(invia "$P" "$T/5mb.bin")"
 eq "allegato da 12 MB: fermato da nginx" "413|-" "$(invia "$P" "$T/12mb.bin")"
