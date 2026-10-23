@@ -14,26 +14,29 @@ const Sezione = ({ titolo, children, ...resto }) => (
     {children}
   </section>
 );
+// «1 movimento», «2 movimenti».
+const quanti = (n, uno, molti) => `${n} ${n === 1 ? uno : molti}`;
 const euro = t => `${formatta(centesimiDa(t) ?? 0)} €`;
 const bottone = 'rounded-xl border border-bordo px-3 py-2 text-sm disabled:opacity-40';
 const primario = 'h-11 w-full rounded-xl bg-principale font-bold text-su-principale disabled:opacity-40';
 
 function Esito({ r }) {
   const e = r.dettagli?.entità_create ?? {};
-  const nuove = [['controparti', e.anagrafiche], ['conti', e.conti], ['categorie', (e.categorie_movimenti ?? 0) + (e.categorie_anagrafiche ?? 0)], ['tipologie', e.tipologie]]
-    .filter(([, n]) => n > 0).map(([t, n]) => `${n} ${t}`);
+  const nuove = [[e.anagrafiche, 'controparte', 'controparti'], [e.conti, 'conto', 'conti'],
+    [(e.categorie_movimenti ?? 0) + (e.categorie_anagrafiche ?? 0), 'categoria', 'categorie'], [e.tipologie, 'tipologia', 'tipologie']]
+    .filter(([n]) => n > 0).map(([n, uno, molti]) => quanti(n, uno, molti));
   const avvisi = r.stats?.warnings ?? [];
   return (
     <div className="space-y-2 text-sm" data-esito-import={r.anteprima ? 'anteprima' : 'fatto'} data-importati={r.stats?.movimenti_importati ?? 0}>
       <p className="font-semibold">
-        {r.anteprima ? `Si importeranno ${r.stats.movimenti_importati} movimenti` : `Importati ${r.stats.movimenti_importati} movimenti`}
+        {r.anteprima ? `Si importeranno ${quanti(r.stats.movimenti_importati, 'movimento', 'movimenti')}` : `Importati ${quanti(r.stats.movimenti_importati, 'movimento', 'movimenti')}`}
       </p>
       <p>Entrate <span className="importo text-entrata" data-totale-entrate={r.totali?.entrate}>+ {euro(r.totali?.entrate)}</span>
         {' · '}Uscite <span className="importo text-uscita" data-totale-uscite={r.totali?.uscite}>− {euro(r.totali?.uscite)}</span></p>
       {nuove.length > 0 && <p className="text-tenue">Nuovi: {nuove.join(', ')}.</p>}
       {avvisi.length > 0 && (
         <div className="rounded-xl bg-uscita/10 p-2.5 text-uscita" data-righe-scartate={r.stats.errori}>
-          <p className="font-semibold">{r.stats.errori} righe {r.anteprima ? 'verranno saltate' : 'saltate'}:</p>
+          <p className="font-semibold">{quanti(r.stats.errori, 'riga', 'righe')} {r.anteprima ? (r.stats.errori === 1 ? 'verrà saltata' : 'verranno saltate') : (r.stats.errori === 1 ? 'saltata' : 'saltate')}:</p>
           <ul className="mt-1 list-disc pl-5">{avvisi.slice(0, 8).map(a => <li key={a}>{a}</li>)}</ul>
           {avvisi.length > 8 && <p>… e altre {avvisi.length - 8}.</p>}
         </div>
@@ -72,7 +75,7 @@ function Importa() {
       {r && <Esito r={r} />}
       {anteprima.data && !importa.data && (
         <button type="button" className={primario} disabled={n === 0 || importa.isPending} data-conferma-import onClick={() => importa.mutate()}>
-          {importa.isPending ? 'Importo…' : `Importa ${n} movimenti`}
+          {importa.isPending ? 'Importo…' : `Importa ${quanti(n, 'movimento', 'movimenti')}`}
         </button>
       )}
       {importa.data && <p className="text-sm"><Link to="/movimenti" className="text-principale">Vai ai movimenti</Link>{file && ` · ${file.name}`}</p>}
@@ -142,7 +145,7 @@ function Copia() {
       {letturaKo && <p role="alert" className="text-sm text-uscita">{letturaKo}</p>}
       {dati && !ripristina.data && (
         <div className="space-y-2" data-copia-letta>
-          <p className="text-sm">Nella copia: {conti[0]} movimenti, {conti[1]} controparti, {conti[2]} conti.</p>
+          <p className="text-sm">Nella copia: {quanti(conti[0], 'movimento', 'movimenti')}, {quanti(conti[1], 'controparte', 'controparti')}, {quanti(conti[2], 'conto', 'conti')}.</p>
           <div className="grid grid-cols-2 gap-2">
             <button type="button" data-modo="merge" aria-pressed={modo === 'merge'} onClick={() => setModo('merge')}
               className={`${bottone} ${modo === 'merge' ? 'border-principale font-semibold' : ''}`}>Aggiungi ai miei dati</button>

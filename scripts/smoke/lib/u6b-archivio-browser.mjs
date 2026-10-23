@@ -91,6 +91,7 @@ try {
   eq('anteprima: totali 2.000,00 e 850,00', '2000.00|850.00|+ 2.000,00 €|− 850,00 €',
     `${await attr('[data-totale-entrate]', 'data-totale-entrate')}|${await attr('[data-totale-uscite]', 'data-totale-uscite')}|${await testo('[data-totale-entrate]')}|${await testo('[data-totale-uscite]')}`);
   eq('anteprima: il motivo della riga saltata', 'true', String((await testo('[data-righe-scartate]')).includes('Data non valida')));
+  eq('singolare: «1 riga verrà saltata»', 'true', String((await testo('[data-righe-scartate]')).startsWith('1 riga verrà saltata:')));
   eq('il bottone dice quanti', 'Importa 2 movimenti', await testo('[data-conferma-import]'));
   await stretto('Import');
   await foto('import-anteprima');

@@ -90,12 +90,14 @@ echo
 echo "=== C. import: righe rifiutate dal database, motivo scritto da noi ==="
 BK="{\"mode\":\"merge\",\"backupData\":{\"metadata\":{\"version\":\"1.0\",\"app_name\":\"Prima Nota Contabile\"},\"user\":{\"id\":1},
  \"conti_correnti\":[{\"id\":1,\"nome_banca\":\"$CONTO\",\"intestatario\":\"X\",\"saldo_iniziale\":\"$VAL\",\"attivo\":true}]}}"
-pulita "backup/import con un conto che il database rifiuta" "200" -X POST "${AU[@]}" "${JSON[@]}" $API/auth/backup/import -d "$BK"
-eq "l'errore della riga e' il nostro testo" "Conto $CONTO: dati non validi" "$(j "['results']['errors'][0]" < "$T/body")"
+# Dal blocco U6b il ripristino e' tutto o niente: 400, nessun dato cambiato.
+pulita "backup/import con un conto che il database rifiuta" "400" -X POST "${AU[@]}" "${JSON[@]}" $API/auth/backup/import -d "$BK"
+eq "l'errore della riga e' il nostro testo" "Conto $CONTO: dati non validi" "$(j "['errori'][0]" < "$T/body")"
 
 CSV=$(printf 'Data;Descrizione;Importo;Tipo;Anagrafica;Conto\\n2025-01-15;Riga %s;99999999999999999999;Entrata;%s;%s\\n2025-01-16;Riga buona;10,00;Uscita;%s;%s' "$SFX" "$ANA" "$CONTO" "$ANA" "$CONTO")
 pulita "movimenti/import CSV con un importo fuori scala" "200|400" -X POST "${AU[@]}" "${JSON[@]}" $API/movimenti/import -d "{\"csvData\":\"$CSV\"}"
-eq "l'errore della riga e' il nostro testo" "Riga 1: dati non validi" "$(j "['stats']['warnings'][0]" < "$T/body")"
+# Dal blocco U6b l'importo fuori scala si ferma alla lettura, col motivo.
+eq "l'errore della riga e' il nostro testo" "Riga 1: Importo non valido: troppo grande: 99999999999999999999" "$(j "['stats']['warnings'][0]" < "$T/body")"
 eq "la riga buona e' importata" "1" "$(j "['stats']['movimenti_importati']" < "$T/body")"
 
 echo

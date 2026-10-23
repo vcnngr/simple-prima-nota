@@ -185,7 +185,7 @@ try {
 
   console.log('=== D7. accessi rapidi ===');
   await p.vai(E.WEB + '/impostazioni');
-  eq('Impostazioni: Conti, Controparti, Studio', 3, (await p.aspetta('document.querySelector("nav[aria-label=Registro]")')) && await n('nav[aria-label=Registro] a'));
+  eq('Impostazioni: Conti, Controparti, Studio (+ Categorie, Import ed export da U6b)', 5, (await p.aspetta('document.querySelector("nav[aria-label=Registro]")')) && await n('nav[aria-label=Registro] a'));
   await p.vai(E.WEB + '/');
   await p.aspetta('document.querySelector("[data-scegli-conto]")');
   await p.clic('[data-scegli-conto]');

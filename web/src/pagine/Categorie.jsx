@@ -9,7 +9,7 @@ import BottomSheet from '../componenti/BottomSheet';
 // campoTipo: il campo «di solito entrata/uscita» (le categorie delle controparti non lo hanno).
 const GENERI = {
   movimenti: { titolo: 'Movimenti', campoTipo: 'tipo', uso: n => `${n} moviment${n === 1 ? 'o' : 'i'}` },
-  controparti: { titolo: 'Controparti', campoTipo: null, uso: n => `${n} controparti` },
+  controparti: { titolo: 'Controparti', campoTipo: null, uso: n => `${n} contropart${n === 1 ? 'e' : 'i'}` },
   tipologie: { titolo: 'Tipologie', campoTipo: 'tipo_movimento_default', uso: null }
 };
 const TIPI = [['Entrambi', 'Entrambi'], ['Entrata', '+ Entrata'], ['Uscita', '− Uscita']];
