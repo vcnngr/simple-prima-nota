@@ -338,8 +338,14 @@ U6c insieme alla chat dello studio.
   Ingressi da Impostazioni.
 
 **Prova**: `scripts/smoke/u6b-account.sh` (66 controlli) e `scripts/smoke/u6b-archivio.sh`
-(76 controlli), backend `TZ=America/Los_Angeles`. Sul codice di prima: account fermo al primo passo
+(80 controlli), backend `TZ=America/Los_Angeles`. Sul codice di prima: account fermo al primo passo
 (nessuna registrazione dall'accesso), archivio 37 FAIL su 55.
+
+Review RED (t_ce10aed8, 2 P0) corretti in 6d513c1: nella copia anche un avviso (`alerts`) che non
+entra annulla tutto (prima si ignorava e «sostituisci» cancellava gli avvisi di prima); due import
+insieme con la stessa controparte nuova (`ON CONFLICT DO NOTHING` + lettura): prima il secondo
+scartava tutte le sue righe. Sul commit 69c317e i 4 controlli nuovi falliscono (300 righe perse su
+600, avviso cancellato con 200).
 
 ## Fase APP — app iOS (dopo U6)
 
