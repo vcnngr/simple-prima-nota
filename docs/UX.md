@@ -338,7 +338,7 @@ U6c insieme alla chat dello studio.
   Ingressi da Impostazioni.
 
 **Prova**: `scripts/smoke/u6b-account.sh` (66 controlli) e `scripts/smoke/u6b-archivio.sh`
-(75 controlli), backend `TZ=America/Los_Angeles`. Sul codice di prima: account fermo al primo passo
+(76 controlli), backend `TZ=America/Los_Angeles`. Sul codice di prima: account fermo al primo passo
 (nessuna registrazione dall'accesso), archivio 37 FAIL su 55.
 
 ## Fase APP — app iOS (dopo U6)
