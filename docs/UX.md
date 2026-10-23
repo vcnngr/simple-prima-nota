@@ -347,6 +347,12 @@ insieme con la stessa controparte nuova (`ON CONFLICT DO NOTHING` + lettura): pr
 scartava tutte le sue righe. Sul commit 69c317e i 4 controlli nuovi falliscono (300 righe perse su
 600, avviso cancellato con 200).
 
+Review RED bis (t_e258cb86, 1 P0) corretto in c35a1ca: un import CSV alla volta per utente
+(`pg_advisory_xact_lock` fino al commit, prima della cache). `UNIQUE(user_id, nome)` distingue le
+maiuscole: due import insieme con «Concorrente srl» e «concorrente SRL» creavano due controparti
+(e due conti). Ora il secondo aspetta e ritrova quelle del primo. Sul commit 8a64975: 2 controparti
+e 2 conti invece di 1 e 1.
+
 ## Fase APP — app iOS (dopo U6)
 
 Ratificata il 09/10/2026; non parte prima della fine di U6.
