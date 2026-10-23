@@ -105,10 +105,16 @@ class UnifiedImportProcessor {
         throw erroreImport(`Troppe righe: ${rows.length} (al massimo 10000 per file)`);
       }
       
-      // 2. Pre-caricamento cache per performance
+      // 2. Un import alla volta per utente, fino al commit (review U6b bis):
+      // il secondo legge la cache dopo che il primo ha scritto, quindi ritrova
+      // le controparti create anche con maiuscole diverse (UNIQUE(user_id, nome)
+      // distingue le maiuscole) e due import non si bloccano a vicenda riga per riga.
+      await this.db.query("SELECT pg_advisory_xact_lock(hashtext('import_csv'), $1)", [this.userId]);
+
+      // 3. Pre-caricamento cache per performance
       await this.preloadCache();
       
-      // 3. Processing di ogni riga
+      // 4. Processing di ogni riga
       const processedRows = [];
       for (let i = 0; i < rows.length; i++) {
         const rowNumber = i + 1;
@@ -896,8 +902,8 @@ class UnifiedImportProcessor {
                 this.stats.anagrafiche_create++;
               } else {
                 anagrafica = (await this.db.query(
-                  'SELECT id, nome, tipologia_id FROM anagrafiche WHERE user_id = $1 AND nome = $2',
-                  [this.userId, nomeAnagrafica])).rows[0];
+                  'SELECT id, nome, tipologia_id FROM anagrafiche WHERE user_id = $1 AND LOWER(nome) = $2 ORDER BY id LIMIT 1',
+                  [this.userId, key])).rows[0];
               }
               this.cache.anagrafiche.set(key, anagrafica);
 

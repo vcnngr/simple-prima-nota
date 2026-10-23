@@ -105,7 +105,9 @@ W="u6bc$SFX"; WT=$(reg_u "$W"); WID=$(q "SELECT id FROM utenti WHERE username='$
 for k in 1 2; do
   python3 -c "
 import sys,json
-r=['Data;Descrizione;Importo;Tipo;Anagrafica;Conto']+['2026-04-%02d;Riga $k-%d;1,00;Uscita;Concorrente srl;Banca W' % (1+i%28, i) for i in range(300)]
+# il secondo scrive controparte e conto nuovo con altre maiuscole (review U6b bis)
+n,c=(('Concorrente srl','Conto Nuovo W') if '$k'=='1' else ('concorrente SRL','conto nuovo w'))
+r=['Data;Descrizione;Importo;Tipo;Anagrafica;Conto']+['2026-04-%02d;Riga $k-%d;1,00;Uscita;%s;%s' % (1+i%28, i, n, c if i%2 else 'Banca W') for i in range(300)]
 json.dump({'csvData':'\n'.join(r)},open(sys.argv[1],'w'))" "$T/conc$k.json"
 done
 q "INSERT INTO conti_correnti (nome_banca, intestatario, saldo_iniziale, user_id) VALUES ('Banca W', 'W', 0, $WID)" >/dev/null
@@ -115,8 +117,8 @@ done
 wait
 eq "due import insieme: 200 e 200, 300 + 300 importati" "200|200|300|300" \
   "$(cat "$T/conc1.code")|$(cat "$T/conc2.code")|$(python3 -c "import json;print(json.load(open('$T/conc1.out'))['stats']['movimenti_importati'])" 2>/dev/null)|$(python3 -c "import json;print(json.load(open('$T/conc2.out'))['stats']['movimenti_importati'])" 2>/dev/null)"
-eq "due import insieme: 600 movimenti, una controparte, creata una volta" "600|1|1" \
-  "$(q "SELECT (SELECT count(*) FROM movimenti WHERE user_id=$WID)||'|'||(SELECT count(*) FROM anagrafiche WHERE user_id=$WID AND nome='Concorrente srl')")|$(python3 -c "import json;print(sum(json.load(open('$T/conc%d.out'%k))['dettagli']['entità_create']['anagrafiche'] for k in (1,2)))" 2>/dev/null)"
+eq "due import insieme (maiuscole diverse): 600 movimenti, una controparte e un conto nuovo, creati una volta" "600|1|1|1|1" \
+  "$(q "SELECT (SELECT count(*) FROM movimenti WHERE user_id=$WID)||'|'||(SELECT count(*) FROM anagrafiche WHERE user_id=$WID AND lower(nome)='concorrente srl')||'|'||(SELECT count(*) FROM conti_correnti WHERE user_id=$WID AND lower(nome_banca)='conto nuovo w')")|$(python3 -c "import json;o=[json.load(open('$T/conc%d.out'%k))['dettagli']['entità_create'] for k in (1,2)];print(sum(e['anagrafiche'] for e in o),sum(e['conti'] for e in o),sep='|')" 2>/dev/null)"
 
 echo
 echo "=== B. categorie ==="
