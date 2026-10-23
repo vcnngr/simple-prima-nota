@@ -357,6 +357,28 @@ GREEN il 23/10/2026 (t_0907e54e, commit e2d6318): 2 import dello stesso utente 6
 1 controparte e 1 conto; anteprima concorrente a un import senza righe persistite; utenti diversi
 non si aspettano.
 
+## U6c — Portale dello studio (piano, 23/10/2026)
+
+Tavole scelte il 22/10: 5 C (home «Da fare») e 6 C (scheda del cliente come riepilogo).
+
+- Barra dello studio: Clienti, Da fare (home), Chat, Impostazioni.
+- Backend:
+  - `GET /commercialisti/da-fare`: lavoro di tutti i collegamenti attivi, piu' recente prima:
+    «Da rivedere» (chiarimento aperto a cui il cliente ha risposto dopo la richiesta), «In attesa»
+    (chiarimento aperto senza risposta), «Messaggi» (non letti del cliente: quanti, l'ultimo).
+    Movimento citato solo se dentro l'ambito; accesso registrato come `chat` (una volta all'ora).
+  - `GET /commercialisti/clienti/:userId/riepilogo?mese=YYYY-MM`: chiarimenti aperti, entrate e
+    uscite del mese e numero di movimenti dentro l'ambito (importi come testo), non letti.
+  - Orari: la sessione del pool su `timezone=UTC` e i `TIMESTAMP` letti come UTC; con il backend a
+    Los Angeles la richiesta del 22 sera resta del 22 (aperto di U6a).
+- Frontend: `/studio/da-fare` (filtri Tutto, Da rivedere, In attesa, Messaggi), `/studio/clienti`
+  (cerca, richieste in attesa in grigio), `/studio/clienti/:id` (riepilogo: Da chiarire, mese,
+  voci Movimenti, Report ed export, Chat, Accessi), `/studio/clienti/:id/movimenti` (sola lettura,
+  scorrendo «Chiedi chiarimento»), `/studio/clienti/:id/report` (trimestre, anno; PDF, Excel, CSV,
+  registrati), chat dello studio con 📎 e Documenti, `/studio/clienti/:id/accessi`.
+- Prova: `scripts/smoke/u6c-studio.sh`, backend `TZ=America/Los_Angeles`; deve fallire sul codice
+  di prima.
+
 ## Fase APP — app iOS (dopo U6)
 
 Ratificata il 09/10/2026; non parte prima della fine di U6.
