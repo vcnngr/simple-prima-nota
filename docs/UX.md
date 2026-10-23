@@ -60,7 +60,7 @@ codice di prima.
 | U4 ✅ | Componenti e registrazione | bottom sheet, selettore della controparte sul server, lista infinita a cursore, tastierino con somma, quattro righe dell'Estratto scelte per account (migrazione 014); Estratto per conto e nuovo movimento collegati all'API | `scripts/smoke/u4-componenti.sh` |
 | U5 ✅ | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | `scripts/smoke/u5-pagine.sh` |
 | U6a ✅ | Registro dell'utente | collegamento con lo studio (richiesta in 3 passi, permessi: periodo e conti, sospendi, chiudi; `PUT /utenti/collegamenti/:id/ambito`), 📎 e Documenti nella chat (`GET /messaggi/documenti`), «+ Crea» nel selettore e modifica della controparte, conti come carte e pagina del conto | `scripts/smoke/u6a-registro.sh` |
-| U6b | Account e archivio | registrazione, password dimenticata, conferma email, profilo (password, email, eliminazione), inviti allo studio, categorie e tipologie, import con anteprima, export, copia di sicurezza | `scripts/smoke/u6b-account.sh`, `scripts/smoke/u6b-archivio.sh` |
+| U6b ✅ | Account e archivio | registrazione, password dimenticata, conferma email, profilo (password, email, eliminazione), inviti allo studio, categorie e tipologie, import con anteprima, export, copia di sicurezza | `scripts/smoke/u6b-account.sh`, `scripts/smoke/u6b-archivio.sh` |
 | U6c | Portale dello studio | home «Da fare», scheda del cliente come riepilogo, chat, report ed export registrati | da scrivere |
 | U6d | Via il vecchio frontend | `web/` in compose e chart al posto di `frontend/`; tolti gli endpoint rimasti per lui | da scrivere |
 
@@ -352,6 +352,10 @@ Review RED bis (t_e258cb86, 1 P0) corretto in c35a1ca: un import CSV alla volta 
 maiuscole: due import insieme con «Concorrente srl» e «concorrente SRL» creavano due controparti
 (e due conti). Ora il secondo aspetta e ritrova quelle del primo. Sul commit 8a64975: 2 controparti
 e 2 conti invece di 1 e 1.
+
+GREEN il 23/10/2026 (t_0907e54e, commit e2d6318): 2 import dello stesso utente 600/600 righe,
+1 controparte e 1 conto; anteprima concorrente a un import senza righe persistite; utenti diversi
+non si aspettano.
 
 ## Fase APP — app iOS (dopo U6)
 
