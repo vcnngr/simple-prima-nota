@@ -428,7 +428,9 @@ router.post('/backup/import', auth, async (req, res) => {
 
             results.imported.alerts++;
           } catch (error) {
-            logErrore('Alert import error (ignorato)', error);
+            // Anche un avviso che non entra annulla tutto: con «sostituisci» quelli
+            // di prima sono gia' cancellati e andrebbero persi (review U6b).
+            results.errors.push(`Avviso ${alert.titolo ?? ''}: ${motivoRiga(error)}`);
           }
         }
       }

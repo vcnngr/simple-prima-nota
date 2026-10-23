@@ -881,17 +881,27 @@ class UnifiedImportProcessor {
             
             // Crea nuova anagrafica
             console.log(`➕ Creazione nuova anagrafica (tipologia ${tipologia.id})`);
+            // ON CONFLICT: un altro import (o la pagina) puo' averla appena creata.
+            // Senza, il secondo import violava UNIQUE(user_id, nome) e scartava la
+            // riga (review U6b). Si conta solo se l'INSERT l'ha creata davvero.
             const result = await this.db.query(`
       INSERT INTO anagrafiche (nome, tipologia_id, categoria, user_id, created_at)
       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+      ON CONFLICT (user_id, nome) DO NOTHING
       RETURNING id, nome, tipologia_id
     `, [nomeAnagrafica, tipologia.id, categoriaAnagrafica?.nome || null, this.userId]);
-              
-              const newAnagrafica = result.rows[0];
-              this.cache.anagrafiche.set(key, newAnagrafica);
-              this.stats.anagrafiche_create++;
-              
-              return newAnagrafica;
+
+              let anagrafica = result.rows[0];
+              if (anagrafica) {
+                this.stats.anagrafiche_create++;
+              } else {
+                anagrafica = (await this.db.query(
+                  'SELECT id, nome, tipologia_id FROM anagrafiche WHERE user_id = $1 AND nome = $2',
+                  [this.userId, nomeAnagrafica])).rows[0];
+              }
+              this.cache.anagrafiche.set(key, anagrafica);
+
+              return anagrafica;
   }
             
   /**

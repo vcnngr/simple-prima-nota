@@ -99,6 +99,24 @@ printf 'Descrizione;Importo\nx;1\n' > "$T/senza.csv"
 eq "colonne obbligatorie mancanti: 400" "400" "$(imp "$UT" "$T/senza.csv")"
 eq "V intatto dopo gli import di U" "1|1|1|0" "$(conta "$VID")"
 eq "modello CSV scaricabile" "200" "$(hit "${AU[@]}" "$API/movimenti/template")"
+# Due import insieme con la stessa controparte nuova (review U6b, P0 2): il secondo
+# aspettava il primo sul vincolo UNIQUE(user_id, nome) e scartava le sue righe.
+W="u6bc$SFX"; WT=$(reg_u "$W"); WID=$(q "SELECT id FROM utenti WHERE username='$W'")
+for k in 1 2; do
+  python3 -c "
+import sys,json
+r=['Data;Descrizione;Importo;Tipo;Anagrafica;Conto']+['2026-04-%02d;Riga $k-%d;1,00;Uscita;Concorrente srl;Banca W' % (1+i%28, i) for i in range(300)]
+json.dump({'csvData':'\n'.join(r)},open(sys.argv[1],'w'))" "$T/conc$k.json"
+done
+q "INSERT INTO conti_correnti (nome_banca, intestatario, saldo_iniziale, user_id) VALUES ('Banca W', 'W', 0, $WID)" >/dev/null
+for k in 1 2; do
+  curl -s --max-time 120 -o "$T/conc$k.out" -w "%{http_code}" -X POST -H "Authorization: Bearer $WT" "${JSON[@]}" "$API/movimenti/import" -d @"$T/conc$k.json" > "$T/conc$k.code" &
+done
+wait
+eq "due import insieme: 200 e 200, 300 + 300 importati" "200|200|300|300" \
+  "$(cat "$T/conc1.code")|$(cat "$T/conc2.code")|$(python3 -c "import json;print(json.load(open('$T/conc1.out'))['stats']['movimenti_importati'])" 2>/dev/null)|$(python3 -c "import json;print(json.load(open('$T/conc2.out'))['stats']['movimenti_importati'])" 2>/dev/null)"
+eq "due import insieme: 600 movimenti, una controparte, creata una volta" "600|1|1" \
+  "$(q "SELECT (SELECT count(*) FROM movimenti WHERE user_id=$WID)||'|'||(SELECT count(*) FROM anagrafiche WHERE user_id=$WID AND nome='Concorrente srl')")|$(python3 -c "import json;print(sum(json.load(open('$T/conc%d.out'%k))['dettagli']['entità_create']['anagrafiche'] for k in (1,2)))" 2>/dev/null)"
 
 echo
 echo "=== B. categorie ==="
@@ -148,6 +166,15 @@ SOMME=$(q "SELECT sum(importo)||'|'||count(*) FROM movimenti WHERE user_id=$UID_
 eq "sostituisci con la propria copia: 200, stessi conteggi e somme" "200|$PRIMA|$SOMME" \
   "$(hit -X POST "${AU[@]}" "${JSON[@]}" "$API/auth/backup/import" -d @"$T/sost.json")|$(conta "$UID_")|$(q "SELECT sum(importo)||'|'||count(*) FROM movimenti WHERE user_id=$UID_")"
 eq "V intatto dopo il ripristino di U" "1|1|1|0" "$(conta "$VID")"
+# Copia con un avviso che non entra (review U6b, P0 1): prima l'errore si ignorava e
+# «sostituisci» confermava, cancellando gli avvisi di prima.
+q "INSERT INTO alerts (user_id, titolo, messaggio) VALUES ($UID_, 'Avviso U', 'da tenere')" >/dev/null
+hit "${AU[@]}" "$API/auth/backup/export" >/dev/null; cp "$T/body" "$T/copia2.json"
+python3 -c "import json;d=json.load(open('$T/copia2.json'));d['alerts'][0]['titolo']=None;json.dump({'backupData':d,'mode':'replace'},open('$T/avviso.json','w'))"
+PRIMA=$(conta "$UID_")
+eq "copia con un avviso difettoso: 400, dati e avviso intatti" "400|$PRIMA|1" \
+  "$(hit -X POST "${AU[@]}" "${JSON[@]}" "$API/auth/backup/import" -d @"$T/avviso.json")|$(conta "$UID_")|$(q "SELECT count(*) FROM alerts WHERE user_id=$UID_ AND titolo='Avviso U'")"
+eq "l'avviso fra i motivi, nessun messaggio pg" "True|False" "$(py "e=' '.join(d.get('errori',[]));print('Avviso' in e, 'violates' in e or 'null value' in e)" | tr ' ' '|')"
 eq "export CSV di marzo: 200" "200" "$(hit -X POST "${AU[@]}" "${JSON[@]}" "$API/export/generate" -d '{"export_type":"commercialista","formato":"csv","data_inizio":"2026-03-01","data_fine":"2026-03-31","ordine":"asc"}')"
 eq "export: 2 righe di marzo con i giorni del database" "2|True|True" \
   "$(python3 -c "
