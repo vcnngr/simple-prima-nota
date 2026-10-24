@@ -59,7 +59,7 @@ C="k1c$SFX"; CT=$(reg_c "$C"); CID=$(q "SELECT id FROM commercialisti WHERE user
 MAXU=$(q "SELECT coalesce(max(id),0) FROM utenti")
 if [ -n "$CID" ] && [ "$CID" -le "$MAXU" ]; then
   q "SELECT setval('commercialisti_id_seq', $MAXU)" >/dev/null
-  C="k1d$SFX"; CT=$(reg_c "$C"); CID=$(q "SELECT id FROM commercialisti WHERE username='$C'")
+  C="k1s$SFX"; CT=$(reg_c "$C"); CID=$(q "SELECT id FROM commercialisti WHERE username='$C'")
 fi
 eq "studio registrato" "1" "$([ -n "$CID" ] && [ "$CT" != "-" ] && echo 1 || echo 0)"
 # Serve un utente con lo stesso id dello studio: se non c'e' ancora, se ne
