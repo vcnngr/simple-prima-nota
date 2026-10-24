@@ -103,7 +103,7 @@ eq "una notifica richiesta_ricevuta per il cliente" "1" \
 eq "la mail arriva al cliente" "1" "$(attendi 1 mail_a "$U@t.it" "chiede di collegarsi")"
 TESTO=$(testo_a "$U@t.it")
 if echo "$TESTO" | grep -q "Studio W4 $SFX"; then ok "la mail nomina lo studio"; else ko "la mail nomina lo studio" "Studio W4 $SFX" "$(echo "$TESTO" | head -c 200)"; fi
-if echo "$TESTO" | grep -qE "http://app.test/studio([[:space:]]|$)"; then ok "e porta alla pagina dove si accetta"; else ko "e porta alla pagina dove si accetta" "link" "assente"; fi
+if echo "$TESTO" | grep -qF 'http://app.test/studio\r\n'; then ok "e porta alla pagina dove si accetta"; else ko "e porta alla pagina dove si accetta" "link" "assente"; fi
 eq "la riga risulta inviata" "inviata" "$(psql_q -c "SELECT stato FROM notifiche WHERE collegamento_id=$COLL AND evento='richiesta_ricevuta';")"
 eq "nessuna mail allo studio per la propria richiesta" "0" "$(mail_a "$C@t.it")"
 
