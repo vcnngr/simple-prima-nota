@@ -115,7 +115,8 @@ try {
   eq('registrato: torna all\'Estratto, sheet chiuso', '/|false',
     (await p.aspetta("location.pathname === '/' && !document.querySelector('dialog[open]')")) && `${await p.valuta('location.pathname')}|${await sheetAperto()}`);
   eq('in cima all\'Estratto, saldo aggiornato', `+ 18,90 €|${Number(SALDO) + 1890}`,
-    (await p.aspetta(`document.querySelector('[data-saldo]').dataset.saldo === '${Number(SALDO) + 1890}'`)) &&
+    (await p.aspetta(`document.querySelector('[data-saldo]').dataset.saldo === '${Number(SALDO) + 1890}'
+      && document.querySelector('[data-movimento] .importo')?.textContent === '+ 18,90 €'`)) &&
     `${await p.valuta("document.querySelector('[data-movimento] .importo').textContent")}|${await p.valuta("document.querySelector('[data-saldo]').dataset.saldo")}`);
 
   console.log('=== E. importi rifiutati, Esc, doppio tocco ===');

@@ -1,4 +1,4 @@
-import { ChartColumn, List, MessagesSquare, ScrollText, Settings, Users } from 'lucide-react';
+import { ChartColumn, List, ListChecks, MessagesSquare, ScrollText, Settings, Users } from 'lucide-react';
 
 // Un solo shell: cambiano solo le voci. Il «+» (nuovo movimento) e' dell'utente.
 export const VOCI = {
@@ -14,11 +14,12 @@ export const VOCI = {
     impostazioni: '/impostazioni'
   },
   commercialista: {
-    home: '/studio/clienti',
+    home: '/studio/da-fare',
     nuovo: null,
     voci: [
+      { a: '/studio/da-fare', etichetta: 'Da fare', Icona: ListChecks },
       { a: '/studio/clienti', etichetta: 'Clienti', Icona: Users },
-      { a: '/studio/messaggi', etichetta: 'Messaggi', Icona: MessagesSquare },
+      { a: '/studio/messaggi', etichetta: 'Chat', Icona: MessagesSquare },
       { a: '/studio/impostazioni', etichetta: 'Impostazioni', Icona: Settings }
     ],
     impostazioni: '/studio/impostazioni'

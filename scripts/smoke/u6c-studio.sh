@@ -17,8 +17,11 @@ DB_CONTAINER="${DB_CONTAINER:?DB_CONTAINER richiesto}"
 DB_NAME="${DB_NAME:-prima_nota}"
 SFX="${SFX:-$(date +%s)$RANDOM}"
 PW='Password123!'
-T="$(mktemp -d)"
-trap 'rm -rf "${T:?}"' EXIT
+CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
+T="$(mktemp -d)"; NGX="u6cweb-$SFX"
+trap 'docker rm -f "$NGX" >/dev/null 2>&1; rm -rf "${T:?}"' EXIT
+FOTO="${FOTO:-$T/foto}"; mkdir -p "$FOTO"
+D="$R/web"
 
 PASS=0; FAIL=0
 ok() { PASS=$((PASS+1)); printf '  OK    %s\n' "$1"; }
@@ -40,6 +43,13 @@ conto() { q "INSERT INTO conti_correnti (nome_banca, intestatario, saldo_inizial
 mv() { q "INSERT INTO movimenti (data, conto_id, descrizione, importo, tipo, user_id) VALUES ('$1', $2, '$3', $4, '$5', $6) RETURNING id"; }
 # msg <token> <query> <corpo json>: id del messaggio
 msg() { curl -s -X POST "$API/messaggi?$2" -H "Authorization: Bearer $1" "${JSON[@]}" -d "$3" | python3 -c "import sys,json;d=json.load(sys.stdin);print((d.get('messaggio') or d.get('data') or {}).get('id','-'))" 2>/dev/null; }
+browser() {
+  "$@" > "$T/b.log" 2>&1
+  grep -v '^CONTEGGIO' "$T/b.log"
+  read -r BP BF <<< "$(awk '/^CONTEGGIO/{print $2, $3}' "$T/b.log")"
+  [ -n "${BP:-}" ] || { BP=0; BF=1; echo "  FAIL  non concluso"; tail -5 "$T/b.log"; }
+  PASS=$((PASS + BP)); FAIL=$((FAIL + BF))
+}
 dafare() { hit -H "Authorization: Bearer $1" "$API/commercialisti/da-fare"; }
 
 echo "=== setup (suffisso $SFX) ==="
@@ -129,6 +139,42 @@ hit "${AU[@]}" "$API/utenti/collegamenti" >/dev/null
 eq "richiesta di collegamento: giorno e ora del database" \
   "$(q "SELECT to_char(data_richiesta, 'YYYY-MM-DD\"T\"HH24:MI') FROM collegamenti_commercialista WHERE id=$CU")" \
   "$(py "print([c for c in d['collegamenti'] if c['id']==$CU][0]['data_richiesta'][:16])")"
+
+eq "movimenti dello studio: giorno e controparte, dal piu' recente" "2026-04-01|2026-03-10|2026-03-05" \
+  "$(hit "${AS[@]}" "$API/commercialisti/clienti/$UID_?limit=50" >/dev/null; py "print('|'.join(m['giorno'] for m in d['movimenti']))")"
+eq "accessi dello studio: i suoi, del cliente U" "200|True" "$(hit "${AS[@]}" "$API/commercialisti/clienti/$UID_/accessi")|$(py "print(len(d['accessi'])>0 and all(a['tipo_accesso'] in ('chat','dettaglio_cliente','lista_clienti') for a in d['accessi']))")"
+eq "accessi: niente del cliente di un altro studio" "200|0" "$(hit "${AS[@]}" "$API/commercialisti/clienti/$XID/accessi")|$(py "print(len(d['accessi']))")"
+eq "accessi: token del cliente 401" "401" "$(hit "${AU[@]}" "$API/commercialisti/clienti/$UID_/accessi")"
+
+echo
+echo "=== D. build e browser ==="
+[ -d "$D/node_modules" ] || (cd "$D" && npm ci --no-fund --no-audit >/dev/null 2>&1)
+(cd "$D" && npm run build) > "$T/build.log" 2>&1
+eq "npm run build: exit 0" "0" "$?"
+eq "fetch solo in src/api/client.js" "src/api/client.js" "$(cd "$D" && grep -rl 'fetch(' src | sort | paste -sd, -)"
+eq "nessun segnaposto rimasto" "0" "$(grep -rc 'Segnaposto' "$D/src" | awk -F: '{s+=$2} END {print s+0}')"
+PORTA_API=$(python3 -c "from urllib.parse import urlparse;print(urlparse('$API').port or 80)")
+docker run -d --name "$NGX" -p 127.0.0.1::80 -e BACKEND_UPSTREAM="${BACKEND_UPSTREAM:-host.docker.internal:$PORTA_API}" \
+  -e CLIENT_MAX_BODY_SIZE=11m -e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+  -v "$D/dist:/usr/share/nginx/html:ro" -v "$R/frontend/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro" \
+  docker.io/library/nginx:1.30-alpine >/dev/null 2>&1
+WEB="http://127.0.0.1:$(docker port "$NGX" 80 2>/dev/null | head -1 | sed 's/.*://')"
+for _ in $(seq 1 40); do [ "$(curl -s --max-time 1 -o /dev/null -w '%{http_code}' "$WEB/api/health")" = 200 ] && break; sleep 0.5; done
+eq "nginx con la CSP del progetto" "200" "$(curl -s -o /dev/null -w '%{http_code}' "$WEB/api/health")"
+EXPORT_PRIMA=$(q "SELECT count(*) FROM accessi_commercialista WHERE collegamento_id=$CU AND tipo_accesso='export'")
+WEB="$WEB" CHROME="$CHROME" PROFILO="$T/chrome" FOTO="$FOTO" STUDIO="$S" PW="$PW" CLIENTE="$UID_" NOME="$U" \
+  browser node "$R/scripts/smoke/lib/u6c-browser.mjs"
+echo "  fotografie: $FOTO"
+
+echo
+echo "=== E. database dopo il browser ==="
+eq "chiarimento dal browser: sul movimento di aprile, aperto" "studio|aperta|Che entrata è ad aprile?" \
+  "$(q "SELECT 'studio'||'|'||chiarimento_stato||'|'||messaggio FROM messaggi_commercialista m JOIN movimenti mv ON mv.id=m.movimento_id WHERE m.collegamento_id=$CU AND mv.descrizione='Aprile' AND m.mittente_tipo='commercialista'")"
+eq "export dal browser: registrato, 2 righe" "$((EXPORT_PRIMA+1))|2" \
+  "$(q "SELECT count(*)||'|'||coalesce((SELECT numero_record FROM accessi_commercialista WHERE collegamento_id=$CU AND tipo_accesso='export' ORDER BY id DESC LIMIT 1)::text,'-') FROM accessi_commercialista WHERE collegamento_id=$CU AND tipo_accesso='export'")"
+eq "messaggio dal browser e chiarimento risolto" "1|3" \
+  "$(q "SELECT (SELECT count(*) FROM messaggi_commercialista WHERE collegamento_id=$CU AND messaggio='Grazie, guardo domani.')||'|'||(SELECT count(*) FROM messaggi_commercialista WHERE collegamento_id=$CU AND chiarimento_stato='aperta')")"
+eq "aprendo la chat i messaggi del cliente sono letti" "0" "$(q "SELECT count(*) FROM messaggi_commercialista WHERE collegamento_id=$CU AND mittente_tipo='user' AND letto=false")"
 
 echo
 echo "PASS $PASS   FAIL $FAIL"

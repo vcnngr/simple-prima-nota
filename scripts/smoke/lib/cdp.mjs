@@ -82,7 +82,7 @@ async function apri(url) {
     // Scrive in un input controllato da React (setter nativo + evento input).
     async scrivi(selettore, valore) {
       return p.valuta(`(() => { const el = document.querySelector(${JSON.stringify(selettore)});
-        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+        const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set; // input e textarea
         set.call(el, ${JSON.stringify(valore)}); el.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
     },
     async clic(selettore) {

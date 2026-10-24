@@ -8,7 +8,6 @@ import Categorie from './pagine/Categorie';
 import Account from './pagine/Account';
 import { ConfermaEmail, PasswordDimenticata, Registrati, Reimposta } from './pagine/Pubbliche';
 import Impostazioni from './pagine/Impostazioni';
-import Segnaposto from './pagine/Segnaposto';
 import Estratto from './pagine/Estratto';
 import NuovoMovimento from './pagine/NuovoMovimento';
 import Movimenti from './pagine/Movimenti';
@@ -17,6 +16,7 @@ import Controparte from './pagine/Controparte';
 import { Report, ReportMese } from './pagine/Report';
 import { Chat, Studio } from './pagine/Studio';
 import Permessi from './pagine/Permessi';
+import { AccessiCliente, Chat as ChatStudio, ChatCliente, Cliente, Clienti, DaFare, MovimentiCliente, ReportCliente } from './pagine/Portale';
 import Conti from './pagine/Conti';
 import Conto from './pagine/Conto';
 
@@ -92,8 +92,14 @@ const router = createBrowserRouter([
     children: [{
       element: <Shell />,
       children: [
-        { path: '/studio/clienti', element: <Segnaposto titolo="Clienti" blocco="U6" /> },
-        { path: '/studio/messaggi', element: <Segnaposto titolo="Messaggi" blocco="U6" /> },
+        { path: '/studio/da-fare', element: <DaFare /> },
+        { path: '/studio/clienti', element: <Clienti /> },
+        { path: '/studio/clienti/:id', element: <Cliente /> },
+        { path: '/studio/clienti/:id/movimenti', element: <MovimentiCliente /> },
+        { path: '/studio/clienti/:id/report', element: <ReportCliente /> },
+        { path: '/studio/clienti/:id/chat', element: <ChatCliente /> },
+        { path: '/studio/clienti/:id/accessi', element: <AccessiCliente /> },
+        { path: '/studio/messaggi', element: <ChatStudio /> },
         { path: '/studio/impostazioni', element: <Impostazioni /> },
         { path: '/studio/account', element: <Account /> }
       ]

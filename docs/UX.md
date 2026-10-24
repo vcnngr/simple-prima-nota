@@ -61,7 +61,7 @@ codice di prima.
 | U5 ✅ | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | `scripts/smoke/u5-pagine.sh` |
 | U6a ✅ | Registro dell'utente | collegamento con lo studio (richiesta in 3 passi, permessi: periodo e conti, sospendi, chiudi; `PUT /utenti/collegamenti/:id/ambito`), 📎 e Documenti nella chat (`GET /messaggi/documenti`), «+ Crea» nel selettore e modifica della controparte, conti come carte e pagina del conto | `scripts/smoke/u6a-registro.sh` |
 | U6b ✅ | Account e archivio | registrazione, password dimenticata, conferma email, profilo (password, email, eliminazione), inviti allo studio, categorie e tipologie, import con anteprima, export, copia di sicurezza | `scripts/smoke/u6b-account.sh`, `scripts/smoke/u6b-archivio.sh` |
-| U6c | Portale dello studio | home «Da fare», scheda del cliente come riepilogo, chat, report ed export registrati | da scrivere |
+| U6c | Portale dello studio | home «Da fare», clienti, scheda del cliente come riepilogo, movimenti in sola lettura con «Chiedi un chiarimento», export registrati, chat con 📎 e Documenti, accessi; orari letti come UTC | `scripts/smoke/u6c-studio.sh` |
 | U6d | Via il vecchio frontend | `web/` in compose e chart al posto di `frontend/`; tolti gli endpoint rimasti per lui | da scrivere |
 
 ## U1 — Ricerca e paginazione
@@ -357,27 +357,38 @@ GREEN il 23/10/2026 (t_0907e54e, commit e2d6318): 2 import dello stesso utente 6
 1 controparte e 1 conto; anteprima concorrente a un import senza righe persistite; utenti diversi
 non si aspettano.
 
-## U6c — Portale dello studio (piano, 23/10/2026)
+## U6c — Portale dello studio
 
 Tavole scelte il 22/10: 5 C (home «Da fare») e 6 C (scheda del cliente come riepilogo).
 
-- Barra dello studio: Clienti, Da fare (home), Chat, Impostazioni.
-- Backend:
-  - `GET /commercialisti/da-fare`: lavoro di tutti i collegamenti attivi, piu' recente prima:
-    «Da rivedere» (chiarimento aperto a cui il cliente ha risposto dopo la richiesta), «In attesa»
-    (chiarimento aperto senza risposta), «Messaggi» (non letti del cliente: quanti, l'ultimo).
-    Movimento citato solo se dentro l'ambito; accesso registrato come `chat` (una volta all'ora).
-  - `GET /commercialisti/clienti/:userId/riepilogo?mese=YYYY-MM`: chiarimenti aperti, entrate e
-    uscite del mese e numero di movimenti dentro l'ambito (importi come testo), non letti.
-  - Orari: la sessione del pool su `timezone=UTC` e i `TIMESTAMP` letti come UTC; con il backend a
-    Los Angeles la richiesta del 22 sera resta del 22 (aperto di U6a).
-- Frontend: `/studio/da-fare` (filtri Tutto, Da rivedere, In attesa, Messaggi), `/studio/clienti`
-  (cerca, richieste in attesa in grigio), `/studio/clienti/:id` (riepilogo: Da chiarire, mese,
-  voci Movimenti, Report ed export, Chat, Accessi), `/studio/clienti/:id/movimenti` (sola lettura,
-  scorrendo «Chiedi chiarimento»), `/studio/clienti/:id/report` (trimestre, anno; PDF, Excel, CSV,
-  registrati), chat dello studio con 📎 e Documenti, `/studio/clienti/:id/accessi`.
-- Prova: `scripts/smoke/u6c-studio.sh`, backend `TZ=America/Los_Angeles`; deve fallire sul codice
-  di prima.
+- Orari: le colonne `TIMESTAMP` (senza fuso) tengono l'ora UTC (le scrive `NOW()`); pg le leggeva
+  nel fuso del processo Node. Ora `config/database.js` le legge come UTC (`setTypeParser(1114)`) e
+  fissa la sessione su `timezone=UTC`. Con il backend a Los Angeles la richiesta del 22 sera restava
+  del 23 mattina (aperto di U6a). Le `DATE` non cambiano (si usa `giorno`, U4).
+- `GET /commercialisti/da-fare`: collegamenti attivi, piu' recente prima. `rivedere` = chiarimento
+  aperto chiesto dal cliente, o chiesto dallo studio e seguito da un messaggio del cliente (che citi
+  lo stesso movimento, se il chiarimento ne cita uno: la chat non lega le risposte alle domande);
+  `attesa` = gli altri chiarimenti aperti; `messaggi` = non letti del cliente per collegamento
+  (quanti, l'ultimo). Movimento citato solo dentro l'ambito, altrimenti `movimento_nascosto`.
+  Accesso `chat` di elenco (una volta all'ora).
+- `GET /commercialisti/clienti/:userId/riepilogo?mese=YYYY-MM`: entrate, uscite (testo) e numero di
+  movimenti del mese dentro l'ambito, chiarimenti aperti, non letti, ambito come giorni. Accesso
+  `dettaglio_cliente` con `riepilogo` nei dettagli. Mese predefinito: quello del database.
+- `GET /commercialisti/clienti/:userId/accessi`: gli accessi dello studio a quel cliente (ultimo
+  ciclo di collegamento), come li vede il cliente; non si registra (non legge dati contabili).
+- `GET /commercialisti/clienti/:userId`: righe con `giorno` e `controparte`, ordine stabile (data, id).
+- Frontend: barra dello studio Da fare (home), Clienti, Chat, Impostazioni. `/studio/da-fare`
+  (filtri Tutto, Da rivedere, In attesa, Messaggi), `/studio/clienti` (cerca, richieste in attesa in
+  grigio, «Chiedi il collegamento»), `/studio/clienti/:id` (da chiarire, non letti, mese con frecce,
+  voci), `…/movimenti` (sola lettura, tocco → «Chiedi un chiarimento»), `…/report` (mese, mese
+  scorso, trimestre, anno, dal…al; PDF, Excel, CSV), `…/chat` (📎, Documenti, «Chiarito»),
+  `…/accessi`, `/studio/messaggi` (chat per cliente). Tolto `Segnaposto`.
+
+**Prova**: `scripts/smoke/u6c-studio.sh` (80 controlli: API, browser con nginx e CSP, database),
+backend `TZ=America/Los_Angeles`. Sul codice di prima (0f5cc1c): 28 FAIL su 31 controlli API, fra cui
+i 3 sugli orari. Smoke toccati: U3 (home dello studio `/studio/da-fare`), U4 (aspetta anche la riga
+registrata, non solo il saldo: corsa vista una volta sotto carico), `lib/cdp.mjs` (`scrivi` anche
+nelle textarea).
 
 ## Fase APP — app iOS (dopo U6)
 

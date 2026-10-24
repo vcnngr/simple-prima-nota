@@ -646,11 +646,12 @@ router.get('/clienti/:userId', authCommercialista, validateQuery(schemas.paginaz
     // Get paginated movements
     const iLimit = 2 + paramsMovimenti.length;
     const movimenti = await query(
-      `SELECT m.*, cc.nome_banca
+      `SELECT m.*, to_char(m.data, 'YYYY-MM-DD') AS giorno, cc.nome_banca, a.nome AS controparte
        FROM movimenti m
        JOIN conti_correnti cc ON cc.id = m.conto_id
+       LEFT JOIN anagrafiche a ON a.id = m.anagrafica_id AND a.user_id = m.user_id
        WHERE cc.user_id = $1${filtroMovimenti}
-       ORDER BY m.data DESC
+       ORDER BY m.data DESC, m.id DESC
        LIMIT $${iLimit} OFFSET $${iLimit + 1}`,
       [userId, ...paramsMovimenti, limit, offset]
     );
@@ -677,6 +678,32 @@ router.get('/clienti/:userId', authCommercialista, validateQuery(schemas.paginaz
   } catch (error) {
     logErrore('Get client error', error);
     res.status(500).json({ error: 'Errore nel recupero dei dati del cliente' });
+  }
+});
+
+// ==============================================================================
+// GET /api/commercialisti/clienti/:userId/accessi (U6c)
+// ==============================================================================
+// Gli accessi dello studio ai dati di questo cliente, come li vede il cliente
+// (GET /utenti/collegamenti/:id/accessi): l'ultimo ciclo di collegamento, anche
+// sospeso o chiuso. Non legge dati contabili: non si registra.
+router.get('/clienti/:userId/accessi', authCommercialista, async (req, res) => {
+  try {
+    const r = await query(
+      `SELECT a.id, a.tipo_accesso, a.numero_record, a.created_at
+       FROM accessi_commercialista a
+       WHERE a.collegamento_id = (
+         SELECT id FROM collegamenti_commercialista
+         WHERE commercialista_id = $1 AND user_id = $2
+         ORDER BY (stato IN ('in_attesa','attiva','sospesa')) DESC, id DESC LIMIT 1)
+       ORDER BY a.created_at DESC, a.id DESC
+       LIMIT 50`,
+      [req.commercialista.id, parseInt(req.params.userId, 10)]
+    );
+    res.json({ success: true, accessi: r.rows });
+  } catch (error) {
+    logErrore('Accessi studio error', error);
+    res.status(500).json({ error: 'Errore nel recupero degli accessi' });
   }
 });
 

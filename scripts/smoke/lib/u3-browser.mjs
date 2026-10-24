@@ -89,7 +89,7 @@ try {
   await p.valuta("[...document.querySelectorAll('button')].find(b => b.textContent.includes('Esci')).click(), true");
   eq('esci: /accedi, token tolto', '/accedi|null', (await p.aspetta("location.pathname === '/accedi'")) && `${await p.valuta('location.pathname')}|${await ls('token')}`);
   await accedi('/studio/accedi', STUDIO, PW);
-  eq('login dello studio: shell dello studio', 'commercialista|/studio/clienti',
+  eq('login dello studio: shell dello studio', 'commercialista|/studio/da-fare',
     (await p.aspetta("document.querySelector('[data-shell=commercialista]')")) && `${await p.valuta("document.querySelector('[data-shell]').dataset.shell")}|${await p.valuta('location.pathname')}`);
   eq('token di studio salvato, nessun token utente', 'si|null|commercialista', `${(await ls('commercialista_token')) ? 'si' : 'no'}|${await ls('token')}|${await ls('user_type')}`);
   eq('tema dello studio dal suo account (registro/automatico)', 'registro/automatico', await tema());
@@ -97,7 +97,7 @@ try {
   eq('390 px: nessuno scroll orizzontale (studio)', '390', await larghezza());
   await p.foto(`${FOTO}/studio-registro-automatico.png`);
   await p.vai(WEB + '/movimenti');
-  eq('studio su una pagina dell\'utente: torna alla sua home', '/studio/clienti', (await p.aspetta("location.pathname === '/studio/clienti'")) && await p.valuta('location.pathname'));
+  eq('studio su una pagina dell\'utente: torna alla sua home', '/studio/da-fare', (await p.aspetta("location.pathname === '/studio/da-fare'")) && await p.valuta('location.pathname'));
 
   console.log('=== D. sessione scaduta ===');
   await p.valuta("(localStorage.setItem('commercialista_token', 'non-valido'), true)");

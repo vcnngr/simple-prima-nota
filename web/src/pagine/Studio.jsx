@@ -13,7 +13,7 @@ import { breve } from '../util/date';
 
 const STATI = { in_attesa: 'in attesa di risposta', sospesa: 'sospeso', revocata: 'chiuso', rifiutata: 'rifiutato' };
 // Tipi ammessi dal server (AllegatiService); dimensione e quota le controlla lui.
-const ACCETTA = '.pdf,.png,.jpg,.jpeg,.xlsx,.csv,application/pdf,image/png,image/jpeg,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+export const ACCETTA = '.pdf,.png,.jpg,.jpeg,.xlsx,.csv,application/pdf,image/png,image/jpeg,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function useStudio() {
   const coll = useQuery({ queryKey: ['studio', 'collegamenti'], queryFn: studioApi.collegamenti });
@@ -23,7 +23,7 @@ function useStudio() {
 }
 
 // Peso in decimi di MB come interi (regola U4: niente virgola mobile formattata).
-const peso = b => {
+export const peso = b => {
   if (b < 1048576) return `${Math.max(1, Math.round(b / 1024))} kB`;
   const d = Math.round(b / 104857.6);
   return `${Math.floor(d / 10)},${d % 10} MB`;
@@ -122,8 +122,9 @@ export function Studio() {
   );
 }
 
-function Bolla({ m, onScarica }) {
-  const mio = m.mittente_tipo === 'user';
+// io: chi guarda la chat ('user' o 'commercialista'); i suoi messaggi a destra.
+export function Bolla({ m, onScarica, io = 'user' }) {
+  const mio = m.mittente_tipo === io;
   const c = m.movimento ? centesimiDa(m.movimento.importo) ?? 0 : 0;
   return (
     <li data-messaggio={m.id} className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${mio ? 'ml-auto bg-principale text-su-principale' : 'border border-bordo bg-superficie'}`}>
