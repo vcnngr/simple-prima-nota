@@ -362,6 +362,119 @@ router.get('/dashboard', authCommercialista, async (req, res) => {
 });
 
 // ==============================================================================
+// GET /api/commercialisti/da-fare - Il lavoro di tutti i clienti (U6c)
+// ==============================================================================
+// Tre gruppi, dal piu' recente, solo collegamenti attivi:
+//   rivedere  = chiarimento aperto chiesto dallo studio a cui il cliente ha
+//               scritto dopo, oppure chiesto dal cliente (tocca allo studio);
+//   attesa    = chiarimento aperto chiesto dallo studio, il cliente non ha scritto;
+//   messaggi  = non letti del cliente, per collegamento: quanti e l'ultimo.
+// La chat non lega una risposta alla domanda: vale come risposta un messaggio del
+// cliente scritto dopo e, se il chiarimento cita un movimento, che citi lo stesso.
+// Il movimento citato esce solo se e' ancora dentro l'ambito (come GET /messaggi).
+// Mostra messaggi di ogni cliente: accesso `chat` di elenco, una volta all'ora.
+router.get('/da-fare', authCommercialista, async (req, res) => {
+  try {
+    await registraAccessiElenco(req.commercialista.id, 'chat');
+    const chiarimenti = await query(
+      `SELECT m.id, c.id AS collegamento_id, c.user_id, u.username AS cliente,
+              m.mittente_tipo, m.messaggio, m.created_at,
+              CASE WHEN m.mittente_tipo = 'user' OR EXISTS (
+                     SELECT 1 FROM messaggi_commercialista r
+                     WHERE r.collegamento_id = m.collegamento_id AND r.mittente_tipo = 'user'
+                       AND (r.created_at, r.id) > (m.created_at, m.id)
+                       AND (m.movimento_id IS NULL OR r.movimento_id = m.movimento_id))
+                   THEN 'rivedere' ELSE 'attesa' END AS gruppo,
+              CASE WHEN mv.id IS NOT NULL THEN json_build_object(
+                'id', mv.id, 'giorno', to_char(mv.data, 'YYYY-MM-DD'), 'descrizione', mv.descrizione,
+                'importo', mv.importo::text, 'tipo', mv.tipo, 'conto', cc.nome_banca)
+              END AS movimento,
+              (m.movimento_id IS NOT NULL AND mv.id IS NULL) AS movimento_nascosto
+       FROM messaggi_commercialista m
+       JOIN collegamenti_commercialista c ON c.id = m.collegamento_id
+       JOIN utenti u ON u.id = c.user_id
+       LEFT JOIN movimenti mv0 ON mv0.id = m.movimento_id
+       LEFT JOIN conti_correnti cc ON cc.id = mv0.conto_id AND cc.user_id = c.user_id
+       LEFT JOIN movimenti mv ON mv.id = mv0.id AND cc.id IS NOT NULL
+         AND (c.conti_ammessi IS NULL OR cardinality(c.conti_ammessi) = 0 OR cc.id = ANY(c.conti_ammessi))
+         AND (c.ambito_dal IS NULL OR mv0.data >= c.ambito_dal)
+         AND (c.ambito_al  IS NULL OR mv0.data <= c.ambito_al)
+       WHERE c.commercialista_id = $1 AND c.stato = 'attiva' AND m.chiarimento_stato = 'aperta'
+       ORDER BY m.created_at DESC, m.id DESC
+       LIMIT 500`,
+      [req.commercialista.id]
+    );
+    const messaggi = await query(
+      `SELECT c.id AS collegamento_id, c.user_id, u.username AS cliente,
+              COUNT(*)::int AS non_letti, MAX(m.created_at) AS created_at,
+              (array_agg(m.messaggio ORDER BY m.created_at DESC, m.id DESC))[1] AS ultimo
+       FROM messaggi_commercialista m
+       JOIN collegamenti_commercialista c ON c.id = m.collegamento_id
+       JOIN utenti u ON u.id = c.user_id
+       WHERE c.commercialista_id = $1 AND c.stato = 'attiva'
+         AND m.mittente_tipo = 'user' AND m.letto = FALSE
+       GROUP BY c.id, c.user_id, u.username
+       ORDER BY MAX(m.created_at) DESC`,
+      [req.commercialista.id]
+    );
+    const righe = chiarimenti.rows;
+    res.json({
+      success: true,
+      rivedere: righe.filter(r => r.gruppo === 'rivedere'),
+      attesa: righe.filter(r => r.gruppo === 'attesa'),
+      messaggi: messaggi.rows
+    });
+  } catch (error) {
+    logErrore('Da fare error', error);
+    res.status(500).json({ error: 'Errore nel recupero delle cose da fare' });
+  }
+});
+
+// ==============================================================================
+// GET /api/commercialisti/clienti/:userId/riepilogo?mese=YYYY-MM (U6c)
+// ==============================================================================
+// La scheda del cliente: chiarimenti aperti, non letti, entrate e uscite del mese
+// dentro l'ambito (importi come testo). Mese predefinito: quello corrente del
+// database. L'ambito si legge dal collegamento nella stessa query: le date come
+// oggetti JS passerebbero per il fuso del processo.
+router.get('/clienti/:userId/riepilogo', authCommercialista, validateQuery(schemas.riepilogoCliente),
+  requireCollegamento('dettaglio_cliente', req => ({ riepilogo: req.query.mese || null })), async (req, res) => {
+  try {
+    const r = await queryOne(
+      `WITH e AS (
+         SELECT COALESCE(to_date($2::text, 'YYYY-MM'), date_trunc('month', CURRENT_DATE)::date) AS inizio
+       )
+       SELECT u.id, u.username, u.email,
+              to_char(e.inizio, 'YYYY-MM') AS mese,
+              c.ambito_dal::text AS ambito_dal, c.ambito_al::text AS ambito_al, c.conti_ammessi,
+              COALESCE(SUM(mv.importo) FILTER (WHERE mv.tipo = 'Entrata'), 0)::text AS entrate,
+              COALESCE(SUM(mv.importo) FILTER (WHERE mv.tipo = 'Uscita'), 0)::text AS uscite,
+              COUNT(mv.id)::int AS movimenti,
+              (SELECT COUNT(*)::int FROM messaggi_commercialista x
+               WHERE x.collegamento_id = c.id AND x.chiarimento_stato = 'aperta') AS chiarimenti_aperti,
+              (SELECT COUNT(*)::int FROM messaggi_commercialista x
+               WHERE x.collegamento_id = c.id AND x.mittente_tipo = 'user' AND x.letto = FALSE) AS non_letti
+       FROM collegamenti_commercialista c
+       CROSS JOIN e
+       JOIN utenti u ON u.id = c.user_id
+       LEFT JOIN conti_correnti cc ON cc.user_id = c.user_id
+         AND (c.conti_ammessi IS NULL OR cardinality(c.conti_ammessi) = 0 OR cc.id = ANY(c.conti_ammessi))
+       LEFT JOIN movimenti mv ON mv.conto_id = cc.id
+         AND mv.data >= e.inizio AND mv.data < (e.inizio + INTERVAL '1 month')
+         AND (c.ambito_dal IS NULL OR mv.data >= c.ambito_dal)
+         AND (c.ambito_al  IS NULL OR mv.data <= c.ambito_al)
+       WHERE c.id = $1
+       GROUP BY u.id, u.username, u.email, e.inizio, c.id`,
+      [req.collegamento.id, req.query.mese || null]
+    );
+    res.json({ success: true, riepilogo: r });
+  } catch (error) {
+    logErrore('Riepilogo cliente error', error);
+    res.status(500).json({ error: 'Errore nel recupero del riepilogo del cliente' });
+  }
+});
+
+// ==============================================================================
 // POST /api/commercialisti/collega-cliente - Connect client using invitation token
 // ==============================================================================
 router.post('/collega-cliente', authCommercialista, validate(schemas.collegaCliente), async (req, res) => {

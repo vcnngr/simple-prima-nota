@@ -41,6 +41,11 @@ const giorno = () => Joi.string().pattern(/^(?!0000)\d{4}-\d{2}-\d{2}$/)
   .messages({ 'string.pattern.base': '{{#label}} deve essere una data YYYY-MM-DD', 'any.invalid': '{{#label}} non e\' una data valida' });
 
 const schemas = {
+  // U6c: riepilogo del cliente per lo studio.
+  riepilogoCliente: Joi.object({
+    mese: Joi.string().pattern(/^[1-9]\d{3}-(0[1-9]|1[0-2])$/).optional()
+      .messages({ 'string.pattern.base': '{{#label}} deve essere un mese YYYY-MM' })
+  }),
   // ============================================================================
   // SCHEMA UTENTI E AUTH (INVARIATI)
   // ============================================================================

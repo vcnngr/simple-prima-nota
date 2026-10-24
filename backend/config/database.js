@@ -1,5 +1,12 @@
 // config/database.js
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Orari (U6c). Le colonne TIMESTAMP (senza fuso) tengono l'ora UTC: le scrive
+// NOW() con la sessione su UTC. pg le leggeva nel fuso del processo Node: con il
+// backend a Los Angeles la richiesta del 22 sera usciva come del 23 mattina.
+// Si leggono come UTC e la sessione si fissa su UTC, qualunque sia il default
+// del server PostgreSQL. Le DATE restano come prima (il campo `giorno` di U4).
+types.setTypeParser(1114, (s) => new Date(s.replace(' ', 'T') + 'Z'));
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
@@ -13,6 +20,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 10000, // return an error after 10 seconds (not 2)
   keepAlive: true, // keep connections alive
   keepAliveInitialDelayMillis: 10000, // delay before first keepalive
+  options: '-c timezone=UTC',
 });
 
 // Test connection
