@@ -34,7 +34,7 @@ Un sistema semplificato per la gestione della prima nota contabile personale/azi
 
 ```
 prima-nota/
-├── frontend/          # React.js App
+├── web/               # Frontend: Vite + React 19 (servito da nginx)
 ├── backend/           # Node.js + Express API
 ├── database/          # PostgreSQL Schema & Data
 ├── docker-compose.yml # Orchestrazione servizi
@@ -42,7 +42,7 @@ prima-nota/
 ```
 
 ### Stack Tecnologico
-- **Frontend**: React.js 18, Tailwind CSS, React Query, Framer Motion
+- **Frontend**: React 19, Vite, Tailwind CSS 4, TanStack Query, React Router 7
 - **Backend**: Node.js, Express.js, PostgreSQL, JWT Auth
 - **Database**: PostgreSQL 16 con funzioni custom
 - **DevOps**: Docker, Docker Compose, Nginx
@@ -86,9 +86,9 @@ npm run dev
 
 ### Setup Frontend
 ```bash
-cd frontend
+cd web
 npm install
-npm start
+npm run dev   # /api va al backend su localhost:3001 (BACKEND=... per cambiarlo)
 ```
 
 ### Setup Database
@@ -208,12 +208,9 @@ npm test
 npm run test:coverage
 ```
 
-### Frontend Tests
-```bash
-cd frontend
-npm test
-npm run test:coverage
-```
+### Frontend
+Nessuna suite di test: le prove sono gli smoke in `scripts/smoke/` (browser Chrome headless con
+`scripts/smoke/lib/cdp.mjs`).
 
 ## 📝 Licenza
 

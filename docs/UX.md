@@ -62,7 +62,7 @@ codice di prima.
 | U6a ✅ | Registro dell'utente | collegamento con lo studio (richiesta in 3 passi, permessi: periodo e conti, sospendi, chiudi; `PUT /utenti/collegamenti/:id/ambito`), 📎 e Documenti nella chat (`GET /messaggi/documenti`), «+ Crea» nel selettore e modifica della controparte, conti come carte e pagina del conto | `scripts/smoke/u6a-registro.sh` |
 | U6b ✅ | Account e archivio | registrazione, password dimenticata, conferma email, profilo (password, email, eliminazione), inviti allo studio, categorie e tipologie, import con anteprima, export, copia di sicurezza | `scripts/smoke/u6b-account.sh`, `scripts/smoke/u6b-archivio.sh` |
 | U6c ✅ | Portale dello studio | home «Da fare», clienti, scheda del cliente come riepilogo, movimenti in sola lettura con «Chiedi un chiarimento», export registrati, chat con 📎 e Documenti, accessi; orari letti come UTC | `scripts/smoke/u6c-studio.sh` |
-| U6d | Via il vecchio frontend | `web/` in compose e chart al posto di `frontend/`; tolti gli endpoint rimasti per lui | da scrivere |
+| U6d | Via il vecchio frontend | `web/` in compose e chart al posto di `frontend/`; tolti gli endpoint rimasti per lui | `scripts/smoke/u6c-studio.sh` (D7, D8), `s4-deploy.sh`, `k5-deploy.sh`, `k4-dipendenze.sh`, `w4-notifiche.sh` |
 
 ## U1 — Ricerca e paginazione
 
@@ -391,6 +391,38 @@ W1–W6, K1, K3, U1–U6c 1315/0, letture U6c fail-closed con registro accessi i
 Smoke toccati: U3 (home dello studio `/studio/da-fare`), U4 (aspetta anche la riga
 registrata, non solo il saldo: corsa vista una volta sotto carico), `lib/cdp.mjs` (`scrivi` anche
 nelle textarea).
+
+## U6d — Via il vecchio frontend (24/10/2026)
+
+- Funzioni che solo `frontend/` aveva, portate in `web/`: lo studio usa il **codice d'invito** del
+  cliente (`/studio/clienti`, «Usa il codice», `POST /commercialisti/collega-cliente`: apre una
+  richiesta che il cliente accetta) e **chiude il collegamento** dalla scheda del cliente (conferma,
+  motivo facoltativo; `DELETE /commercialisti/clienti/:id`, accesso `disconnessione`). Il cliente
+  vede in `/studio` chi ha chiuso e il motivo.
+- Immagine: `web/Dockerfile` (Vite, `npm ci`), nginx da `web/nginx/default.conf.template` (copia nel
+  chart con `scripts/sincronizza-helm-db.sh`); compose e CI costruiscono da `./web`, nome
+  dell'immagine invariato (`vcnngr/pnfrontend`). `frontend/` tolto.
+- CSP: `style-src 'self'` (senza `'unsafe-inline'`: Vite non mette niente in linea, React scrive gli
+  stili via CSSOM) e niente font di Google. Attenzione: il chart monta questa configurazione anche
+  su un'immagine `pnfrontend` vecchia (CRA), che con la CSP nuova perde stili e font: chart e
+  immagine vanno rilasciati insieme.
+- Link nelle mail (`NotificationService`): `/studio` per l'utente, `/studio/clienti` e
+  `/studio/messaggi` per lo studio (prima `/commercialista-management`, `/commercialista/dashboard`,
+  `/commercialista/chat`, che `web/` non ha). Restano `/commercialista/reimposta-password` e
+  `/commercialista/conferma-email` per i link gia' spediti.
+- Endpoint tolti, usati solo da `frontend/`: `/api/dashboard/*`, `/api/alerts/*` (la tabella
+  `alerts` resta: la copia di sicurezza la porta), `GET /reports/movimenti-anagrafica`,
+  `/reports/entrate-vs-uscite`, `/reports/bilancio-mensile`, `/reports/template`,
+  `GET /movimenti/recenti`, `/movimenti/statistiche/mensili`, `GET /anagrafiche/attive`,
+  `GET /conti-bancari/dropdown`, `/conti-bancari/:id/saldo-storico`, `PUT /messaggi/:id/letto`,
+  `GET` e `DELETE /utenti/commercialista`; `routes/backup.js` (mai montato). Restano quelli che
+  coprono gli smoke di sicurezza o che servono all'app (estratto conto, export, statistiche,
+  `unread-count`, `clients-overview`).
+
+**Prova**: `u6c-studio.sh` con D7 (codice d'invito) e D8 (chiusura) nel browser e i controlli sul
+database; `s4-deploy.sh`, `k5-deploy.sh` (immagine da `web/`, CSP), `k4-dipendenze.sh` (`npm audit`
+di `web/`: 0), `w4-notifiche.sh` (link nelle mail). Regressioni complete con backend
+`TZ=America/Los_Angeles`.
 
 ## Fase APP — app iOS (dopo U6)
 
