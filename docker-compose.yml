@@ -82,16 +82,15 @@ services:
     networks:
       - prima_nota_network
 
-  # Frontend React - MODALITÀ PRODUZIONE (NGINX con proxy API)
+  # Frontend (web/, Vite + React, dal blocco U6d) servito da nginx, che fa da
+  # proxy per /api.
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile  # Usa il Dockerfile multi-stage con nginx
+      context: ./web
+      dockerfile: Dockerfile
     container_name: prima_nota_frontend
     environment:
-      # L'API sarà servita tramite nginx proxy, quindi usiamo path relativo
-      REACT_APP_API_URL: /api
-      # Variabili del modello nginx (frontend/nginx/default.conf.template); questi
+      # Variabili del modello nginx (web/nginx/default.conf.template); questi
       # sono gia' i default dell'immagine. Allegati piu' grandi di 10 MB: alzare
       # CLIENT_MAX_BODY_SIZE insieme ad ALLEGATI_MAX_BYTES del backend.
       BACKEND_UPSTREAM: backend:3001

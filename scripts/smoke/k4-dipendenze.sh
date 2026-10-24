@@ -57,23 +57,19 @@ eq "xlsx non e' nel package.json del backend" "no" "$(grep -q '"xlsx"' "$R/backe
 eq "nessun require('xlsx') nel backend" "0" "$(grep -rlE "require\(['\"]xlsx['\"]\)" "$R/backend" --include=*.js --exclude-dir=node_modules | wc -l | tr -d ' ')"
 NM=$(cd "$R/backend" && node -p "require('nodemailer/package.json').version" 2>/dev/null || echo -)
 eq "nodemailer installato >= 10.0.12" "si" "$(node -e "const [a,b,c]=process.argv[1].split('.').map(Number);console.log(a>10||(a===10&&(b>0||c>=12))?'si':'no')" "$NM" 2>/dev/null || echo no)"
-eq "Node 24 nelle immagini di backend e frontend" "2" "$(grep -hc 'FROM docker.io/library/node:24-alpine' "$R/backend/Dockerfile" "$R/frontend/Dockerfile" | paste -sd+ - | bc)"
+eq "Node 24 nelle immagini di backend e frontend" "2" "$(grep -hc 'FROM docker.io/library/node:24-alpine' "$R/backend/Dockerfile" "$R/web/Dockerfile" | paste -sd+ - | bc)"
 mkdir -p "$T/audit" && cp "$R/backend/package.json" "$T/audit/"
 (cd "$T/audit" && npm i --package-lock-only --ignore-scripts --no-fund >/dev/null 2>&1)
 # Conta quello che finisce nell'immagine (--omit=dev nel Dockerfile). jest e
 # nodemon (solo sviluppo) hanno avvisi senza correzione a monte dal 10/2026.
 eq "npm audit backend, produzione: 0 vulnerabilita'" "0" "$(cd "$T/audit" && npm audit --omit=dev --json 2>/dev/null | j "['metadata']['vulnerabilities']['total']")"
 eq "immagine del backend senza dipendenze di sviluppo" "1" "$(grep -c '^RUN npm install --omit=dev' "$R/backend/Dockerfile")"
-(cd "$R/frontend" && npm audit --json 2>/dev/null) > "$T/fe-audit.json"
-eq "npm audit frontend: 0 critical" "0" "$(j "['metadata']['vulnerabilities']['critical']" < "$T/fe-audit.json")"
-# Le dirette ancora segnalate: react-scripts (catena di build CRA, esce con Vite
-# nella fase UX), react-router-dom 6 (correzioni solo nella 7; vedi SICUREZZA.md),
-# tailwindcss 3 e @tailwindcss/typography (solo build: l'immagine serve file
-# statici con nginx; avvisi di 10/2026 su chokidar/micromatch/postcss-selector-parser).
-eq "frontend: dirette vulnerabili solo react-scripts / react-router-dom / tailwind" "" \
-  "$(python3 -c "
-import json;d=json.load(open('$T/fe-audit.json'))
-print(','.join(sorted(k for k,v in d['vulnerabilities'].items() if v['isDirect'] and k not in ('react-scripts','react-router-dom','tailwindcss','@tailwindcss/typography'))))")"
+# Dal blocco U6d il frontend e' web/ (Vite): react-scripts e react-router-dom 6
+# del vecchio frontend/ sono usciti con lui.
+eq "frontend/ (CRA) tolto" "no" "$([ -e "$R/frontend" ] && echo si || echo no)"
+(cd "$R/web" && npm audit --json 2>/dev/null) > "$T/fe-audit.json"
+eq "npm audit web/: 0 vulnerabilita'" "0" "$(j "['metadata']['vulnerabilities']['total']" < "$T/fe-audit.json")"
+eq "immagine del frontend: npm ci dal lockfile" "1" "$(grep -c '^RUN npm ci' "$R/web/Dockerfile")"
 
 echo
 echo "=== B. scrittore xlsx ==="

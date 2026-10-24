@@ -6,7 +6,7 @@ metadata:
     {{- include "prima-nota.labels" . | nindent 4 }}
 data:
   # Configurazione nginx del frontend: la stessa dell'immagine (fonte
-  # frontend/nginx/default.conf.template, copia in files/nginx/ con
+  # web/nginx/default.conf.template, copia in files/nginx/ con
   # scripts/sincronizza-helm-db.sh). Il chart cambia solo le variabili d'ambiente
   # del Deployment. Montata anche sulle immagini pubblicate prima del modello.
   default.conf.template: |

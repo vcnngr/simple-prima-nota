@@ -1,5 +1,5 @@
 # ==============================================================================
-# nginx del frontend — unica configurazione (blocco S4)
+# nginx del frontend (web/) — unica configurazione (blocco S4; da U6d in web/)
 # ==============================================================================
 # La usano l'immagine (docker compose, podman-compose) e il chart Helm, che ne
 # monta una copia (helm-chart/files/nginx/, scripts/sincronizza-helm-db.sh).
@@ -57,11 +57,11 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     # K5: i link di reset e di conferma portano il token nell'URL: il Referer non
-    # esce dal sito. CSP: script solo dal sito (build con INLINE_RUNTIME_CHUNK=false);
-    # 'unsafe-inline' solo per gli stili (attributi style di React); font di Google
-    # finche' non sono serviti in locale (fase UX).
+    # esce dal sito. CSP: script solo dal sito (la build di Vite non ne mette in
+    # linea); 'unsafe-inline' solo per gli stili (attributi style di React); i font
+    # sono nella build (U3), niente Google (U6d).
     add_header Referrer-Policy "same-origin" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
     add_header Cache-Control $pn_cache_control;
 
     # Un file statico che non c'e' e' un 404, non index.html spacciato per script.

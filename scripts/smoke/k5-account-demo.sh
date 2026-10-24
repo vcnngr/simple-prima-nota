@@ -126,7 +126,7 @@ eq "demo / password: rifiutato dopo la 011" "rifiutato" "$(rifiuto demo password
 # ------------------------------------------------------------------------------
 echo
 echo "=== E. frontend e chart ==="
-eq "login senza credenziali demo" "0" "$(grep -ciE 'credenziali demo|<strong>Password:</strong>' "$R/frontend/src/pages/Auth/LoginPage.js")"
+eq "login senza credenziali demo" "0" "$(cat "$R"/web/src/pagine/Accedi.jsx "$R"/web/src/pagine/Pubbliche.jsx | grep -ciE 'credenziali demo|admin.*demo')"
 eq "migrazione 011 copiata nel chart" "ok" "$(cmp -s "$R/database/migrations/011_account_demo_bloccati.sql" "$R/helm-chart/files/database/migrations/011_account_demo_bloccati.sql" && cmp -s "$R/database/migrations/011_account_demo_bloccati_down.sql" "$R/helm-chart/files/database/migrations/011_account_demo_bloccati_down.sql" && echo ok)"
 
 echo

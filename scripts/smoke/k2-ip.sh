@@ -118,7 +118,7 @@ echo "=== F. nginx del frontend davanti al backend (compose) ==="
 P=$(backend TRUST_PROXY=1 RATE_LIMIT_MAX_REQUESTS=5)
 docker run -d --name "$S-nginx" -p 127.0.0.1::80 --add-host host.docker.internal:host-gateway \
   -e BACKEND_UPSTREAM="host.docker.internal:$P" -e CLIENT_MAX_BODY_SIZE=11m -e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
-  -v "$R/frontend/nginx:/etc/nginx/templates:ro" "$IMG_NGINX" >/dev/null
+  -v "$R/web/nginx:/etc/nginx/templates:ro" "$IMG_NGINX" >/dev/null
 N=$(docker port "$S-nginx" 80/tcp | head -1 | sed 's/.*://')
 for _ in $(seq 1 30); do curl -s --max-time 1 "http://127.0.0.1:$N/health" | grep -q healthy && break; sleep 0.5; done
 MARK="203.0.113.$((RANDOM % 200 + 20))"
@@ -137,7 +137,7 @@ EOF
 PE=$(porta_libera); node "$T/eco.js" "$PE" > /dev/null 2>&1 < /dev/null & echo $! >> "$T/pids"
 docker run -d --name "$S-proto" -p 127.0.0.1::80 --add-host host.docker.internal:host-gateway \
   -e BACKEND_UPSTREAM="host.docker.internal:$PE" -e CLIENT_MAX_BODY_SIZE=11m -e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
-  -v "$R/frontend/nginx:/etc/nginx/templates:ro" "$IMG_NGINX" >/dev/null
+  -v "$R/web/nginx:/etc/nginx/templates:ro" "$IMG_NGINX" >/dev/null
 N=$(docker port "$S-proto" 80/tcp | head -1 | sed 's/.*://')
 for _ in $(seq 1 30); do curl -s --max-time 1 "http://127.0.0.1:$N/health" | grep -q healthy && break; sleep 0.5; done
 pr() { curl -s --max-time 5 "$@" "http://127.0.0.1:$N/api/x"; }

@@ -11,6 +11,10 @@ export const portaleApi = {
   clienti: () => chiama('/commercialisti/dashboard'),
   richieste: () => chiama('/commercialisti/richieste'),
   chiedi: identificativo => chiama('/commercialisti/richieste', { metodo: 'POST', corpo: { identificativo_cliente: identificativo } }),
+  // Codice d'invito creato dal cliente (U6b, /account): apre una richiesta che il cliente accetta (U6d).
+  conCodice: token => chiama('/commercialisti/collega-cliente', { metodo: 'POST', corpo: { token } }),
+  // Fine del collegamento dallo studio (U6d): registrata come accesso `disconnessione`.
+  chiudi: (id, motivo) => chiama(CL(id), { metodo: 'DELETE', corpo: motivo ? { motivo } : {} }),
 
   riepilogo: (id, mese) => chiama(`${CL(id)}/riepilogo`, { params: { mese } }),
   movimenti: (id, pagina = 1, limite = 50) => chiama(CL(id), { params: { page: pagina, limit: limite } }),

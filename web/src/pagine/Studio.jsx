@@ -67,7 +67,7 @@ export function Studio() {
         <div className="space-y-3 py-6 text-center">
           <h1 className="font-importi text-2xl text-secondario">Nessuno studio collegato</h1>
           <p className="text-tenue">Quando il tuo commercialista ti manda una richiesta di collegamento, la trovi qui: scegli tu cosa può vedere.</p>
-          {tutti.filter(c => c.stato === 'revocata' || c.stato === 'rifiutata').slice(0, 3).map(c => <p key={c.id} className="text-sm text-tenue">{nomeStudio(c)}: collegamento {STATI[c.stato]}.</p>)}
+          {tutti.filter(c => c.stato === 'revocata' || c.stato === 'rifiutata').slice(0, 3).map(c => <p key={c.id} className="text-sm text-tenue" data-chiuso={c.id}>{nomeStudio(c)}: collegamento {STATI[c.stato]}{c.stato === 'revocata' && c.revocato_da === 'commercialista' ? ' dallo studio' : ''}.{c.motivo_revoca ? ` «${c.motivo_revoca}»` : ''}</p>)}
         </div>
       )}
 

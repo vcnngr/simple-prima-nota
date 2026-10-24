@@ -17,7 +17,7 @@
 #   API=http://127.0.0.1:3300/api ./scripts/smoke/u3-web.sh
 #
 # La build di web/ di questo checkout la serve un nginx in docker con
-# frontend/nginx/default.conf.template (stessa CSP della produzione), che
+# web/nginx/default.conf.template (stessa CSP della produzione), che
 # inoltra /api al backend di API (BACKEND_UPSTREAM, predefinito
 # host.docker.internal:<porta di API>). Fotografie in FOTO (predefinito: temporanea).
 # Esce 1 se anche un solo caso fallisce.
@@ -76,7 +76,7 @@ echo "=== D. browser ==="
 PORTA_API=$(python3 -c "from urllib.parse import urlparse;print(urlparse('$API').port or 80)")
 docker run -d --name "$NGX" -p 127.0.0.1::80 -e BACKEND_UPSTREAM="${BACKEND_UPSTREAM:-host.docker.internal:$PORTA_API}" \
   -e CLIENT_MAX_BODY_SIZE=11m -e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
-  -v "$D/dist:/usr/share/nginx/html:ro" -v "$R/frontend/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro" \
+  -v "$D/dist:/usr/share/nginx/html:ro" -v "$R/web/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro" \
   docker.io/library/nginx:1.30-alpine >/dev/null 2>&1
 WEB="http://127.0.0.1:$(docker port "$NGX" 80 2>/dev/null | head -1 | sed 's/.*://')"
 for _ in $(seq 1 30); do curl -s --max-time 1 -o /dev/null "$WEB/api/health" && break; sleep 0.5; done

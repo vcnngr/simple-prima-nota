@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Download, Paperclip, Send } from 'lucide-react';
 import { portaleApi } from '../api/portale';
@@ -105,6 +105,12 @@ export function Clienti() {
     mutationFn: () => portaleApi.chiedi(nuovo.trim()),
     onSuccess: () => { setNuovo(''); qc.invalidateQueries({ queryKey: ['portale', 'richieste'] }); }
   });
+  const [codice, setCodice] = useState('');
+  const conCodice = useMutation({
+    mutationFn: () => portaleApi.conCodice(codice.trim()),
+    onSuccess: () => { setCodice(''); qc.invalidateQueries({ queryKey: ['portale'] }); }
+  });
+  const codiceValido = /^[0-9a-f]{64}$/i.test(codice.trim());
   const t = cerca.trim().toLowerCase();
   const filtra = x => !t || x.username.toLowerCase().includes(t) || (x.email || '').toLowerCase().includes(t);
   const clienti = (q.data?.clienti ?? []).filter(filtra);
@@ -151,6 +157,17 @@ export function Clienti() {
         <p className="text-xs text-tenue">Il cliente riceve la richiesta e sceglie lui cosa puoi vedere.</p>
         {chiedi.isSuccess && <p role="status" className="text-sm text-entrata">Richiesta mandata.</p>}
         <Errore e={chiedi.error} />
+      </form>
+      <form className="space-y-2 rounded-2xl border border-bordo bg-superficie p-4" data-codice-invito
+        onSubmit={e => { e.preventDefault(); if (codiceValido && !conCodice.isPending) conCodice.mutate(); }}>
+        <label className="block text-sm"><span className="text-tenue">Hai un codice d'invito del cliente?</span>
+          <input name="codice" value={codice} onChange={e => setCodice(e.target.value)} autoComplete="off" spellCheck={false} maxLength={80}
+            className="mt-1 w-full rounded-xl border border-bordo bg-fondo px-3 py-2 font-mono text-sm" />
+        </label>
+        <button type="submit" disabled={!codiceValido || conCodice.isPending} className="h-11 w-full rounded-xl border border-bordo font-bold text-principale disabled:opacity-40">Usa il codice</button>
+        {codice.trim() && !codiceValido && <p className="text-xs text-tenue">Il codice ha 64 caratteri, cifre e lettere da a a f.</p>}
+        {conCodice.isSuccess && <p role="status" className="text-sm text-entrata" data-codice-esito>{conCodice.data.message}</p>}
+        <Errore e={conCodice.error} />
       </form>
     </div>
   );
@@ -211,7 +228,35 @@ export function Cliente() {
           </Link>
         ))}
       </nav>
+      <ChiudiCollegamento n={n} nome={r?.username || nome} />
     </div>
+  );
+}
+
+// Fine del collegamento dallo studio (U6d): il cliente lo vede nei suoi accessi e
+// lo stato passa a chiuso; per riaprire serve una nuova richiesta accettata.
+function ChiudiCollegamento({ n, nome }) {
+  const qc = useQueryClient();
+  const vai = useNavigate();
+  const [aperto, setAperto] = useState(false);
+  const [motivo, setMotivo] = useState('');
+  const chiudi = useMutation({
+    mutationFn: () => portaleApi.chiudi(n, motivo.trim()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['portale'] }); vai('/studio/clienti', { replace: true }); }
+  });
+  if (!aperto) return <button type="button" data-chiudi-collegamento onClick={() => setAperto(true)} className="w-full py-2 text-sm font-bold text-uscita">Chiudi il collegamento</button>;
+  return (
+    <form className="space-y-2 rounded-2xl border border-uscita bg-uscita/5 p-4" data-conferma-chiusura
+      onSubmit={e => { e.preventDefault(); if (!chiudi.isPending) chiudi.mutate(); }}>
+      <p className="text-sm">Non vedrai più i dati di <b>{nome}</b> e la chat si chiude. Per ricollegarvi servirà una nuova richiesta accettata dal cliente.</p>
+      <textarea name="motivo" value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} maxLength={500}
+        placeholder="Motivo (facoltativo, lo legge il cliente)" aria-label="Motivo" className="w-full rounded-xl border border-bordo bg-fondo px-3 py-2" />
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setAperto(false)} className="flex-1 rounded-xl border border-bordo py-2.5 font-bold">Annulla</button>
+        <button type="submit" data-conferma-chiudi disabled={chiudi.isPending} className="flex-1 rounded-xl bg-uscita py-2.5 font-bold text-fondo disabled:opacity-40">Chiudi</button>
+      </div>
+      <Errore e={chiudi.error} />
+    </form>
   );
 }
 

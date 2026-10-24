@@ -95,12 +95,12 @@ fi
 
 echo
 echo "=== D. immagine del frontend e CSP ==="
-if docker build -q -t "$S-fe" "$R/frontend" > "$T/fe-build.log" 2>&1; then
+if docker build -q -t "$S-fe" "$R/web" > "$T/fe-build.log" 2>&1; then
   ok "immagine costruita"
   PF=$(porta_libera)
   docker run -d --name "$S-fe-run" -p "127.0.0.1:$PF:80" -e BACKEND_UPSTREAM=127.0.0.1:9 "$S-fe" >/dev/null
   for _ in $(seq 1 20); do curl -s -o /dev/null --max-time 1 "http://127.0.0.1:$PF/" && break; sleep 0.3; done
-  curl -sI "http://127.0.0.1:$PF/login" > "$T/h"
+  curl -sI "http://127.0.0.1:$PF/accedi" > "$T/h"
   CSP=$(grep -i '^content-security-policy:' "$T/h" | tr -d '\r')
   eq "CSP: script solo da 'self'" "1" "$(echo "$CSP" | grep -c "script-src 'self';")"
   eq "CSP: nessuna sorgente http:/https: generica" "0" "$(echo "$CSP" | grep -cE "(^| )https?:( |;|$)")"
@@ -115,23 +115,23 @@ if docker build -q -t "$S-fe" "$R/frontend" > "$T/fe-build.log" 2>&1; then
     rm -rf "$T/chrome-$1"
     perl -e 'alarm 20; exec @ARGV' "$CHROME" --headless=new --disable-gpu --no-first-run --user-data-dir="$T/chrome-$1" \
       --enable-logging=stderr --v=1 --virtual-time-budget=5000 --dump-dom "$2" > "$T/$1.html" 2> "$T/$1.err"
-    echo "$(grep -c 'id="root"><div' "$T/$1.html")|$(grep -c 'Content Security Policy' "$T/$1.err")"
+    echo "$(grep -q '<form' "$T/$1.html" && echo 1 || echo 0)|$(grep -c 'Content Security Policy' "$T/$1.err")"
   }
-  for pg in login login/utente login/commercialista register; do
+  for pg in accedi studio/accedi registrati studio/registrati password-dimenticata; do
     eq "Chrome, /$pg: disegnata, 0 violazioni CSP" "1|0" "$(pagina "p${pg//\//_}" "http://127.0.0.1:$PF/$pg")"
   done
   # Controprova: la stessa build con style-src senza 'unsafe-inline' deve dare
   # violazioni, altrimenti il controllo sopra non vedrebbe niente.
   docker exec "$S-fe-run" sh -c "sed -i \"s/style-src 'self' 'unsafe-inline'/style-src 'self'/\" /etc/nginx/conf.d/default.conf && nginx -s reload" >/dev/null 2>&1
   sleep 1
-  V=$(pagina neg "http://127.0.0.1:$PF/login")
+  V=$(pagina neg "http://127.0.0.1:$PF/accedi")
   eq "controprova: CSP piu' stretta -> violazioni viste" "si" "$([ "${V#*|}" -gt 0 ] 2>/dev/null && echo si || echo "no ($V)")"
   pkill -f "$T/chrome-" 2>/dev/null
 else
   ko "immagine costruita" "$(tail -5 "$T/fe-build.log")"
 fi
 eq "copia del chart identica al modello nginx" "si" \
-  "$(cmp -s "$R/frontend/nginx/default.conf.template" "$R/helm-chart/files/nginx/default.conf.template" && echo si || echo no)"
+  "$(cmp -s "$R/web/nginx/default.conf.template" "$R/helm-chart/files/nginx/default.conf.template" && echo si || echo no)"
 
 echo
 echo "================================================"

@@ -3,7 +3,7 @@
 # di PostgreSQL.
 #
 # Verifica:
-#   A. una sola configurazione nginx (frontend/nginx/default.conf.template), copiata
+#   A. una sola configurazione nginx (web/nginx/default.conf.template), copiata
 #      nel chart e senza indirizzi DNS scritti dentro;
 #   B. l'immagine del frontend costruita dal checkout, su una rete Docker con un
 #      finto backend chiamato "backend" come in compose: /api arriva al backend,
@@ -102,14 +102,14 @@ api() { curl -s --max-time 10 "http://127.0.0.1:$1/api/health"; }
 
 # ------------------------------------------------------------------------------
 echo "=== A. una sola configurazione nginx ==="
-TPL="$R/frontend/nginx/default.conf.template"
-eq "frontend/nginx.conf tolto" "0" "$([ -e "$R/frontend/nginx.conf" ] && echo 1 || echo 0)"
+TPL="$R/web/nginx/default.conf.template"
+eq "nessun nginx.conf a parte" "0" "$(ls "$R"/web/nginx.conf "$R"/frontend 2>/dev/null | wc -l | tr -d ' ')"
 eq "modello presente" "1" "$([ -s "$TPL" ] && echo 1 || echo 0)"
 "$R/scripts/sincronizza-helm-db.sh" --verifica > "$T/sync" 2>&1
 eq "copia nel chart allineata (sincronizza --verifica)" "0" "$?"
 eq "nessun DNS scritto (niente 10.89.0.1, niente kube-dns)" "0" "$(grep -cE 'resolver +[0-9]|kube-dns' "$TPL" 2>/dev/null)"
 eq "il chart non ha piu' un nginx suo" "0" "$(grep -c 'server {' "$R/helm-chart/templates/configmap.yaml")"
-eq "il Dockerfile usa il modello" "1" "$(grep -c 'nginx/default.conf.template /etc/nginx/templates/' "$R/frontend/Dockerfile")"
+eq "il Dockerfile usa il modello" "1" "$(grep -c 'nginx/default.conf.template /etc/nginx/templates/' "$R/web/Dockerfile")"
 
 # ------------------------------------------------------------------------------
 echo
@@ -117,7 +117,7 @@ echo "=== B. immagine del frontend (compose) ==="
 IMG="${IMG_FRONTEND:-}"
 if [ -z "$IMG" ]; then
   IMG_COSTRUITA="pn-s4-frontend:$$"; IMG="$IMG_COSTRUITA"
-  docker build -q -t "$IMG" "$R/frontend" > "$T/build" 2>&1
+  docker build -q -t "$IMG" "$R/web" > "$T/build" 2>&1
   eq "build dell'immagine" "0" "$?"
   [ -s "$T/build" ] && tail -3 "$T/build" | grep -i error
 fi
@@ -135,9 +135,9 @@ eq "allegato da 12 MB: fermato da nginx" "413|-" "$(invia "$P" "$T/12mb.bin")"
 eq "index.html: si riconvalida" "no-cache" "$(intestazione "$P" / Cache-Control)"
 eq "rotta dell'app: si riconvalida" "no-cache" "$(intestazione "$P" /movimenti Cache-Control)"
 contiene "rotta dell'app: e' la pagina" "text/html" "$(intestazione "$P" /movimenti Content-Type)"
-JS=$(docker exec "$S-img" sh -c 'ls /usr/share/nginx/html/static/js/main.*.js | head -1' | sed 's#.*/html##')
+JS=$(docker exec "$S-img" sh -c 'ls /usr/share/nginx/html/static/index-*.js | head -1' | sed 's#.*/html##')
 eq "script con hash: immutabile" "public, max-age=31536000, immutable" "$(intestazione "$P" "$JS" Cache-Control)"
-eq "script che non esiste: 404" "404" "$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$P/static/js/non-esiste.js")"
+eq "script che non esiste: 404" "404" "$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' "http://127.0.0.1:$P/static/non-esiste.js")"
 eq "nosniff anche sulle pagine con Cache-Control" "nosniff|nosniff" "$(intestazione "$P" / X-Content-Type-Options)|$(intestazione "$P" "$JS" X-Content-Type-Options)"
 eq "API: nessun Cache-Control aggiunto da nginx" "" "$(intestazione "$P" /api/health Cache-Control)"
 eq "versione di nginx nascosta" "nginx" "$(intestazione "$P" / Server)"
