@@ -543,38 +543,6 @@ router.get('/elenco', validateQuery(schemas.elencoAnagrafiche), async (req, res)
   }
 });
 
-// GET /api/anagrafiche/attive - Solo anagrafiche attive (AGGIORNATO)
-router.get('/attive', async (req, res) => {
-  try {
-    const { tipologia_id } = req.query;
-    
-    let whereCondition = 'a.user_id = $1 AND a.attivo = true';
-    let params = [req.user.id];
-    
-    if (tipologia_id) {
-      whereCondition += ' AND a.tipologia_id = $2';
-      params.push(tipologia_id);
-    }
-    
-    const anagrafiche = await queryAll(`
-      SELECT 
-        a.id, a.nome, a.categoria, a.email, a.telefono,
-        ta.nome as tipologia_nome, 
-        ta.tipo_movimento_default,
-        ta.colore as tipologia_colore,
-        ta.icona as tipologia_icona
-      FROM anagrafiche a
-      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
-      WHERE ${whereCondition}
-      ORDER BY a.nome
-    `, params);
-    
-    res.json(anagrafiche);
-  } catch (error) {
-    logErrore('Error fetching anagrafiche attive', error);
-    res.status(500).json({ error: 'Errore durante il caricamento delle anagrafiche attive' });
-  }
-});
 
 // GET /api/anagrafiche/:id - Dettaglio singola anagrafica (AGGIORNATO)
 router.get('/:id', async (req, res) => {

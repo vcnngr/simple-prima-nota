@@ -70,7 +70,7 @@ U="k1u$SFX"; UT=$(reg_u "$U"); UID_=$(q "SELECT id FROM utenti WHERE username='$
 
 echo
 echo "=== A. token dello studio sulle rotte dell'utente $CID ==="
-for p in auth/profile auth/verify movimenti conti-bancari anagrafiche dashboard auth/backup/export auth/account/stats utenti/collegamenti; do
+for p in auth/profile auth/verify movimenti conti-bancari anagrafiche reports/mesi auth/backup/export auth/account/stats utenti/collegamenti; do
   eq "GET /$p -> 401" "401" "$(code "$CT" "$API/$p")"
 done
 eq "nessun conto della vittima nella risposta" "0" "$(code "$CT" "$API/conti-bancari" >/dev/null; grep -c 'Banca K1' "$T/body")"

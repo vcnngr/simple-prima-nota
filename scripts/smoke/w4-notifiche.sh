@@ -103,7 +103,7 @@ eq "una notifica richiesta_ricevuta per il cliente" "1" \
 eq "la mail arriva al cliente" "1" "$(attendi 1 mail_a "$U@t.it" "chiede di collegarsi")"
 TESTO=$(testo_a "$U@t.it")
 if echo "$TESTO" | grep -q "Studio W4 $SFX"; then ok "la mail nomina lo studio"; else ko "la mail nomina lo studio" "Studio W4 $SFX" "$(echo "$TESTO" | head -c 200)"; fi
-if echo "$TESTO" | grep -q "http://app.test/commercialista-management"; then ok "e porta alla pagina dove si accetta"; else ko "e porta alla pagina dove si accetta" "link" "assente"; fi
+if echo "$TESTO" | grep -qE "http://app.test/studio([[:space:]]|$)"; then ok "e porta alla pagina dove si accetta"; else ko "e porta alla pagina dove si accetta" "link" "assente"; fi
 eq "la riga risulta inviata" "inviata" "$(psql_q -c "SELECT stato FROM notifiche WHERE collegamento_id=$COLL AND evento='richiesta_ricevuta';")"
 eq "nessuna mail allo studio per la propria richiesta" "0" "$(mail_a "$C@t.it")"
 
@@ -140,6 +140,7 @@ eq "non letto da 5 ore -> promemoria allo studio" "1" "$(attendi 1 mail_a "$C@t.
 TESTO=$(testo_a "$C@t.it")   # la piu' recente per lo studio e' il promemoria
 if echo "$TESTO" | grep -q "$SEGRETO"; then ko "il promemoria non riporta il testo della chat" "assente" "presente"; else ok "il promemoria non riporta il testo della chat"; fi
 if echo "$TESTO" | grep -q "Hai 1 messaggi non letti"; then ok "riporta solo quanti sono"; else ko "riporta solo quanti sono" "Hai 1 messaggi non letti" "$(echo "$TESTO" | head -c 200)"; fi
+if echo "$TESTO" | grep -q "http://app.test/studio/messaggi"; then ok "e porta alla chat dello studio (web/, U6d)"; else ko "e porta alla chat dello studio (web/, U6d)" "/studio/messaggi" "$(echo "$TESTO" | grep -o 'http[^ ]*' | head -1)"; fi
 sleep 1.5
 eq "gli stessi messaggi non producono un secondo promemoria" "1" "$(notifiche "c.id=$COLL AND n.evento='messaggi_non_letti' AND n.destinatario_tipo='commercialista'")"
 curl -s -X POST "$API/messaggi?collegamentoId=$COLL" -H "Authorization: Bearer $UT" "${JSON[@]}" -d '{"messaggio":"secondo"}' >/dev/null

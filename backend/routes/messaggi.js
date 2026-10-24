@@ -233,43 +233,6 @@ router.post('/', authEither, validateQuery(schemas.messaggiQuery), validate(sche
   }
 });
 
-// ==============================================================================
-// PUT /api/messaggi/:id/letto - Mark message as read
-// ==============================================================================
-router.put('/:id/letto', authEither, getCollegamentoId, async (req, res) => {
-  try {
-    const messageId = parseInt(req.params.id);
-
-    // Verify message belongs to this connection and is for current user
-    const message = await queryOne(
-      `SELECT id FROM messaggi_commercialista
-       WHERE id = $1
-       AND collegamento_id = $2
-       AND mittente_tipo != $3`,
-      [messageId, req.collegamento_id, req.mittente_tipo]
-    );
-
-    if (!message) {
-      return res.status(404).json({ error: 'Messaggio non trovato' });
-    }
-
-    // Mark as read
-    await query(
-      `UPDATE messaggi_commercialista
-       SET letto = TRUE, data_lettura = NOW()
-       WHERE id = $1`,
-      [messageId]
-    );
-
-    res.json({
-      success: true,
-      message: 'Messaggio contrassegnato come letto'
-    });
-  } catch (error) {
-    logErrore('Mark read error', error);
-    res.status(500).json({ error: 'Errore nell\'aggiornamento del messaggio' });
-  }
-});
 
 // ==============================================================================
 // PUT /api/messaggi/leggi-tutti - Mark all messages as read

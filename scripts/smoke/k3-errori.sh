@@ -80,7 +80,7 @@ for r in movimenti anagrafiche conti-bancari; do
   pulita "GET /$r/<id non numerico>" "4[0-9][0-9]|500" "${AU[@]}" "$API/$r/$URLID"
 done
 pulita "GET /anagrafiche/<id>/statistiche non numerico" "4[0-9][0-9]|500" "${AU[@]}" "$API/anagrafiche/$URLID/statistiche"
-pulita "DELETE /alerts/<id non numerico>" "4[0-9][0-9]|500" -X DELETE "${AU[@]}" "$API/alerts/$URLID"
+pulita "DELETE /categorie-movimenti/<id non numerico>" "4[0-9][0-9]|500" -X DELETE "${AU[@]}" "$API/categorie-movimenti/$URLID"
 pulita "POST /export/generate con conto_id che rompe la query" "4[0-9][0-9]|500" \
   -X POST "${AU[@]}" "${JSON[@]}" $API/export/generate -d "{\"export_type\":\"semplice\",\"conto_id\":\"$VAL\",\"tutto_storico\":true,\"ordina_per\":\"data\",\"ordine\":\"desc\",\"formato\":\"json\"}"
 pulita "POST /export/preview con conto_id che rompe la query" "4[0-9][0-9]|500" \

@@ -768,35 +768,6 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
 // Tutti gli altri endpoint (recenti, :id, POST, PUT, DELETE, bulk, statistiche) 
 // rimangono INVARIATI tranne le query che ora includono tipologie nelle JOIN
           
-// GET /api/movimenti/recenti - Ultimi movimenti (AGGIORNATO CON TIPOLOGIE)
-router.get('/recenti', async (req, res) => {
-            try {
-              const { limit = 10 } = req.query;
-              
-              const movimenti = await queryAll(`
-      SELECT 
-        m.*,
-        to_char(m.data, 'YYYY-MM-DD') AS giorno,
-        a.nome as anagrafica_nome,
-        ta.nome as tipologia_nome,
-        ta.colore as tipologia_colore,
-        ta.icona as tipologia_icona,
-        cc.nome_banca
-      FROM movimenti m
-      LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
-      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
-      LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
-      WHERE m.user_id = $1
-      ORDER BY m.created_at DESC
-      LIMIT $2
-    `, [req.user.id, limit]);
-                
-                res.json(movimenti);
-              } catch (error) {
-                logErrore('Error fetching movimenti recenti', error);
-                res.status(500).json({ error: 'Errore durante il caricamento dei movimenti recenti' });
-              }
-});
             
 // GET /api/movimenti/:id - Dettaglio singolo movimento (AGGIORNATO)
 router.get('/:id', async (req, res) => {
@@ -1037,38 +1008,6 @@ res.status(500).json({ error: 'Errore durante l\'eliminazione del movimento' });
                   }
 });
                 
-// GET /api/movimenti/statistiche/mensili - Statistiche mensili (INVARIATO)
-router.get('/statistiche/mensili', async (req, res) => {
-                  try {
-const { mesi = 12, conto_id } = req.query;
-
-let whereCondition = 'user_id = $1 AND data >= CURRENT_DATE - INTERVAL \'$2 months\'';
-let params = [req.user.id, parseInt(mesi)];
-
-if (conto_id) {
-  whereCondition += ' AND conto_id = $3';
-  params.push(conto_id);
-}
-
-const statistiche = await queryAll(`
-      SELECT 
-        DATE_TRUNC('month', data) as mese,
-        COUNT(*) as numero_movimenti,
-        SUM(CASE WHEN tipo = 'Entrata' THEN importo ELSE 0 END) as entrate,
-        SUM(CASE WHEN tipo = 'Uscita' THEN importo ELSE 0 END) as uscite,
-        SUM(CASE WHEN tipo = 'Entrata' THEN importo ELSE -importo END) as saldo_netto
-      FROM movimenti 
-      WHERE ${whereCondition}
-      GROUP BY DATE_TRUNC('month', data)
-      ORDER BY mese DESC
-    `, params);
-  
-  res.json(statistiche);
-} catch (error) {
-  logErrore('Error fetching statistiche mensili', error);
-  res.status(500).json({ error: 'Errore durante il caricamento delle statistiche mensili' });
-}
-});
 
 
 module.exports = router;

@@ -73,6 +73,13 @@ curl -s -X PUT "$API/utenti/collegamenti/$CX_/accetta" -H "Authorization: Bearer
 eq "collegamenti: U attivo, W in attesa, X attivo con l'altro studio" "attiva|in_attesa|attiva" \
   "$(q "SELECT string_agg(stato, '|' ORDER BY array_position(ARRAY[$CU,$CW,$CX_], id)) FROM collegamenti_commercialista WHERE id IN ($CU,$CW,$CX_)")"
 QS="userId=$UID_"; QU="collegamentoId=$CU"
+# U6d: Y ha un codice d'invito che lo studio usa dal browser; Z e' attivo e lo
+# studio chiude il collegamento dalla scheda.
+Y="u6cy$SFX"; Z="u6cz$SFX"; YT=$(reg_u "$Y"); ZT=$(reg_u "$Z"); YID=$(uid "$Y"); ZID=$(uid "$Z")
+CODICE=$(curl -s -X POST "$API/utenti/genera-token-invito" -H "Authorization: Bearer $YT" "${JSON[@]}" -d '{}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])" 2>/dev/null)
+CZ=$(richiesta "$ST" "$Z" "$ZT")
+curl -s -X PUT "$API/utenti/collegamenti/$CZ/accetta" -H "Authorization: Bearer $ZT" "${JSON[@]}" -d '{}' >/dev/null
+eq "U6d: codice d'invito di Y (64 esadecimali), Z attivo" "64|attiva" "$(printf %s "$CODICE" | grep -cE '^[0-9a-f]{64}$' | sed 's/1/64/')|$(q "SELECT stato FROM collegamenti_commercialista WHERE id=$CZ")"
 
 echo
 echo "=== A. Da fare ==="
@@ -162,7 +169,7 @@ WEB="http://127.0.0.1:$(docker port "$NGX" 80 2>/dev/null | head -1 | sed 's/.*:
 for _ in $(seq 1 40); do [ "$(curl -s --max-time 1 -o /dev/null -w '%{http_code}' "$WEB/api/health")" = 200 ] && break; sleep 0.5; done
 eq "nginx con la CSP del progetto" "200" "$(curl -s -o /dev/null -w '%{http_code}' "$WEB/api/health")"
 EXPORT_PRIMA=$(q "SELECT count(*) FROM accessi_commercialista WHERE collegamento_id=$CU AND tipo_accesso='export'")
-WEB="$WEB" CHROME="$CHROME" PROFILO="$T/chrome" FOTO="$FOTO" STUDIO="$S" PW="$PW" CLIENTE="$UID_" NOME="$U" \
+WEB="$WEB" CHROME="$CHROME" PROFILO="$T/chrome" FOTO="$FOTO" STUDIO="$S" PW="$PW" CLIENTE="$UID_" NOME="$U" CODICE="$CODICE" CHIUDI="$ZID" \
   browser node "$R/scripts/smoke/lib/u6c-browser.mjs"
 echo "  fotografie: $FOTO"
 
@@ -174,6 +181,14 @@ eq "export dal browser: registrato, 2 righe" "$((EXPORT_PRIMA+1))|2" \
   "$(q "SELECT count(*)||'|'||coalesce((SELECT numero_record FROM accessi_commercialista WHERE collegamento_id=$CU AND tipo_accesso='export' ORDER BY id DESC LIMIT 1)::text,'-') FROM accessi_commercialista WHERE collegamento_id=$CU AND tipo_accesso='export'")"
 eq "messaggio dal browser e chiarimento risolto" "1|3" \
   "$(q "SELECT (SELECT count(*) FROM messaggi_commercialista WHERE collegamento_id=$CU AND messaggio='Grazie, guardo domani.')||'|'||(SELECT count(*) FROM messaggi_commercialista WHERE collegamento_id=$CU AND chiarimento_stato='aperta')")"
+eq "U6d, codice dal browser: richiesta di S a Y in attesa, codice usato" "in_attesa|usato" \
+  "$(q "SELECT c.stato||'|'||(SELECT stato FROM token_inviti WHERE user_id=$YID ORDER BY id DESC LIMIT 1) FROM collegamenti_commercialista c JOIN commercialisti s ON s.id=c.commercialista_id WHERE c.user_id=$YID AND s.username='$S'")"
+eq "U6d, chiuso dal browser: revocata dallo studio, motivo, accesso registrato" "revocata|commercialista|Fine incarico|1" \
+  "$(q "SELECT stato||'|'||revocato_da||'|'||coalesce(motivo_revoca,'-')||'|'||(SELECT count(*) FROM accessi_commercialista WHERE collegamento_id=$CZ AND tipo_accesso='disconnessione') FROM collegamenti_commercialista WHERE id=$CZ")"
+hit "${AS[@]}" "$API/commercialisti/clienti/$ZID/riepilogo" >/dev/null
+eq "U6d, dopo la chiusura: lo studio non legge piu' Z (403)" "403" "$(hit "${AS[@]}" "$API/commercialisti/clienti/$ZID/riepilogo")"
+eq "U6d, il cliente vede chi ha chiuso e il motivo" "commercialista|Fine incarico" \
+  "$(curl -s "$API/utenti/collegamenti" -H "Authorization: Bearer $ZT" | python3 -c "import sys,json;c=[x for x in json.load(sys.stdin)['collegamenti'] if x['id']==$CZ][0];print(c['revocato_da'],c['motivo_revoca'],sep='|')" 2>/dev/null)"
 eq "aprendo la chat i messaggi del cliente sono letti" "0" "$(q "SELECT count(*) FROM messaggi_commercialista WHERE collegamento_id=$CU AND mittente_tipo='user' AND letto=false")"
 
 echo

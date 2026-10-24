@@ -120,9 +120,10 @@ if docker build -q -t "$S-fe" "$R/web" > "$T/fe-build.log" 2>&1; then
   for pg in accedi studio/accedi registrati studio/registrati password-dimenticata; do
     eq "Chrome, /$pg: disegnata, 0 violazioni CSP" "1|0" "$(pagina "p${pg//\//_}" "http://127.0.0.1:$PF/$pg")"
   done
-  # Controprova: la stessa build con style-src senza 'unsafe-inline' deve dare
-  # violazioni, altrimenti il controllo sopra non vedrebbe niente.
-  docker exec "$S-fe-run" sh -c "sed -i \"s/style-src 'self' 'unsafe-inline'/style-src 'self'/\" /etc/nginx/conf.d/default.conf && nginx -s reload" >/dev/null 2>&1
+  eq "CSP: stili solo da 'self' (niente 'unsafe-inline', U6d)" "1|0" "$(echo "$CSP" | grep -c "style-src 'self';")|$(echo "$CSP" | grep -c "unsafe-inline")"
+  # Controprova: la stessa build con script-src 'none' deve dare violazioni,
+  # altrimenti il controllo sopra non vedrebbe niente.
+  docker exec "$S-fe-run" sh -c "sed -i \"s/script-src 'self'/script-src 'none'/\" /etc/nginx/conf.d/default.conf && nginx -s reload" >/dev/null 2>&1
   sleep 1
   V=$(pagina neg "http://127.0.0.1:$PF/accedi")
   eq "controprova: CSP piu' stretta -> violazioni viste" "si" "$([ "${V#*|}" -gt 0 ] 2>/dev/null && echo si || echo "no ($V)")"

@@ -72,9 +72,11 @@ function componi(n, appUrl) {
   const studio = pulisci(n.ragione_sociale || n.commercialista_username);
   const cliente = pulisci(n.user_username);
   const firma = '\n\n— Simple Prima Nota\nQuesta e\' una notifica automatica: non rispondere a questo indirizzo.';
+  // Pagine di web/ (U6d): l'utente risponde e gestisce i permessi da /studio,
+  // lo studio trova i clienti in /studio/clienti.
   const link = n.destinatario_tipo === 'user'
-    ? `${appUrl}/commercialista-management`
-    : `${appUrl}/commercialista/dashboard`;
+    ? `${appUrl}/studio`
+    : `${appUrl}/studio/clienti`;
 
   switch (n.evento) {
     case 'richiesta_ricevuta':
@@ -127,7 +129,7 @@ function componi(n, appUrl) {
       const da = n.destinatario_tipo === 'user' ? `dallo studio ${studio}` : `dal cliente ${cliente}`;
       const chat = n.destinatario_tipo === 'user'
         ? `${appUrl}/chat`
-        : `${appUrl}/commercialista/chat`;
+        : `${appUrl}/studio/messaggi`;
       return {
         subject: `Hai messaggi non letti ${da}`,
         text: `Hai ${n.non_letti} messaggi non letti ${da}.\n${chat}${firma}`

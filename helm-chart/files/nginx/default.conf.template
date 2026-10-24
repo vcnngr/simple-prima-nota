@@ -57,11 +57,11 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     # K5: i link di reset e di conferma portano il token nell'URL: il Referer non
-    # esce dal sito. CSP: script solo dal sito (la build di Vite non ne mette in
-    # linea); 'unsafe-inline' solo per gli stili (attributi style di React); i font
-    # sono nella build (U3), niente Google (U6d).
+    # esce dal sito. CSP: script e stili solo dal sito (U6d: la build di Vite non
+    # mette niente in linea e React scrive gli stili via CSSOM, che la CSP non
+    # blocca: 'unsafe-inline' non serve piu'); i font sono nella build, niente Google.
     add_header Referrer-Policy "same-origin" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'" always;
     add_header Cache-Control $pn_cache_control;
 
     # Un file statico che non c'e' e' un 404, non index.html spacciato per script.

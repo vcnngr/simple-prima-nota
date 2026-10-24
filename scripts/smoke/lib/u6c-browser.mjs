@@ -1,7 +1,8 @@
 // Parte nel browser dello smoke U6c (scripts/smoke/u6c-studio.sh): portale dello
 // studio. Da fare, clienti, scheda del cliente, movimenti in sola lettura con
 // «Chiedi un chiarimento», export, chat, accessi; 390 px e CSP.
-// Ambiente: WEB, CHROME, PROFILO, FOTO, STUDIO, PW, CLIENTE (id), NOME (username).
+// Ambiente: WEB, CHROME, PROFILO, FOTO, STUDIO, PW, CLIENTE (id), NOME (username),
+// CODICE (codice d'invito di un altro cliente), CHIUDI (id del cliente da scollegare). D7-D8: U6d.
 import { avvia } from './cdp.mjs';
 
 const E = process.env;
@@ -128,6 +129,35 @@ try {
   eq('cliente non collegato: errore, nessun dato', 'true', await p.aspetta("document.querySelector('[role=alert]')"));
   await p.vai(E.WEB + '/studio/clienti/abc');
   eq('id non valido: cliente non trovato', 'true', await p.aspetta("document.querySelector('[data-cliente-assente]')"));
+
+  console.log('=== D7. codice d\'invito (U6d) ===');
+  await p.vai(E.WEB + '/studio/clienti');
+  await p.aspetta("document.querySelector('[data-codice-invito] input[name=codice]')");
+  await p.scrivi('[data-codice-invito] input[name=codice]', 'abc123');
+  eq('codice incompleto: «Usa il codice» spento', 'true', await p.valuta("document.querySelector('[data-codice-invito] button[type=submit]').disabled"));
+  await p.scrivi('[data-codice-invito] input[name=codice]', ' ' + E.CODICE + ' ');
+  eq('codice completo: acceso', 'false', await p.valuta("document.querySelector('[data-codice-invito] button[type=submit]').disabled"));
+  await p.clic('[data-codice-invito] button[type=submit]');
+  eq('codice usato: richiesta mandata al cliente', 'true', await p.aspetta("document.querySelector('[data-codice-esito]')?.textContent.includes('Richiesta inviata')"));
+  eq('il campo si svuota', '', await p.valuta("document.querySelector('[data-codice-invito] input[name=codice]').value"));
+  await p.scrivi('[data-codice-invito] input[name=codice]', E.CODICE);
+  await p.clic('[data-codice-invito] button[type=submit]');
+  eq('stesso codice di nuovo: errore, nessun 500', 'true', await p.aspetta("document.querySelector('[data-codice-invito] [role=alert]')"));
+  await stretto('Clienti con il codice');
+  await foto('codice-invito');
+
+  console.log('=== D8. chiudi il collegamento (U6d) ===');
+  await p.vai(E.WEB + `/studio/clienti/${E.CHIUDI}`);
+  await p.aspetta("document.querySelector('[data-chiudi-collegamento]')");
+  await p.clic('[data-chiudi-collegamento]');
+  eq('conferma prima di chiudere', 'true', await p.aspetta("document.querySelector('[data-conferma-chiusura]')"));
+  await p.scrivi('[data-conferma-chiusura] textarea[name=motivo]', 'Fine incarico');
+  await stretto('Chiudi il collegamento');
+  await foto('chiudi-collegamento');
+  await p.clic('[data-conferma-chiudi]');
+  eq('chiuso: torna ai clienti, il cliente non c\'e\' piu\'', '/studio/clienti|0',
+    (await p.aspetta(`location.pathname === '/studio/clienti' && document.querySelector('[data-clienti]')?.dataset.clienti !== '' && !document.querySelector('[data-cliente="${E.CHIUDI}"]')`))
+    && `${await p.valuta('location.pathname')}|${await n(`[data-cliente="${E.CHIUDI}"]`)}`);
   eq('zero violazioni CSP', 0, p.violazioni.length);
   if (p.violazioni.length) console.log(p.violazioni.slice(0, 5));
 } catch (e) {

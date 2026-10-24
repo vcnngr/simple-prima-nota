@@ -520,51 +520,6 @@ router.delete('/collegamenti/:id', auth, validate(schemas.collegamentoMotivo), a
 // Vanno via con il ridisegno UX, quando la pagina passera' alla lista.
 // ==============================================================================
 
-// GET /api/utenti/commercialista - primo collegamento attivo
-router.get('/commercialista', auth, async (req, res) => {
-  try {
-    const commercialista = await queryOne(
-      `SELECT c.id, c.username, c.email, c.ragione_sociale, c.partita_iva, c.telefono,
-              col.id AS collegamento_id, col.stato, col.data_accettazione AS data_collegamento,
-              (col.stato = 'attiva') AS attivo
-       FROM commercialisti c
-       JOIN collegamenti_commercialista col ON col.commercialista_id = c.id
-       WHERE col.user_id = $1 AND col.stato = 'attiva'
-       ORDER BY col.data_accettazione DESC NULLS LAST, col.id DESC
-       LIMIT 1`,
-      [req.user.id]
-    );
 
-    res.json({
-      success: true,
-      has_commercialista: !!commercialista,
-      commercialista
-    });
-  } catch (error) {
-    logErrore('Get commercialista error', error);
-    res.status(500).json({ error: 'Errore nel recupero delle informazioni del commercialista' });
-  }
-});
-
-// DELETE /api/utenti/commercialista - revoca tutti i collegamenti aperti
-router.delete('/commercialista', auth, async (req, res) => {
-  try {
-    const result = await query(
-      `UPDATE collegamenti_commercialista
-       SET stato = 'revocata', data_revoca = NOW(), revocato_da = 'user'
-       WHERE user_id = $1 AND stato IN ('in_attesa','attiva','sospesa')`,
-      [req.user.id]
-    );
-
-    res.json({
-      success: true,
-      message: 'Collegamento con commercialista rimosso',
-      revocati: result.rowCount
-    });
-  } catch (error) {
-    logErrore('Disconnect commercialista error', error);
-    res.status(500).json({ error: 'Errore nella rimozione del collegamento' });
-  }
-});
 
 module.exports = router;

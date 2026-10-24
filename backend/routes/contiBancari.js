@@ -108,59 +108,6 @@ router.get('/attivi', async (req, res) => {
   }
 });
 
-// GET /api/conti-bancari/dropdown - Lista ottimizzata per dropdown
-router.get('/dropdown', auth, async (req, res) => {
-  try {
-    const conti = await queryAll(`
-      SELECT 
-        id,
-        nome_banca,
-        intestatario,
-        iban,
-        saldo_iniziale,
-        attivo,
-        created_at,
-        -- Calcola saldo corrente
-        (
-          SELECT COALESCE(
-            saldo_iniziale + 
-            SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE -m.importo END), 
-            saldo_iniziale
-          )
-          FROM movimenti m 
-          WHERE m.conto_id = cc.id
-        ) as saldo_corrente
-      FROM conti_correnti cc
-      WHERE user_id = $1 AND attivo = true
-      ORDER BY 
-        -- Conto Principale sempre primo
-        CASE WHEN nome_banca = 'Conto Principale' THEN 0 ELSE 1 END,
-        -- Poi per data creazione (più recenti prima)
-        created_at DESC,
-        -- Infine alfabetico
-        nome_banca ASC
-    `, [req.user.id]);
-
-    // Formatta per dropdown con label descrittiva
-    const contiFormatted = conti.map(conto => ({
-      ...conto,
-      // Label completa per dropdown
-      label: `${conto.nome_banca}${conto.intestatario ? ` - ${conto.intestatario}` : ''}`,
-      // Saldo formattato per visualizzazione
-      saldo_formattato: `€${parseFloat(conto.saldo_corrente || 0).toLocaleString('it-IT', { 
-        minimumFractionDigits: 2 
-      })}`
-    }));
-
-    res.json(contiFormatted);
-    
-  } catch (error) {
-    logErrore('Error fetching conti for dropdown', error);
-    res.status(500).json({ 
-      error: 'Errore durante il caricamento dei conti'
-    });
-  }
-});
 
 // GET /api/conti-bancari/:id - Dettaglio singolo conto
 router.get('/:id', async (req, res) => {
@@ -363,52 +310,5 @@ router.patch('/:id/toggle-stato', async (req, res) => {
   }
 });
 
-// GET /api/conti-bancari/:id/saldo-storico - Storico saldi (ultimi 12 mesi)
-router.get('/:id/saldo-storico', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // Verifica che il conto appartenga all'utente
-    const conto = await queryOne(
-      'SELECT saldo_iniziale FROM conti_correnti WHERE id = $1 AND user_id = $2',
-      [id, req.user.id]
-    );
-    
-    if (!conto) {
-      return res.status(404).json({ error: 'Conto bancario non trovato' });
-    }
-    
-    const storicoSaldi = await queryAll(`
-      WITH monthly_movements AS (
-        SELECT 
-          DATE_TRUNC('month', data) as mese,
-          SUM(CASE WHEN tipo = 'Entrata' THEN importo ELSE -importo END) as saldo_mese
-        FROM movimenti 
-        WHERE conto_id = $1 
-          AND data >= CURRENT_DATE - INTERVAL '12 months'
-        GROUP BY DATE_TRUNC('month', data)
-        ORDER BY mese
-      ),
-      running_totals AS (
-        SELECT 
-          mese,
-          saldo_mese,
-          SUM(saldo_mese) OVER (ORDER BY mese) + $2 as saldo_progressivo
-        FROM monthly_movements
-      )
-      SELECT 
-        TO_CHAR(mese, 'YYYY-MM') as mese,
-        saldo_mese,
-        saldo_progressivo
-      FROM running_totals
-      ORDER BY mese
-    `, [id, conto.saldo_iniziale]);
-    
-    res.json(storicoSaldi);
-  } catch (error) {
-    logErrore('Error fetching saldo storico', error);
-    res.status(500).json({ error: 'Errore durante il caricamento dello storico saldi' });
-  }
-});
 
 module.exports = router;
