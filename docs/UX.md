@@ -61,7 +61,7 @@ codice di prima.
 | U5 ✅ | Pagine dell'utente | movimenti con filtri, modifica ed eliminazione, controparti, report a flusso, studio | `scripts/smoke/u5-pagine.sh` |
 | U6a ✅ | Registro dell'utente | collegamento con lo studio (richiesta in 3 passi, permessi: periodo e conti, sospendi, chiudi; `PUT /utenti/collegamenti/:id/ambito`), 📎 e Documenti nella chat (`GET /messaggi/documenti`), «+ Crea» nel selettore e modifica della controparte, conti come carte e pagina del conto | `scripts/smoke/u6a-registro.sh` |
 | U6b ✅ | Account e archivio | registrazione, password dimenticata, conferma email, profilo (password, email, eliminazione), inviti allo studio, categorie e tipologie, import con anteprima, export, copia di sicurezza | `scripts/smoke/u6b-account.sh`, `scripts/smoke/u6b-archivio.sh` |
-| U6c | Portale dello studio | home «Da fare», clienti, scheda del cliente come riepilogo, movimenti in sola lettura con «Chiedi un chiarimento», export registrati, chat con 📎 e Documenti, accessi; orari letti come UTC | `scripts/smoke/u6c-studio.sh` |
+| U6c ✅ | Portale dello studio | home «Da fare», clienti, scheda del cliente come riepilogo, movimenti in sola lettura con «Chiedi un chiarimento», export registrati, chat con 📎 e Documenti, accessi; orari letti come UTC | `scripts/smoke/u6c-studio.sh` |
 | U6d | Via il vecchio frontend | `web/` in compose e chart al posto di `frontend/`; tolti gli endpoint rimasti per lui | da scrivere |
 
 ## U1 — Ricerca e paginazione
@@ -386,7 +386,9 @@ Tavole scelte il 22/10: 5 C (home «Da fare») e 6 C (scheda del cliente come ri
 
 **Prova**: `scripts/smoke/u6c-studio.sh` (80 controlli: API, browser con nginx e CSP, database),
 backend `TZ=America/Los_Angeles`. Sul codice di prima (0f5cc1c): 28 FAIL su 31 controlli API, fra cui
-i 3 sugli orari. Smoke toccati: U3 (home dello studio `/studio/da-fare`), U4 (aspetta anche la riga
+i 3 sugli orari. Review GREEN (t_8c8110d6, 24/10/2026) su 6752b9d: 0 P0, regressioni
+W1–W6, K1, K3, U1–U6c 1315/0, letture U6c fail-closed con registro accessi indisponibile.
+Smoke toccati: U3 (home dello studio `/studio/da-fare`), U4 (aspetta anche la riga
 registrata, non solo il saldo: corsa vista una volta sotto carico), `lib/cdp.mjs` (`scrivi` anche
 nelle textarea).
 
