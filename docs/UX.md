@@ -422,7 +422,9 @@ nelle textarea).
 **Prova**: `u6c-studio.sh` con D7 (codice d'invito) e D8 (chiusura) nel browser e i controlli sul
 database; `s4-deploy.sh`, `k5-deploy.sh` (immagine da `web/`, CSP), `k4-dipendenze.sh` (`npm audit`
 di `web/`: 0), `w4-notifiche.sh` (link nelle mail). Regressioni complete con backend
-`TZ=America/Los_Angeles`.
+`TZ=America/Los_Angeles`. Review GREEN (t_3843ba4e, 24/10/2026) su 31b51cf: 0 P0, W1–W6, K1–K5,
+S4, U3–U6c 1382/0; nessun endpoint tolto chiamato da `web/src`; immagine `web/` costruita da pulito.
+Con U6d la fase UX (U1–U6) e' chiusa.
 
 ## Fase APP — app iOS (dopo U6)
 
