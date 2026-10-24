@@ -54,6 +54,13 @@ b64u() { printf '%s' "$1" | base64 | tr '+/' '-_' | tr -d '=\n'; }
 
 echo "=== setup (suffisso $SFX) ==="
 C="k1c$SFX"; CT=$(reg_c "$C"); CID=$(q "SELECT id FROM commercialisti WHERE username='$C'")
+# Su un database gia' usato gli id degli utenti possono aver superato quelli
+# degli studi: si porta avanti la sequenza degli studi oltre l'ultimo utente.
+MAXU=$(q "SELECT coalesce(max(id),0) FROM utenti")
+if [ -n "$CID" ] && [ "$CID" -le "$MAXU" ]; then
+  q "SELECT setval('commercialisti_id_seq', $MAXU)" >/dev/null
+  C="k1d$SFX"; CT=$(reg_c "$C"); CID=$(q "SELECT id FROM commercialisti WHERE username='$C'")
+fi
 eq "studio registrato" "1" "$([ -n "$CID" ] && [ "$CT" != "-" ] && echo 1 || echo 0)"
 # Serve un utente con lo stesso id dello studio: se non c'e' ancora, se ne
 # registrano finche' la sequenza lo raggiunge.

@@ -75,7 +75,7 @@ eq "dati di prova" "3506|40" "$TOT|$(q "SELECT count(*) FROM movimenti WHERE use
 echo
 echo "=== A. id non interi nel percorso ==="
 for r in "GET movimenti/abc" "GET anagrafiche/1.5" "GET conti-bancari/99999999999" "GET anagrafiche/tipologie/x" \
-         "DELETE alerts/abc" "PUT categorie-movimenti/-1" "GET anagrafiche/0/movimenti" "DELETE utenti/token-inviti/abc"; do
+         "DELETE categorie-movimenti/abc" "PUT categorie-movimenti/-1" "GET anagrafiche/0/movimenti" "DELETE utenti/token-inviti/abc"; do
   set -- $r
   eq "$1 /$2 -> 400" "400" "$(hit -X "$1" "${AU[@]}" "${JSON[@]}" -d '{}' "$API/$2")"
 done
