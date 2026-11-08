@@ -461,6 +461,26 @@ progressivo con cursore, filtri, conto disattivato, isolamento; riepilogo con ch
 collegamento attivo e revocato; nel browser tabella a 1366 px, lista a 390 px, carte dei conti,
 filtro «da chiarire», `/movimenti` portato al Registro, dimensione del testo, CSP.
 
+## U7b — Piu' conti insieme (08/11/2026)
+
+Richiesta del titolare dopo U7: vedere il totale di alcuni conti (per esempio tutti tranne le
+anticipazioni), senza togliere niente dal saldo di tutti i conti.
+
+- Backend, nessuna migrazione: `GET /movimenti?conti=3,5,9` (al piu' 50 id, doppioni ignorati,
+  in alternativa a `conto_id`: tutti e due insieme 400). Righe dei soli conti scelti e saldo
+  progressivo dei soli conti scelti (somma dei loro saldi iniziali + i loro movimenti, calcolato su
+  tutti i loro movimenti e poi filtrato). Conti di altri utenti ignorati (filtro `user_id`).
+  `conto_id` resta e vale come `conti` con un solo id.
+- `GET /reports/riepilogo?conti=3,5`: in piu' `saldo_scelti`, e `mese`/`mese_precedente` dei conti
+  scelti; `saldo_totale` e `conti` restano di tutti.
+- Frontend: nel Registro `?conto=3,5` (un solo id come prima, link vecchi validi). Le carte della
+  fascia si aggiungono o si tolgono dalla scelta, «Tutti i conti» la svuota; saldo grande «Saldo di
+  N conti»; da computer il pulsante «Conti» apre un pannello con la scelta multipla; al telefono il
+  pannello dei filtri ha la stessa scelta. Colonna Conto nella tabella quando i conti sono piu' d'uno.
+
+**Prova**: `scripts/smoke/u7b-conti.sh` (API e browser a 1366 e 390 px): 56/0; sul codice di
+v0.6.1 33 FAIL.
+
 ## Fase APP — app iOS (dopo U6)
 
 Ratificata il 09/10/2026; non parte prima della fine di U6.
