@@ -426,6 +426,41 @@ di `web/`: 0), `w4-notifiche.sh` (link nelle mail). Regressioni complete con bac
 S4, U3–U6c 1382/0; nessun endpoint tolto chiamato da `web/src`; immagine `web/` costruita da pulito.
 Con U6d la fase UX (U1–U6) e' chiusa.
 
+## U7 — Il Registro (08/11/2026)
+
+Dopo il rilascio di v0.6.0 il titolare ha visto la versione da computer: colonna del telefono
+allargata, testo piccolo, nessun saldo complessivo (il vecchio cruscotto era stato tolto in U6d).
+Tavole in `tmp/mockup/u7/` (A Registro, B Cruscotto, C Dare e avere, 1366×768 + 390 px): scelta
+**A, con i colori del tema Registro** (Bottega resta nelle Impostazioni).
+
+- **Pagina iniziale = Registro** (`web/src/pagine/Registro.jsx`, era `Movimenti.jsx`): fascia dei
+  saldi (`componenti/Fascia.jsx`: saldo di tutti i conti, una carta per conto che filtra il
+  Registro, entrate e uscite del mese con il mese prima, richieste aperte dello studio), poi i
+  movimenti. Da `lg` (1024 px) una tabella a tutta larghezza (`componenti/TabellaRegistro.jsx`:
+  Data, Controparte e descrizione, Categoria, Conto, Entrate, Uscite, Saldo, a gruppi di giorno);
+  sotto, la lista del telefono con il saldo su ogni riga e a fine giornata. Se ne disegna una sola.
+- La pagina Estratto e' tolta: l'estratto di un conto e' il Registro con la carta del conto
+  (`/?conto=<id>`). `/movimenti` porta a `/` con gli stessi filtri (link vecchi). Le quattro viste
+  delle righe restano per la pagina Conti.
+- Navigazione: Prima nota, Conti, Controparti (solo da md), Report, Studio. Da `lg` niente testata:
+  Impostazioni in fondo alla colonna.
+- **Backend**: `GET /movimenti` senza conto da' il saldo progressivo di tutti i conti (saldi iniziali
+  di tutti i conti dell'utente, anche disattivati, piu' i movimenti in ordine data, id; calcolato su
+  tutto e poi filtrato, come per il conto). `GET /reports/riepilogo`: `saldo_totale`, `conti` (con
+  `attivo` e `saldo`), `mese` e `mese_precedente` (`YYYY-MM`, numero, entrate, uscite come testo),
+  `da_chiarire` (movimenti con una richiesta W5 aperta su collegamento attivo). Nessuna migrazione.
+- **Testo**: radice a 17 px da `lg`; «Dimensione del testo» nelle Impostazioni (Normale, Grande,
+  Molto grande = 100/112,5/125 %), del dispositivo (`localStorage.pn_testo`), applicata prima del
+  primo disegno da `public/tema-iniziale.js`.
+- **Cifre**: Source Serif 4 di fontsource ha solo cifre «all'antica»: nel tema Registro gli importi
+  usano Public Sans (`--pn-font-cifre`, cifre allineate e della stessa larghezza); Bottega resta su
+  Fraunces.
+
+**Prova**: `scripts/smoke/u7-registro.sh` (57/0; sul codice di prima 24 fallimenti): saldo
+progressivo con cursore, filtri, conto disattivato, isolamento; riepilogo con chiarimenti su
+collegamento attivo e revocato; nel browser tabella a 1366 px, lista a 390 px, carte dei conti,
+filtro «da chiarire», `/movimenti` portato al Registro, dimensione del testo, CSP.
+
 ## Fase APP — app iOS (dopo U6)
 
 Ratificata il 09/10/2026; non parte prima della fine di U6.
