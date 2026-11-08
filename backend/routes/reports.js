@@ -113,6 +113,59 @@ router.get('/mese', validateQuery(meseSchema), async (req, res) => {
   }
 });
 
+// GET /api/reports/riepilogo - Fascia del Registro (U7): saldo di tutti i conti,
+// saldo di ogni conto, entrate e uscite del mese corrente e del precedente,
+// richieste di chiarimento aperte dello studio. Importi come testo (DECIMAL).
+// Il totale comprende anche i conti disattivati: e' il saldo da cui parte il
+// saldo progressivo di GET /movimenti senza conto.
+router.get('/riepilogo', async (req, res) => {
+  try {
+    const conti = await queryAll(`
+      SELECT cc.id, cc.nome_banca, cc.intestatario, cc.attivo,
+             calcola_saldo_conto(cc.id) AS saldo
+      FROM conti_correnti cc
+      WHERE cc.user_id = $1
+      ORDER BY cc.attivo DESC, cc.nome_banca, cc.intestatario, cc.id
+    `, [req.user.id]);
+    const mesi = await queryAll(`
+      WITH elenco AS (
+        SELECT (date_trunc('month', CURRENT_DATE) - make_interval(months => g))::date AS inizio
+        FROM generate_series(0, 1) g
+      )
+      SELECT to_char(e.inizio, 'YYYY-MM') AS mese,
+             count(x.id)::int AS numero,
+             coalesce(sum(x.importo) FILTER (WHERE x.tipo = 'Entrata'), 0.00) AS entrate,
+             coalesce(sum(x.importo) FILTER (WHERE x.tipo = 'Uscita'), 0.00) AS uscite
+      FROM elenco e
+      LEFT JOIN movimenti x ON x.user_id = $1
+        AND x.data >= e.inizio AND x.data < (e.inizio + interval '1 month')::date
+      GROUP BY e.inizio
+      ORDER BY e.inizio DESC
+    `, [req.user.id]);
+    const chiarire = await queryOne(`
+      SELECT count(DISTINCT mc.movimento_id)::int AS n
+      FROM messaggi_commercialista mc
+      JOIN collegamenti_commercialista cl ON cl.id = mc.collegamento_id
+      JOIN movimenti m ON m.id = mc.movimento_id AND m.user_id = cl.user_id
+      WHERE cl.user_id = $1 AND cl.stato = 'attiva' AND mc.chiarimento_stato = 'aperta'
+    `, [req.user.id]);
+    const totale = await queryOne(`
+      SELECT coalesce(sum(calcola_saldo_conto(cc.id)), 0.00) AS saldo
+      FROM conti_correnti cc WHERE cc.user_id = $1
+    `, [req.user.id]);
+    res.json({
+      saldo_totale: totale.saldo,
+      conti,
+      mese: mesi[0],
+      mese_precedente: mesi[1],
+      da_chiarire: chiarire.n
+    });
+  } catch (error) {
+    logErrore('Error fetching riepilogo', error);
+    res.status(500).json({ error: 'Errore durante il caricamento del riepilogo' });
+  }
+});
+
 // GET /api/reports/estratto-conto - Estratto conto per periodo (AGGIORNATO)
 router.get('/estratto-conto', validateQuery(reportFiltersSchema), async (req, res) => {
   try {

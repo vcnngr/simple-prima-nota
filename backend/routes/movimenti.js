@@ -667,15 +667,15 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           const n = paramsPagina.length;
           pagina.push(`(m.data, m.id) ${safeDirection === 'DESC' ? '<' : '>'} ($${n - 1}::date, $${n})`);
         }
-        // Saldo progressivo del conto (saldo dopo il movimento, in ordine data, id):
-        // solo filtrando per conto, dove ha senso. Si calcola su tutti i movimenti
-        // del conto, poi si filtra: con altri filtri resta il saldo vero del conto.
-        let saldoJoin = '';
-        let saldoCol = '';
+        // Saldo progressivo (saldo dopo il movimento, in ordine data, id). Con il
+        // conto: il saldo di quel conto. Senza (U7): il saldo di tutti i conti
+        // insieme, con i saldi iniziali di tutti i conti dell'utente. Si calcola su
+        // tutti i movimenti, poi si filtra: con altri filtri resta il saldo vero.
+        const saldoCol = ',\n        sp.saldo_progressivo';
+        let saldoJoin;
         if (conto_id) {
           paramsPagina.push(conto_id);
           const c = paramsPagina.length;
-          saldoCol = ',\n        sp.saldo_progressivo';
           saldoJoin = `
       LEFT JOIN (
         SELECT m2.id,
@@ -684,6 +684,17 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
         FROM movimenti m2
         JOIN conti_correnti cc2 ON cc2.id = m2.conto_id AND cc2.user_id = $1
         WHERE m2.user_id = $1 AND m2.conto_id = $${c}
+      ) sp ON sp.id = m.id`;
+        } else {
+          saldoJoin = `
+      LEFT JOIN (
+        SELECT m2.id,
+               (SELECT coalesce(sum(cc3.saldo_iniziale), 0) FROM conti_correnti cc3 WHERE cc3.user_id = $1)
+               + sum(CASE WHEN m2.tipo = 'Entrata' THEN m2.importo ELSE -m2.importo END)
+                 OVER (ORDER BY m2.data, m2.id) AS saldo_progressivo
+        FROM movimenti m2
+        JOIN conti_correnti cc2 ON cc2.id = m2.conto_id AND cc2.user_id = $1
+        WHERE m2.user_id = $1
       ) sp ON sp.id = m.id`;
         }
         paramsPagina.push(limit + 1, dopo ? 0 : offset);
