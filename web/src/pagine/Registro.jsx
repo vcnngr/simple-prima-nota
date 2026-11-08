@@ -266,7 +266,7 @@ export default function Registro() {
       {tot && (
         <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-y border-bordo bg-superficie px-4 py-2 text-[15px] lg:mt-3 lg:justify-end lg:gap-6 lg:border-0 lg:bg-transparent lg:px-0 lg:text-base"
           data-totali={tot.numero_movimenti}>
-          <span className="text-tenue lg:mr-auto">{tot.numero_movimenti} moviment{tot.numero_movimenti === '1' ? 'o' : 'i'}{etichette.length || filtri.q ? ' con questi filtri' : ''}</span>
+          <span className="basis-full text-tenue lg:mr-auto lg:basis-auto">{tot.numero_movimenti} moviment{tot.numero_movimenti === '1' ? 'o' : 'i'}{etichette.length || filtri.q ? ' con questi filtri' : ''}</span>
           <span className="importo text-entrata">entrate {formatta(centesimiDa(tot.totale_entrate) ?? 0)}</span>
           <span className="importo text-uscita">uscite {formatta(centesimiDa(tot.totale_uscite) ?? 0)}</span>
         </div>
