@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { registroApi } from '../api/registro';
 import SelettoreControparte from './SelettoreControparte';
 import Tastierino from './Tastierino';
-import { nomeConto, useConti } from '../pagine/Estratto';
+import { nomeConto, useConti } from './conti';
 import { VUOTO, daCentesimi, espressione, premi, problema, totale } from '../util/tastierino';
 import { centesimiDa, formatta, perApi } from '../util/importi';
 import { oggi } from '../util/date';
@@ -12,7 +12,7 @@ const TIPI = ['Uscita', 'Entrata'];
 
 // Ogni lista e scheda che mostra movimenti, saldi o totali si ricarica.
 export function aggiornaRegistro(qc) {
-  for (const k of ['estratto', 'conti', 'conto', 'cerca-controparti', 'movimenti', 'movimento', 'controparti', 'controparte', 'report']) {
+  for (const k of ['estratto', 'riepilogo', 'conti', 'conto', 'cerca-controparti', 'movimenti', 'movimento', 'controparti', 'controparte', 'report']) {
     qc.invalidateQueries({ queryKey: [k] });
   }
 }

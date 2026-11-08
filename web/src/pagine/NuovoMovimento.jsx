@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { registroApi } from '../api/registro';
 import BottomSheet from '../componenti/BottomSheet';
 import ModuloMovimento from '../componenti/ModuloMovimento';
-import Estratto from './Estratto';
+import Registro from './Registro';
 
 // Nuovo movimento dal «+» (U4). Con ?controparte=<id> (scheda della controparte,
 // U5) la controparte e' gia' scelta e si parte dall'importo.
@@ -16,7 +16,7 @@ export default function NuovoMovimento() {
   const pronta = !id || c.isSuccess || c.isError;
   return (
     <>
-      <Estratto />
+      <Registro />
       <BottomSheet aperto onChiudi={chiudi} titolo="Nuovo movimento">
         {pronta
           ? <ModuloMovimento controparte={c.data ? { ...c.data, tipo_movimento_preferito: c.data.tipo_movimento_preferito || c.data.tipo_movimento_default } : null} onFatto={chiudi} />

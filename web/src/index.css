@@ -31,5 +31,16 @@ body {
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
-.importo { font-family: var(--pn-font-importi); font-variant-numeric: tabular-nums lining-nums; }
+.importo { font-family: var(--pn-font-cifre, var(--pn-font-importi)); font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "lnum" 1, "tnum" 1; }
 :focus-visible { outline: 2px solid var(--pn-principale); outline-offset: 2px; }
+
+/* Dimensione del testo (U7): tutto e' in rem, cambia la radice. Da computer un
+   gradino in piu' (17 px). La scelta e' del dispositivo (pn_testo, Impostazioni). */
+html { font-size: 100%; }
+html[data-testo='grande'] { font-size: 112.5%; }
+html[data-testo='molto_grande'] { font-size: 125%; }
+@media (min-width: 1024px) {
+  html { font-size: 106.25%; }
+  html[data-testo='grande'] { font-size: 118.75%; }
+  html[data-testo='molto_grande'] { font-size: 131.25%; }
+}

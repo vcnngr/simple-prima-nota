@@ -86,7 +86,7 @@ export default function Controparte() {
         )}
         <div className="mt-3 flex gap-2">
           <Link to={`/nuovo?controparte=${c.id}`} data-nuovo-con className="flex-1 rounded-xl bg-principale py-2.5 text-center font-bold text-su-principale">+ Movimento</Link>
-          <Link to={`/movimenti?controparte=${c.id}`} className="flex-1 rounded-xl border border-bordo py-2.5 text-center font-bold">Filtra i movimenti</Link>
+          <Link to={`/?controparte=${c.id}`} className="flex-1 rounded-xl border border-bordo py-2.5 text-center font-bold">Filtra i movimenti</Link>
         </div>
       </section>
 

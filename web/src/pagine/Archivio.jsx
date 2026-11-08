@@ -78,7 +78,7 @@ function Importa() {
           {importa.isPending ? 'Importo…' : `Importa ${quanti(n, 'movimento', 'movimenti')}`}
         </button>
       )}
-      {importa.data && <p className="text-sm"><Link to="/movimenti" className="text-principale">Vai ai movimenti</Link>{file && ` · ${file.name}`}</p>}
+      {importa.data && <p className="text-sm"><Link to="/" className="text-principale">Vai al registro</Link>{file && ` · ${file.name}`}</p>}
     </Sezione>
   );
 }

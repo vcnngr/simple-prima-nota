@@ -11,12 +11,17 @@
 @import '@fontsource/instrument-sans/600.css';
 @import '@fontsource/fraunces/400.css';
 @import '@fontsource/fraunces/600.css';
+@import '@fontsource/public-sans/400.css';
+@import '@fontsource/public-sans/600.css';
 
 /* ---- Registro, chiaro (predefinito anche senza attributi) ---------------- */
 :root,
 :root[data-tema='registro'] {
   --pn-font-testo: 'Atkinson Hyperlegible', system-ui, sans-serif;
   --pn-font-importi: 'Source Serif 4', Georgia, serif;
+  /* Cifre degli importi (U7): Source Serif 4 qui ha solo cifre «all'antica»;
+     Public Sans ha cifre allineate e della stessa larghezza (tavola A). */
+  --pn-font-cifre: 'Public Sans', system-ui, sans-serif;
   --pn-fondo: #f7f5ef;
   --pn-superficie: #ffffff;
   --pn-testo: #16213a;
@@ -39,6 +44,7 @@
 :root[data-tema='bottega'] {
   --pn-font-testo: 'Instrument Sans', system-ui, sans-serif;
   --pn-font-importi: 'Fraunces', Georgia, serif;
+  --pn-font-cifre: 'Fraunces', Georgia, serif;
   --pn-fondo: #f5f1e8;
   --pn-superficie: #fffdf8;
   --pn-testo: #1f2a23;

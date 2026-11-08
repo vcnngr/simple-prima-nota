@@ -82,3 +82,19 @@ export function mesePrima(mese, n = 1) {
   const d = new Date(a, m - 1 - n, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
+
+// Intestazione di un giorno nel Registro (U7): "Oggi · domenica 8 novembre",
+// "Sabato 7 novembre", con l'anno solo se diverso da quello di riferimento.
+const GIORNI_LUNGHI = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
+export function giornoLungo(g, riferimento = oggi()) {
+  const d = daGiorno(g);
+  const anno = g.slice(0, 4) !== riferimento.slice(0, 4) ? ` ${d.getFullYear()}` : '';
+  const t = `${GIORNI_LUNGHI[d.getDay()]} ${d.getDate()} ${MESI_LUNGHI[d.getMonth()]}${anno}`;
+  const r = daGiorno(riferimento);
+  if (g === riferimento) return `Oggi · ${t}`;
+  if (g === giornoDi(new Date(r.getFullYear(), r.getMonth(), r.getDate() - 1))) return `Ieri · ${t}`;
+  return t.replace(/^./, x => x.toUpperCase());
+}
+
+// "2026-11-08" -> "08/11" (colonna Data del Registro).
+export const giornoCorto = g => `${g.slice(8, 10)}/${g.slice(5, 7)}`;

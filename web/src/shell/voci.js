@@ -1,4 +1,4 @@
-import { ChartColumn, List, ListChecks, MessagesSquare, ScrollText, Settings, Users } from 'lucide-react';
+import { ChartColumn, Landmark, List, ListChecks, MessagesSquare, Settings, Users } from 'lucide-react';
 
 // Un solo shell: cambiano solo le voci. Il «+» (nuovo movimento) e' dell'utente.
 export const VOCI = {
@@ -6,8 +6,10 @@ export const VOCI = {
     home: '/',
     nuovo: '/nuovo',
     voci: [
-      { a: '/', etichetta: 'Estratto', Icona: ScrollText, esatto: true },
-      { a: '/movimenti', etichetta: 'Movimenti', Icona: List },
+      { a: '/', etichetta: 'Prima nota', Icona: List, esatto: true },
+      { a: '/conti', etichetta: 'Conti', Icona: Landmark },
+      // Sul telefono le controparti si aprono dal Registro (icona accanto alla ricerca).
+      { a: '/controparti', etichetta: 'Controparti', Icona: Users, soloLargo: true },
       { a: '/report', etichetta: 'Report', Icona: ChartColumn },
       { a: '/studio', etichetta: 'Studio', Icona: MessagesSquare }
     ],

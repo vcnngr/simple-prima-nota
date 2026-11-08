@@ -32,5 +32,7 @@ export const registroApi = {
   // Report a flusso (U5): mese per mese e dettaglio di un mese (YYYY-MM).
   mesi: ({ fino, mesi = 12, conto, controparte }) =>
     chiama('/reports/mesi', { params: { fino, mesi, conto_id: conto, anagrafica_id: controparte } }),
-  mese: ({ mese, conto }) => chiama('/reports/mese', { params: { mese, conto_id: conto } })
+  mese: ({ mese, conto }) => chiama('/reports/mese', { params: { mese, conto_id: conto } }),
+  // Fascia del Registro (U7): saldo di tutti i conti, mese, richieste aperte.
+  riepilogo: () => chiama('/reports/riepilogo')
 };

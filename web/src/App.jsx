@@ -1,4 +1,4 @@
-import { Navigate, Outlet, createBrowserRouter, RouterProvider } from 'react-router';
+import { Navigate, Outlet, createBrowserRouter, RouterProvider, useLocation } from 'react-router';
 import { useSessione } from './sessione/Sessione';
 import { VOCI } from './shell/voci';
 import Shell from './shell/Shell';
@@ -8,9 +8,8 @@ import Categorie from './pagine/Categorie';
 import Account from './pagine/Account';
 import { ConfermaEmail, PasswordDimenticata, Registrati, Reimposta } from './pagine/Pubbliche';
 import Impostazioni from './pagine/Impostazioni';
-import Estratto from './pagine/Estratto';
 import NuovoMovimento from './pagine/NuovoMovimento';
-import Movimenti from './pagine/Movimenti';
+import Registro from './pagine/Registro';
 import Controparti from './pagine/Controparti';
 import Controparte from './pagine/Controparte';
 import { Report, ReportMese } from './pagine/Report';
@@ -41,6 +40,11 @@ function Richiede({ tipo }) {
   return <Outlet />;
 }
 
+function VersoRegistro() {
+  const { search } = useLocation();
+  return <Navigate to={`/${search}`} replace />;
+}
+
 function Pubblica() {
   const s = useSessione();
   return s.fase === 'caricamento' ? <Attesa /> : <Outlet />;
@@ -68,9 +72,10 @@ const router = createBrowserRouter([
     children: [{
       element: <Shell />,
       children: [
-        { path: '/', element: <Estratto /> },
-        { path: '/movimenti', element: <Movimenti /> },
-        { path: '/nuovo', element: <NuovoMovimento /> },
+        // U7: il Registro e' la pagina iniziale; /movimenti (link vecchi) ci porta coi filtri.
+        { path: '/', element: <Registro />, handle: { largo: true } },
+        { path: '/movimenti', element: <VersoRegistro /> },
+        { path: '/nuovo', element: <NuovoMovimento />, handle: { largo: true } },
         { path: '/controparti', element: <Controparti /> },
         { path: '/controparti/:id', element: <Controparte /> },
         { path: '/report', element: <Report /> },

@@ -33,3 +33,19 @@ export function applica(p) {
   localStorage.setItem(CHIAVE, JSON.stringify(v));
   return v;
 }
+
+// Dimensione del testo (U7): del dispositivo, non dell'account (uno schermo
+// piccolo e un monitor grande vogliono cose diverse). public/tema-iniziale.js
+// la applica prima del primo disegno.
+export const TESTI = ['normale', 'grande', 'molto_grande'];
+const CHIAVE_TESTO = 'pn_testo';
+export function testoSalvato() {
+  const t = localStorage.getItem(CHIAVE_TESTO);
+  return TESTI.includes(t) ? t : 'normale';
+}
+export function applicaTesto(t) {
+  const v = TESTI.includes(t) ? t : 'normale';
+  document.documentElement.dataset.testo = v;
+  localStorage.setItem(CHIAVE_TESTO, v);
+  return v;
+}

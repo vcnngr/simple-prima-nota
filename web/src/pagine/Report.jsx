@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronLeft } from 'lucide-react';
 import { registroApi } from '../api/registro';
 import BottomSheet from '../componenti/BottomSheet';
-import { nomeConto, useConti } from './Estratto';
+import { nomeConto, useConti } from '../componenti/conti';
 import { centesimiDa, conSegno, formatta } from '../util/importi';
 import { estremiMese, etichettaMese, meseDi, mesePrima, oggi } from '../util/date';
 
@@ -127,7 +127,7 @@ function Voci({ titolo, voci, massimo, classe, mese }) {
           return (
             <li key={v.nome} data-voce={v.nome}>
               {v.anagrafica_id
-                ? <Link to={`/movimenti?controparte=${v.anagrafica_id}&dal=${dal}&al=${al}`} className="block">{testo}</Link>
+                ? <Link to={`/?controparte=${v.anagrafica_id}&dal=${dal}&al=${al}`} className="block">{testo}</Link>
                 : testo}
             </li>
           );

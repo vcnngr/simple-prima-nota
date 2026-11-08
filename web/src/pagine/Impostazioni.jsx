@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { ChevronRight, LogOut } from 'lucide-react';
 import { useSessione } from '../sessione/Sessione';
-import { ASPETTI, TEMI, VISTE } from '../tema/tema';
+import { ASPETTI, TEMI, TESTI, VISTE, applicaTesto, testoSalvato } from '../tema/tema';
 
 const NOMI = {
   registro: 'Registro', bottega: 'Bottega', chiaro: 'Chiaro', scuro: 'Scuro', automatico: 'Automatico',
-  due_righe: 'Due righe', colonne: 'Colonne', iniziali: 'Iniziali', mastro: 'Libro mastro'
+  due_righe: 'Due righe', colonne: 'Colonne', iniziali: 'Iniziali', mastro: 'Libro mastro',
+  normale: 'Normale', grande: 'Grande', molto_grande: 'Molto grande'
 };
 
 function Scelta({ nome, valori, attuale, onScegli, occupato, colonne = 3 }) {
@@ -32,6 +33,7 @@ export default function Impostazioni() {
   const { preferenze, cambiaPreferenze, esci, tipo } = useSessione();
   const [occupato, setOccupato] = useState(false);
   const [errore, setErrore] = useState('');
+  const [testo, setTesto] = useState(testoSalvato);
 
   async function cambia(m) {
     setErrore('');
@@ -46,10 +48,14 @@ export default function Impostazioni() {
       <section className="space-y-5 rounded-2xl border border-bordo bg-superficie p-4">
         <Scelta nome="Tema" valori={TEMI} attuale={preferenze?.tema} occupato={occupato} onScegli={tema => cambia({ tema })} />
         <Scelta nome="Aspetto" valori={ASPETTI} attuale={preferenze?.aspetto} occupato={occupato} onScegli={aspetto => cambia({ aspetto })} />
-        <Scelta nome="Righe dell'Estratto" valori={VISTE} attuale={preferenze?.vista_estratto} occupato={occupato} colonne={2}
+        <Scelta nome="Righe nella pagina Conti" valori={VISTE} attuale={preferenze?.vista_estratto} occupato={occupato} colonne={2}
           onScegli={vista_estratto => cambia({ vista_estratto })} />
         {errore && <p role="alert" className="text-sm text-uscita">{errore}</p>}
         <p className="text-xs text-tenue">La scelta vale per il tuo account, su ogni dispositivo.</p>
+      </section>
+      <section className="space-y-3 rounded-2xl border border-bordo bg-superficie p-4" data-dimensione-testo>
+        <Scelta nome="Dimensione del testo" valori={TESTI} attuale={testo} onScegli={t => setTesto(applicaTesto(t))} />
+        <p className="text-xs text-tenue">Vale solo su questo dispositivo.</p>
       </section>
       <Link to={tipo === 'user' ? '/account' : '/studio/account'} data-link-account
         className="flex items-center justify-between rounded-2xl border border-bordo bg-superficie px-4 py-3">

@@ -10,4 +10,8 @@
   var d = document.documentElement;
   d.dataset.tema = t;
   d.dataset.aspetto = a;
+  try {
+    var x = localStorage.getItem('pn_testo');
+    if (x === 'grande' || x === 'molto_grande') d.dataset.testo = x;
+  } catch (e) { /* predefinito */ }
 })();
