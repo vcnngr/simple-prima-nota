@@ -15,6 +15,7 @@ elenco() { (cd "$1" && ls init.sql migra.sh migrations/[0-9][0-9][0-9]_*.sql 2>/
 if [ "${1:-}" = --verifica ]; then
   diff <(elenco "$SRC") <(elenco "$DST") >/dev/null || { echo "helm-chart/files/database: elenco dei file diverso da database/"; exit 1; }
   for f in $(elenco "$SRC"); do cmp -s "$SRC/$f" "$DST/$f" || { echo "helm-chart/files/database/$f diverso da database/$f"; exit 1; }; done
+  cmp -s "$SRC/demo/demo.sql" "$R/helm-chart/files/demo/demo.sql" || { echo "helm-chart/files/demo/demo.sql diverso da database/demo/"; exit 1; }
   cmp -s "$NGX" "$R/helm-chart/files/nginx/default.conf.template" || { echo "helm-chart/files/nginx/default.conf.template diverso da web/nginx/"; exit 1; }
   echo "helm-chart/files/database allineato a database/ ($(elenco "$SRC" | wc -l | tr -d ' ') file), nginx allineato"
   exit 0
@@ -22,5 +23,7 @@ fi
 rm -rf "$DST"; mkdir -p "$DST/migrations"
 for f in $(elenco "$SRC"); do cp "$SRC/$f" "$DST/$f"; done
 echo "copiati $(elenco "$DST" | wc -l | tr -d ' ') file in helm-chart/files/database"
+mkdir -p "$R/helm-chart/files/demo"; cp "$SRC/demo/demo.sql" "$R/helm-chart/files/demo/demo.sql"
+echo "copiati i dati della demo in helm-chart/files/demo"
 mkdir -p "$R/helm-chart/files/nginx"; cp "$NGX" "$R/helm-chart/files/nginx/default.conf.template"
 echo "copiato il modello nginx in helm-chart/files/nginx"

@@ -234,3 +234,23 @@ Aperti, fuori da S4 (fase «sicurezza»): la CSP ammette `http:`, `https:` e `'u
 `trust proxy` (vedi S2); immagine di build `node:18` fuori supporto (la ricostruzione del frontend è
 nella fase UX).
 
+
+## D1 — Demo per il commercialista (08/11/2026)
+
+- `database/demo/demo.sql`: azzera il database e carica uno studio (`studio`) e dieci clienti
+  inventati (`bar.centrale`, `bb.lecorti`, `idraulica.greco`, `dentista.lupo`, `ferramenta.conte`,
+  `avv.marino`, `panificio.russo`, `agriturismo.uliveto`, `grafica.ferri`, `palestra.olimpo`),
+  password `prova2026`. Dodici mesi di movimenti fino a oggi (date relative a `CURRENT_DATE`, seme
+  fisso), versamenti della cassa in banca, 8 collegamenti attivi, 1 in attesa, 1 cliente libero per
+  il codice d'invito; chiarimenti aperti, una risposta da rivedere, chat non lette.
+- Guardia doppia: lo script si ferma se il database non si chiama `prima_nota_demo`; il chart con
+  `demo.enabled` non si genera se il database configurato ha un altro nome.
+- Chart: `demo.enabled` (default false) aggiunge ConfigMap, Job hook `post-install,post-upgrade`
+  (dopo le migrazioni) e CronJob `demo.schedule` (04:00 Europe/Rome). Gli allegati si cancellano con
+  DELETE, cosi' il backend li toglie anche dal disco. Copia nel chart con `scripts/sincronizza-helm-db.sh`.
+- Installazione prevista: `testpn.vcnngr.it`, namespace `prima-nota-demo`, release `pn-demo`, CNPG a 1
+  istanza senza backup, niente pgAdmin, posta spenta, stesse immagini della produzione (valori in
+  `tmp/demo/values-testpn.yaml`, fuori dal repo).
+
+**Prova**: `scripts/smoke/d1-demo.sh` (guardia, due caricamenti, login, riepilogo, da fare dello
+studio, chart).

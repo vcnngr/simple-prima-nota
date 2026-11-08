@@ -195,6 +195,14 @@ migrazioni:
       cpu: 50m
       memory: 64Mi
 
+# Demo (blocco D1): azzera il database e carica database/demo/demo.sql (uno studio
+# e dieci clienti inventati, password prova2026) dopo install/upgrade e ogni notte.
+# Solo con un database che si chiama prima_nota_demo (il chart si ferma altrimenti).
+demo:
+  enabled: false
+  schedule: "0 4 * * *"
+  timeZone: "Europe/Rome"
+
 # Database Esterno (per casi avanzati)
 externalDatabase:
   enabled: false

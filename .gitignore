@@ -42,3 +42,6 @@ backend/uploads/
 
 # K5: segreti di docker compose (JWT_SECRET)
 /.env
+# dati inventati della demo (blocco D1) e la loro copia nel chart
+!database/demo/demo.sql
+!helm-chart/files/demo/demo.sql

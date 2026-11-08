@@ -1,0 +1,82 @@
+{{- define "prima-nota.demoPod" -}}
+restartPolicy: Never
+containers:
+- name: demo
+  image: "{{ .Values.migrazioni.image.registry }}/{{ .Values.migrazioni.image.repository }}:{{ .Values.migrazioni.image.tag }}"
+  imagePullPolicy: {{ .Values.migrazioni.image.pullPolicy }}
+  command: ["sh", "-c", "PGPASSWORD=\"$DB_PASSWORD\" psql -X -v ON_ERROR_STOP=1 -h \"$DB_HOST\" -p \"$DB_PORT\" -U \"$DB_USER\" -d \"$DB_NAME\" -f /demo/demo.sql"]
+  env:
+  {{- include "prima-nota.dbEnv" . | nindent 2 }}
+  resources:
+    {{- toYaml .Values.migrazioni.resources | nindent 4 }}
+  volumeMounts:
+  - name: demo
+    mountPath: /demo
+    readOnly: true
+volumes:
+- name: demo
+  configMap:
+    name: {{ include "prima-nota.fullname" . }}-demo
+{{- end }}
+{{- if .Values.demo.enabled }}
+{{- $db := "" }}
+{{- if .Values.cloudnativepg.enabled }}{{ $db = .Values.cloudnativepg.cluster.bootstrap.database }}
+{{- else if .Values.postgresql.enabled }}{{ $db = .Values.postgresql.auth.database }}
+{{- else }}{{ $db = .Values.externalDatabase.database }}{{ end }}
+{{- if ne $db "prima_nota_demo" }}
+{{- fail (printf "demo.enabled: il database deve chiamarsi prima_nota_demo (ora %q). Il job azzera il database: mai su un'installazione vera." $db) }}
+{{- end }}
+# Demo (blocco D1): database/demo/demo.sql azzera il database e lo riempie con
+# uno studio e dieci clienti inventati. Gira dopo l'install e ogni upgrade (hook,
+# dopo le migrazioni) e ogni notte (CronJob). Lo script stesso si ferma se il
+# database non si chiama prima_nota_demo.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-demo
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: demo
+data:
+  demo.sql: |-
+{{ .Files.Get "files/demo/demo.sql" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-demo-carica
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: demo
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    spec:
+      {{- include "prima-nota.demoPod" . | nindent 6 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "prima-nota.fullname" . }}-demo-azzera
+  labels:
+    {{- include "prima-nota.labels" . | nindent 4 }}
+    app.kubernetes.io/component: demo
+spec:
+  schedule: {{ .Values.demo.schedule | quote }}
+  timeZone: {{ .Values.demo.timeZone | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          {{- include "prima-nota.demoPod" . | nindent 10 }}
+{{- end }}
