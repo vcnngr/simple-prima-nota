@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Search, SlidersHorizontal, Users, X } from 'lucide-react';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronDown, Download, Search, SlidersHorizontal, Users, X } from 'lucide-react';
 import { registroApi } from '../api/registro';
 import BottomSheet from '../componenti/BottomSheet';
 import ListaInfinita from '../componenti/ListaInfinita';
@@ -9,7 +9,7 @@ import RigaMovimento from '../componenti/RigaMovimento';
 import DettaglioMovimento from '../componenti/DettaglioMovimento';
 import { aggiornaRegistro } from '../componenti/ModuloMovimento';
 import { datiRiga, perGiorno } from '../componenti/righe/comune';
-import { nomeConto, useConti } from '../componenti/conti';
+import { alternaConto, contiScelti, nomeConto, scriviConti, useConti } from '../componenti/conti';
 import { centesimiDa, formatta } from '../util/importi';
 import { etichettaPeriodo, giornoLungo, periodo } from '../util/date';
 import Fascia from '../componenti/Fascia';
@@ -23,7 +23,9 @@ function leggiFiltri(p) {
   const f = {};
   for (const k of CHIAVI) { const v = p.get(k); if (v) f[k] = v; }
   if (f.tipo && !['Entrata', 'Uscita'].includes(f.tipo)) delete f.tipo;
-  for (const k of ['conto', 'controparte']) if (f[k] && !/^[1-9]\d{0,9}$/.test(f[k])) delete f[k];
+  if (f.controparte && !/^[1-9]\d{0,9}$/.test(f.controparte)) delete f.controparte;
+  // Uno o piu' conti (U7b), normalizzati: stessa scelta, stesso indirizzo.
+  if (f.conto) { const v = scriviConti(contiScelti(f.conto)); if (v) f.conto = v; else delete f.conto; }
   for (const k of ['dal', 'al']) if (f[k] && !GIORNO.test(f[k])) delete f[k];
   if (f.chiarire !== '1') delete f.chiarire;
   return f;
@@ -32,7 +34,7 @@ function leggiFiltri(p) {
 // Per l'API: nomi del server.
 function perApi(f) {
   return {
-    search: f.q, tipo: f.tipo, conto_id: f.conto, data_inizio: f.dal, data_fine: f.al,
+    search: f.q, tipo: f.tipo, conti: f.conto, data_inizio: f.dal, data_fine: f.al,
     anagrafica_id: f.controparte, da_chiarire: f.chiarire ? 'true' : undefined
   };
 }
@@ -44,6 +46,41 @@ function Chip({ attiva, onClick, children, ...resto }) {
         attiva ? 'border-principale bg-principale font-bold text-su-principale' : 'border-bordo bg-superficie'}`}>
       {children}
     </button>
+  );
+}
+
+// Conti da sommare (U7b): «Tutti» svuota la scelta, gli altri si aggiungono o si tolgono.
+function ScelteConti({ conti, scelta, onScegli }) {
+  const ids = contiScelti(scelta);
+  return (
+    <>
+      <Chip attiva={!ids.length} data-filtro-conto="tutti" onClick={() => onScegli(null)}>Tutti</Chip>
+      {conti.map(c => (
+        <Chip key={c.id} attiva={ids.includes(String(c.id))} aria-pressed={ids.includes(String(c.id))} data-filtro-conto={c.id}
+          onClick={() => onScegli(alternaConto(ids, c.id))}>{nomeConto(c)}</Chip>
+      ))}
+    </>
+  );
+}
+
+// Scelta dei conti da computer: un pulsante e un pannello con le stesse scelte.
+function PulsanteConti({ conti, scelta, onScegli, className }) {
+  const [aperto, setAperto] = useState(false);
+  const [b, setB] = useState(scelta);
+  const ids = contiScelti(scelta);
+  const uno = ids.length === 1 && conti.find(c => String(c.id) === ids[0]);
+  return (
+    <>
+      <button type="button" data-scelta-conto={scelta ?? ''} onClick={() => { setB(scelta); setAperto(true); }}
+        className={`${className} inline-flex items-center gap-2`}>
+        {!ids.length ? 'Tutti i conti' : uno ? nomeConto(uno) : `${ids.length} conti`}<ChevronDown size={16} aria-hidden="true" />
+      </button>
+      <BottomSheet aperto={aperto} onChiudi={() => setAperto(false)} titolo="Conti da vedere"
+        piede={<button type="button" data-applica-conti onClick={() => { onScegli(b); setAperto(false); }} className="h-12 w-full rounded-xl bg-principale font-bold text-su-principale">Mostra</button>}>
+        <p className="mb-3 text-sm text-tenue">Scegli uno o più conti: saldo e righe si calcolano solo su quelli.</p>
+        <div className="flex flex-wrap gap-2" data-pannello-conti><ScelteConti conti={conti} scelta={b} onScegli={setB} /></div>
+      </BottomSheet>
+    </>
   );
 }
 
@@ -85,8 +122,7 @@ function PannelloFiltri({ filtri, conti, onApplica, onChiudi }) {
           <section>
             <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-tenue">Conto</h3>
             <div className="flex flex-wrap gap-2">
-              <Chip attiva={!b.conto} onClick={() => metti('conto')}>Tutti</Chip>
-              {conti.map(c => <Chip key={c.id} attiva={b.conto === String(c.id)} data-filtro-conto={c.id} onClick={() => metti('conto', String(c.id))}>{nomeConto(c)}</Chip>)}
+              <ScelteConti conti={conti} scelta={b.conto} onScegli={v => metti('conto', v)} />
             </div>
           </section>
         )}
@@ -150,7 +186,8 @@ export default function Registro() {
   const [pannello, setPannello] = useState(false);
   const [aperto, setAperto] = useState(null); // { id, modo }
   const el = useEliminaDopo();
-  const riepilogo = useQuery({ queryKey: ['riepilogo'], queryFn: registroApi.riepilogo });
+  const riepilogo = useQuery({ queryKey: ['riepilogo', filtri.conto ?? null], queryFn: () => registroApi.riepilogo({ conti: filtri.conto }),
+    placeholderData: keepPreviousData });
 
   const imposta = f => setParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v)), { replace: true });
   const togli = (...k) => { const f = { ...filtri }; for (const x of k) delete f[x]; imposta(f); };
@@ -176,11 +213,12 @@ export default function Registro() {
     [lista.data, el.nascosto]);
   const gruppi = useMemo(() => perGiorno(righe), [righe]);
   const tot = lista.data?.pages?.[0]?.totali;
-  const conto = conti.find(c => String(c.id) === filtri.conto);
+  const ids = contiScelti(filtri.conto);
+  const conto = ids.length === 1 ? conti.find(c => String(c.id) === ids[0]) : null;
   const etichette = [
     (filtri.dal || filtri.al) && { k: ['dal', 'al'], e: etichettaPeriodo(filtri.dal, filtri.al) },
     filtri.tipo && { k: ['tipo'], e: filtri.tipo === 'Entrata' ? 'Entrate' : 'Uscite' },
-    filtri.conto && { k: ['conto'], e: conto ? conto.nome_banca : 'Conto' },
+    filtri.conto && { k: ['conto'], e: ids.length > 1 ? `${ids.length} conti` : conto ? conto.nome_banca : 'Conto' },
     filtri.controparte && { k: ['controparte'], e: nomeControparte || 'Controparte' },
     filtri.chiarire && { k: ['chiarire'], e: 'Da chiarire' }
   ].filter(Boolean);
@@ -209,11 +247,7 @@ export default function Registro() {
           {sceltaPeriodo === 'altro' && <option value="altro" disabled>{etichettaPeriodo(filtri.dal, filtri.al)}</option>}
         </select>
         {conti.length > 1 && (
-          <select aria-label="Conto" data-scelta-conto value={filtri.conto ?? ''} className={selettore}
-            onChange={e => imposta({ ...filtri, conto: e.target.value })}>
-            <option value="">Tutti i conti</option>
-            {conti.map(c => <option key={c.id} value={c.id}>{nomeConto(c)}</option>)}
-          </select>
+          <PulsanteConti conti={conti} scelta={filtri.conto} className={selettore} onScegli={v => imposta({ ...filtri, conto: v })} />
         )}
         <select aria-label="Tipo" data-scelta-tipo value={filtri.tipo ?? ''} className={selettore}
           onChange={e => imposta({ ...filtri, tipo: e.target.value })}>
@@ -279,7 +313,7 @@ export default function Registro() {
         {lista.isError && <p role="alert" className="px-4 text-uscita">{lista.error.message}</p>}
         {largo ? righe.length > 0 && (
           <div className="mt-1">
-            <TabellaRegistro gruppi={gruppi} onApri={apri} conConto={!filtri.conto && conti.length > 1} />
+            <TabellaRegistro gruppi={gruppi} onApri={apri} conConto={ids.length !== 1 && conti.length > 1} />
           </div>
         ) : (
         <div>

@@ -2,7 +2,7 @@
 const express = require('express');
 const { queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { validateQuery, giorno } = require('../middleware/validation');
+const { validateQuery, giorno, elencoConti } = require('../middleware/validation');
 const moment = require('moment');
 const csv = require('csv-writer');
 const PDFDocument = require('pdfkit');
@@ -118,8 +118,12 @@ router.get('/mese', validateQuery(meseSchema), async (req, res) => {
 // richieste di chiarimento aperte dello studio. Importi come testo (DECIMAL).
 // Il totale comprende anche i conti disattivati: e' il saldo da cui parte il
 // saldo progressivo di GET /movimenti senza conto.
-router.get('/riepilogo', async (req, res) => {
+// U7b: con ?conti=3,5 anche il saldo dei conti scelti (saldo_scelti) e il mese
+// di quei conti; saldo_totale e conti restano di tutti.
+const riepilogoSchema = Joi.object({ conti: elencoConti().optional() });
+router.get('/riepilogo', validateQuery(riepilogoSchema), async (req, res) => {
   try {
+    const scelti = req.query.conti || null;
     const conti = await queryAll(`
       SELECT cc.id, cc.nome_banca, cc.intestatario, cc.attivo,
              calcola_saldo_conto(cc.id) AS saldo
@@ -139,9 +143,10 @@ router.get('/riepilogo', async (req, res) => {
       FROM elenco e
       LEFT JOIN movimenti x ON x.user_id = $1
         AND x.data >= e.inizio AND x.data < (e.inizio + interval '1 month')::date
+        AND ($2::int[] IS NULL OR x.conto_id = ANY($2::int[]))
       GROUP BY e.inizio
       ORDER BY e.inizio DESC
-    `, [req.user.id]);
+    `, [req.user.id, scelti]);
     const chiarire = await queryOne(`
       SELECT count(DISTINCT mc.movimento_id)::int AS n
       FROM messaggi_commercialista mc
@@ -153,8 +158,13 @@ router.get('/riepilogo', async (req, res) => {
       SELECT coalesce(sum(calcola_saldo_conto(cc.id)), 0.00) AS saldo
       FROM conti_correnti cc WHERE cc.user_id = $1
     `, [req.user.id]);
+    const sceltiSaldo = scelti && await queryOne(`
+      SELECT coalesce(sum(calcola_saldo_conto(cc.id)), 0.00) AS saldo
+      FROM conti_correnti cc WHERE cc.user_id = $1 AND cc.id = ANY($2::int[])
+    `, [req.user.id, scelti]);
     res.json({
       saldo_totale: totale.saldo,
+      ...(scelti ? { saldo_scelti: sceltiSaldo.saldo } : {}),
       conti,
       mese: mesi[0],
       mese_precedente: mesi[1],

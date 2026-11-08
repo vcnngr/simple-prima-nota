@@ -34,5 +34,6 @@ export const registroApi = {
     chiama('/reports/mesi', { params: { fino, mesi, conto_id: conto, anagrafica_id: controparte } }),
   mese: ({ mese, conto }) => chiama('/reports/mese', { params: { mese, conto_id: conto } }),
   // Fascia del Registro (U7): saldo di tutti i conti, mese, richieste aperte.
-  riepilogo: () => chiama('/reports/riepilogo')
+  // Con conti ("3,5", U7b) anche saldo e mese dei conti scelti.
+  riepilogo: ({ conti } = {}) => chiama('/reports/riepilogo', { params: { conti } })
 };

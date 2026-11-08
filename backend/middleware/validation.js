@@ -40,6 +40,15 @@ const giorno = () => Joi.string().pattern(/^(?!0000)\d{4}-\d{2}-\d{2}$/)
   })
   .messages({ 'string.pattern.base': '{{#label}} deve essere una data YYYY-MM-DD', 'any.invalid': '{{#label}} non e\' una data valida' });
 
+// U7b: elenco di conti nella query ("3,5,9"), al piu' 50, id entro INTEGER.
+// Diventa l'array di interi, senza doppioni.
+const elencoConti = () => Joi.string().pattern(/^[1-9]\d{0,9}(,[1-9]\d{0,9}){0,49}$/)
+  .custom((v, helpers) => {
+    const ids = [...new Set(v.split(',').map(Number))];
+    return ids.some(n => n > 2147483647) ? helpers.error('any.invalid') : ids;
+  })
+  .messages({ 'string.pattern.base': '{{#label}} deve essere un elenco di id separati da virgola', 'any.invalid': '{{#label}} contiene un id non valido' });
+
 const schemas = {
   // U6c: riepilogo del cliente per lo studio.
   riepilogoCliente: Joi.object({
@@ -528,6 +537,7 @@ const validateParams = (schema) => {
 
 module.exports = {
   giorno,
+  elencoConti,
   validate,
   validateQuery,
   validateParams,

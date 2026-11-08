@@ -2,7 +2,7 @@
 const express = require('express');
 const { query, queryOne, queryAll, withTransaction } = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { validate, validateQuery, schemas, giorno } = require('../middleware/validation');
+const { validate, validateQuery, schemas, giorno, elencoConti } = require('../middleware/validation');
 const moment = require('moment');
 const UnifiedImportProcessor = require('../services/UnifiedImportProcessor');
 const { logErrore } = require('../utils/errori');
@@ -34,6 +34,8 @@ const movimentiFiltersSchema = require('joi').object({
   data_inizio: giorno().optional(),
   data_fine: giorno().optional(),
   conto_id: require('joi').number().integer().optional(),
+  // U7b: piu' conti insieme ("3,5,9"), in alternativa a conto_id.
+  conti: elencoConti().optional(),
   anagrafica_id: require('joi').number().integer().optional(),
   tipologia_id: require('joi').number().integer().optional(), // NUOVO
   tipo: require('joi').string().valid('Entrata', 'Uscita').optional(),
@@ -50,7 +52,7 @@ const movimentiFiltersSchema = require('joi').object({
   // U5: solo i movimenti con una richiesta di chiarimento aperta dello studio.
   da_chiarire: require('joi').boolean().optional(),
   dopo: require('joi').string().pattern(/^\d{4}-\d{2}-\d{2}_[1-9]\d{0,9}$/).custom(cursoreValido).optional()
-});
+}).oxor('conto_id', 'conti');
 
 // Il pattern non basta: 2025-02-30 e id oltre INTEGER arrivavano a pg (500).
 function cursoreValido(v, helpers) {
@@ -569,6 +571,7 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           data_inizio,
           data_fine,
           conto_id,
+          conti,
           anagrafica_id,
           tipologia_id, // NUOVO
           tipo,
@@ -600,9 +603,11 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           paramIndex++;
         }
         
-        if (conto_id) {
-          whereConditions.push(`m.conto_id = $${paramIndex}`);
-          params.push(conto_id);
+        // Conti scelti (U7b): uno (conto_id) o piu' (conti); nessuno = tutti.
+        const idsConti = conto_id ? [conto_id] : (conti || null);
+        if (idsConti) {
+          whereConditions.push(`m.conto_id = ANY($${paramIndex}::int[])`);
+          params.push(idsConti);
           paramIndex++;
         }
         
@@ -667,36 +672,31 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           const n = paramsPagina.length;
           pagina.push(`(m.data, m.id) ${safeDirection === 'DESC' ? '<' : '>'} ($${n - 1}::date, $${n})`);
         }
-        // Saldo progressivo (saldo dopo il movimento, in ordine data, id). Con il
-        // conto: il saldo di quel conto. Senza (U7): il saldo di tutti i conti
-        // insieme, con i saldi iniziali di tutti i conti dell'utente. Si calcola su
-        // tutti i movimenti, poi si filtra: con altri filtri resta il saldo vero.
+        // Saldo progressivo (saldo dopo il movimento, in ordine data, id) dei conti
+        // scelti: somma dei loro saldi iniziali + i loro movimenti. Senza conti (U7):
+        // tutti i conti dell'utente, anche disattivati; con uno: il saldo di quel
+        // conto (U1). Si calcola su tutti i movimenti di quei conti, poi si filtra:
+        // con altri filtri resta il saldo vero.
         const saldoCol = ',\n        sp.saldo_progressivo';
-        let saldoJoin;
-        if (conto_id) {
-          paramsPagina.push(conto_id);
+        let soloConti = '';
+        let soloMovimenti = '';
+        if (idsConti) {
+          paramsPagina.push(idsConti);
           const c = paramsPagina.length;
-          saldoJoin = `
+          soloConti = ` AND cc3.id = ANY($${c}::int[])`;
+          soloMovimenti = ` AND m2.conto_id = ANY($${c}::int[])`;
+        }
+        const saldoJoin = `
       LEFT JOIN (
         SELECT m2.id,
-               cc2.saldo_iniziale + sum(CASE WHEN m2.tipo = 'Entrata' THEN m2.importo ELSE -m2.importo END)
-                 OVER (ORDER BY m2.data, m2.id) AS saldo_progressivo
-        FROM movimenti m2
-        JOIN conti_correnti cc2 ON cc2.id = m2.conto_id AND cc2.user_id = $1
-        WHERE m2.user_id = $1 AND m2.conto_id = $${c}
-      ) sp ON sp.id = m.id`;
-        } else {
-          saldoJoin = `
-      LEFT JOIN (
-        SELECT m2.id,
-               (SELECT coalesce(sum(cc3.saldo_iniziale), 0) FROM conti_correnti cc3 WHERE cc3.user_id = $1)
+               (SELECT coalesce(sum(cc3.saldo_iniziale), 0) FROM conti_correnti cc3
+                 WHERE cc3.user_id = $1${soloConti})
                + sum(CASE WHEN m2.tipo = 'Entrata' THEN m2.importo ELSE -m2.importo END)
                  OVER (ORDER BY m2.data, m2.id) AS saldo_progressivo
         FROM movimenti m2
         JOIN conti_correnti cc2 ON cc2.id = m2.conto_id AND cc2.user_id = $1
-        WHERE m2.user_id = $1
+        WHERE m2.user_id = $1${soloMovimenti}
       ) sp ON sp.id = m.id`;
-        }
         paramsPagina.push(limit + 1, dopo ? 0 : offset);
         const nLim = paramsPagina.length - 1;
         

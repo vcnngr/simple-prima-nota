@@ -15,3 +15,12 @@ export function useConti() {
 }
 
 export const nomeConto = c => (c ? c.nome_banca + (c.intestatario ? ` · ${c.intestatario}` : '') : '');
+
+// Conti scelti nel Registro (U7b): nell'indirizzo come "3,5,9" (?conto=), in
+// ordine e senza doppioni; vuoto = tutti. Un solo id resta compatibile coi link
+// vecchi (?conto=5).
+export const ELENCO_CONTI = /^[1-9]\d{0,9}(,[1-9]\d{0,9}){0,49}$/;
+export const contiScelti = v => (v && ELENCO_CONTI.test(v) ? [...new Set(v.split(','))].sort((a, b) => a - b) : []);
+export const scriviConti = ids => (ids.length ? [...new Set(ids.map(String))].sort((a, b) => a - b).join(',') : null);
+// Aggiunge o toglie un conto dalla scelta.
+export const alternaConto = (ids, id) => scriviConti(ids.includes(String(id)) ? ids.filter(x => x !== String(id)) : [...ids, String(id)]);
