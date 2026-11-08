@@ -1,6 +1,6 @@
 apiVersion: v2
-appVersion: "0.6.0"
+appVersion: "0.6.1"
 description: Chart Helm per applicazione Prima Nota
 name: simple-prima-nota
 type: application
-version: 0.6.0
+version: 0.6.1
