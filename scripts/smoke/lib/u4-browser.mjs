@@ -1,10 +1,10 @@
-// Parte nel browser dello smoke U4 (scripts/smoke/u4-componenti.sh): Estratto a
-// cursore con le quattro viste, scelta della vista sull'account, cambio di conto
-// nel bottom sheet, nuovo movimento «chi, poi quanto» con il tastierino.
-// Ambiente: WEB, CHROME, PROFILO, FOTO, UTENTE, PW, SALDO (centesimi), NMOV, CASSA.
+// Parte nel browser dello smoke U4 (scripts/smoke/u4-componenti.sh): Registro di
+// un conto a cursore (U7: l'Estratto e' tolto), le quattro viste nella pagina Conti,
+// cambio di conto dalle carte della fascia, nuovo movimento «chi, poi quanto» con il tastierino.
+// Ambiente: WEB, CHROME, PROFILO, FOTO, UTENTE, PW, SALDO (centesimi), NMOV, CASSA, C1.
 import { avvia } from './cdp.mjs';
 
-const { WEB, CHROME, PROFILO, FOTO, UTENTE, PW, SALDO, NMOV, CASSA } = process.env;
+const { WEB, CHROME, PROFILO, FOTO, UTENTE, PW, SALDO, NMOV, CASSA, C1 } = process.env;
 let pass = 0, fail = 0;
 const eq = (nome, atteso, ottenuto) => {
   if (String(atteso) === String(ottenuto)) { pass++; console.log(`  OK    ${nome}`); }
@@ -33,13 +33,15 @@ try {
     return false;
   };
 
-  console.log('=== A. Estratto a cursore ===');
+  console.log('=== A. Registro di un conto, a cursore ===');
   await p.vai(WEB + '/accedi');
   await p.aspetta("document.querySelector('input[name=username]')");
   await p.scrivi('input[name=username]', UTENTE);
   await p.scrivi('input[name=password]', PW);
   await p.clic('button[type=submit]');
-  eq('login: Estratto con le righe', 'si', (await p.aspetta("document.querySelector('[data-movimento]')")) ? 'si' : 'no');
+  eq('login: Registro con le righe', 'si', (await p.aspetta("document.querySelector('[data-movimento]')")) ? 'si' : 'no');
+  await p.vai(`${WEB}/?conto=${C1}`);
+  await p.aspetta(`document.querySelector('[data-carta-conto="${C1}"][aria-pressed=true]') && document.querySelector('[data-movimento]')`);
   eq('saldo del conto = calcola_saldo_conto', SALDO, await p.valuta("document.querySelector('[data-saldo]').dataset.saldo"));
   eq('prima pagina: 30 righe, altre da caricare', '30|altre',
     `${await p.valuta("document.querySelectorAll('[data-movimento]').length")}|${await p.valuta("document.querySelector('[data-fine-lista]').dataset.fineLista")}`);
@@ -48,19 +50,19 @@ try {
     await p.valuta("(() => { const v = [...document.querySelectorAll('[data-movimento]')].map(e => e.dataset.movimento); return v.length + '|' + new Set(v).size; })()"));
   eq('giorni in ordine decrescente, ciascuno una volta', 'true',
     await p.valuta("(() => { const g = [...document.querySelectorAll('[data-giorno]')].map(e => e.dataset.giorno); return g.every((x, i) => !i || x < g[i - 1]); })()"));
-  eq('prima riga: saldo dopo il movimento = saldo del conto', `saldo ${it(Number(SALDO))} €`,
-    await p.valuta("document.querySelector('[data-movimento] .text-xs').textContent"));
+  eq('prima riga: saldo dopo il movimento = saldo del conto', `${SALDO}|${it(Number(SALDO))}`,
+    await p.valuta("(e => e.dataset.saldoRiga + '|' + e.textContent)(document.querySelector('[data-movimento] [data-saldo-riga]'))"));
   eq('390 px: nessuno scroll orizzontale', '390', await larghezza());
 
-  console.log('=== B. quattro viste, scelte sull\'account ===');
+  console.log('=== B. quattro viste (pagina Conti), scelte sull\'account ===');
   for (const v of ['colonne', 'iniziali', 'mastro', 'due_righe']) {
     await p.vai(WEB + '/impostazioni');
     await p.aspetta(`document.querySelector('[data-valore=${v}]')`);
     await p.clic(`[data-valore=${v}]`);
     await p.aspetta(`document.querySelector('[data-valore=${v}][aria-pressed=true]') && !document.querySelector('button[disabled]')`);
     eq(`${v}: salvata sull'account`, v, (await api('/auth/preferenze')).vista_estratto);
-    await p.vai(WEB + '/');
-    eq(`${v}: Estratto nella vista scelta`, v, (await p.aspetta(`document.querySelector('[data-vista=${v}] [data-movimento]')`)) && await p.valuta("document.querySelector('[data-vista]').dataset.vista"));
+    await p.vai(WEB + '/conti');
+    eq(`${v}: Conti nella vista scelta`, v, (await p.aspetta(`document.querySelector('[data-vista=${v}] [data-movimento]')`)) && await p.valuta("document.querySelector('[data-vista]').dataset.vista"));
     await fino();
     eq(`${v}: 390 px senza scroll orizzontale, ${NMOV} righe`, `390|${NMOV}`, `${await larghezza()}|${await p.valuta("document.querySelectorAll('[data-movimento]').length")}`);
     if (v === 'iniziali') {
@@ -69,26 +71,25 @@ try {
     await p.valuta('(window.scrollTo(0, 0), true)');
     for (const [t, a] of [['registro', 'chiaro'], ['bottega', 'scuro']]) {
       await p.valuta(`(document.documentElement.dataset.tema='${t}', document.documentElement.dataset.aspetto='${a}', true)`);
-      await p.foto(`${FOTO}/estratto-${v}-${t}-${a}.png`);
+      await p.foto(`${FOTO}/conti-${v}-${t}-${a}.png`);
     }
     await p.valuta("(document.documentElement.dataset.tema='registro', document.documentElement.dataset.aspetto='automatico', true)");
   }
 
-  console.log('=== C. bottom sheet: cambio di conto ===');
-  await p.clic('[data-scegli-conto]');
-  eq('sheet aperto', 'true', await p.aspetta("document.querySelector('dialog[open] [data-conto]')"));
-  await p.foto(`${FOTO}/sheet-conto.png`);
-  await p.clic(`[data-conto="${CASSA}"]`);
-  eq('altro conto: saldo e lista vuota', '5000|true',
-    (await p.aspetta(`document.querySelector('[data-estratto="${CASSA}"]') && document.querySelector('[data-fine-lista=fine]')`)) &&
-    `${await p.valuta("document.querySelector('[data-saldo]').dataset.saldo")}|${await p.valuta("document.querySelectorAll('[data-movimento]').length === 0")}`);
-  eq('sheet chiuso dopo la scelta', 'false', await sheetAperto());
+  console.log('=== C. carte della fascia: cambio di conto ===');
   await p.vai(WEB + '/');
-  eq('il conto scelto resta dopo la ricarica', CASSA, (await p.aspetta('document.querySelector("[data-estratto]")')) && await p.valuta("document.querySelector('[data-estratto]').dataset.estratto"));
-  await p.clic('[data-scegli-conto]');
-  await p.aspetta("document.querySelector('dialog[open] [data-conto]')");
-  await p.valuta("(document.querySelector('dialog[open] [data-conto]:not([data-conto=\"" + CASSA + "\"])').click(), true)");
-  await p.aspetta(`document.querySelector('[data-estratto]:not([data-estratto="${CASSA}"]) [data-movimento]')`);
+  eq('pagina iniziale: tutti i conti, nessuna carta scelta', 'true',
+    await p.aspetta("document.querySelector('[data-movimento]') && !document.querySelector('[data-carte-conti] [aria-pressed=true]:not([data-carta-conto=tutti])')"));
+  await p.clic(`[data-carta-conto="${CASSA}"]`);
+  eq('altro conto: saldo e lista vuota', '5000|true',
+    (await p.aspetta(`document.querySelector('[data-carta-conto="${CASSA}"][aria-pressed=true]') && document.querySelector('[data-fine-lista=fine]') && !document.querySelector('[data-movimento]')`)) &&
+    `${await p.valuta("document.querySelector('[data-saldo]').dataset.saldo")}|${await p.valuta("document.querySelectorAll('[data-movimento]').length === 0")}`);
+  await p.foto(`${FOTO}/carta-conto.png`);
+  await p.clic(`[data-carta-conto="${CASSA}"]`);
+  eq('di nuovo la carta: torna a tutti i conti', 'true',
+    await p.aspetta(`!document.querySelector('[data-carta-conto="${CASSA}"][aria-pressed=true]') && document.querySelector('[data-movimento]')`));
+  const prima = await api('/reports/riepilogo');
+  const totale = Math.round(Number(prima.saldo_totale) * 100);
 
   console.log('=== D. nuovo movimento: chi, poi quanto ===');
   await p.clic('a[aria-label="Nuovo movimento"]');
@@ -112,10 +113,10 @@ try {
   eq('390 px: sheet senza scroll orizzontale', '390', await larghezza());
   await p.foto(`${FOTO}/nuovo-2-quanto.png`);
   await p.clic('[data-registra]');
-  eq('registrato: torna all\'Estratto, sheet chiuso', '/|false',
+  eq('registrato: torna al Registro, sheet chiuso', '/|false',
     (await p.aspetta("location.pathname === '/' && !document.querySelector('dialog[open]')")) && `${await p.valuta('location.pathname')}|${await sheetAperto()}`);
-  eq('in cima all\'Estratto, saldo aggiornato', `+ 18,90 €|${Number(SALDO) + 1890}`,
-    (await p.aspetta(`document.querySelector('[data-saldo]').dataset.saldo === '${Number(SALDO) + 1890}'
+  eq('in cima al Registro, saldo di tutti i conti aggiornato', `+ 18,90 €|${totale + 1890}`,
+    (await p.aspetta(`document.querySelector('[data-saldo]').dataset.saldo === '${totale + 1890}'
       && document.querySelector('[data-movimento] .importo')?.textContent === '+ 18,90 €'`)) &&
     `${await p.valuta("document.querySelector('[data-movimento] .importo').textContent")}|${await p.valuta("document.querySelector('[data-saldo]').dataset.saldo")}`);
 

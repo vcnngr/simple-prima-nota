@@ -196,11 +196,11 @@ try {
   eq('Chiarito: fascia sparita', 'true', await p.aspetta("!document.querySelector('[data-fascia-chiarire]')"));
   eq('il Bar non e\' piu\' da chiarire', 'false', String((await api(`/movimenti/${E.M_BAR}`)).corpo.da_chiarire));
 
-  console.log('=== C8. Estratto: tocco sulla riga ===');
+  console.log('=== C8. Registro: tocco sulla riga ===');
   await p.vai(E.WEB + '/');
-  await p.aspetta('document.querySelector("[data-estratto] [data-movimento]")');
-  await p.clic('[data-estratto] [data-movimento]');
-  eq('scheda del movimento dall\'Estratto', 'true', await p.aspetta("document.querySelector('dialog[open] [data-dettaglio]')"));
+  await p.aspetta('document.querySelector("[data-pagina=movimenti] [data-movimento] [role=button]")');
+  await p.clic('[data-pagina=movimenti] [data-movimento] [role=button]');
+  eq('scheda del movimento dal Registro', 'true', await p.aspetta("document.querySelector('dialog[open] [data-dettaglio]')"));
   eq('zero violazioni CSP', 0, p.violazioni.length);
   if (p.violazioni.length) console.log(p.violazioni.slice(0, 5));
 } catch (e) {

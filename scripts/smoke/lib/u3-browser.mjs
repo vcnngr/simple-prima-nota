@@ -42,21 +42,21 @@ try {
   eq('login: shell dell\'utente', 'user', await p.aspetta("document.querySelector('[data-shell]')") && await p.valuta("document.querySelector('[data-shell]').dataset.shell"));
   eq('token utente salvato, nessun token di studio', 'si|null|user', `${(await ls('token')) ? 'si' : 'no'}|${await ls('commercialista_token')}|${await ls('user_type')}`);
   eq('tema dall\'account (bottega/scuro impostato via API prima)', 'bottega/scuro', await tema());
-  eq('390 px: nessuno scroll orizzontale (Estratto)', '390', await larghezza());
-  eq('barra in basso con il + al centro', 'Estratto,Movimenti,Nuovo movimento,Report,Studio',
+  eq('390 px: nessuno scroll orizzontale (Registro)', '390', await larghezza());
+  eq('barra in basso con il + al centro', 'Prima nota,Conti,Nuovo movimento,Report,Studio',
     await p.valuta("[...document.querySelector('nav[aria-label=Navigazione]').children].map(e => e.getAttribute('aria-label') || e.textContent).join(',')"));
 
   // Foto: i quattro temi sull'Estratto a 390 px.
   for (const [t, a] of [['registro', 'chiaro'], ['registro', 'scuro'], ['bottega', 'chiaro'], ['bottega', 'scuro']]) {
     await p.valuta(`(document.documentElement.dataset.tema='${t}', document.documentElement.dataset.aspetto='${a}', true)`);
-    await p.foto(`${FOTO}/estratto-${t}-${a}.png`);
+    await p.foto(`${FOTO}/registro-${t}-${a}.png`);
   }
 
   console.log('=== B. impostazioni: tema e aspetto sull\'account ===');
   await p.vai(WEB + '/impostazioni');
   await p.aspetta("document.querySelector('[data-valore=registro]')");
   eq('pulsanti sullo stato salvato', 'bottega|scuro',
-    await p.valuta("[...document.querySelectorAll('[aria-pressed=true]')].map(e => e.dataset.valore).filter(v => !['due_righe', 'colonne', 'iniziali', 'mastro'].includes(v)).join('|')"));
+    await p.valuta("[...document.querySelectorAll('[aria-pressed=true]')].map(e => e.dataset.valore).filter(v => !['due_righe', 'colonne', 'iniziali', 'mastro', 'normale', 'grande', 'molto_grande'].includes(v)).join('|')"));
   await p.clic('[data-valore=registro]');
   await p.aspetta("document.documentElement.dataset.tema === 'registro' && !document.querySelector('button[disabled]')");
   await p.clic('[data-valore=chiaro]');

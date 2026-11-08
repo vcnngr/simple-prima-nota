@@ -187,7 +187,7 @@ WEB="http://127.0.0.1:$(docker port "$NGX" 80 2>/dev/null | head -1 | sed 's/.*:
 for _ in $(seq 1 30); do curl -s --max-time 1 -o /dev/null "$WEB/api/health" && break; sleep 0.5; done
 eq "nginx con la CSP del progetto davanti alla build" "200" "$(curl -s -o /dev/null -w '%{http_code}' "$WEB/api/health")"
 OGGI=$(date +%F)
-browser env WEB="$WEB" CHROME="$CHROME" PROFILO="$T/chrome" FOTO="$FOTO" UTENTE="$U" PW="$PW" SALDO="$SALDO" NMOV="$NMOV" CASSA="$C2" \
+browser env WEB="$WEB" CHROME="$CHROME" PROFILO="$T/chrome" FOTO="$FOTO" UTENTE="$U" PW="$PW" SALDO="$SALDO" NMOV="$NMOV" CASSA="$C2" C1="$C1" \
   node "$R/scripts/smoke/lib/u4-browser.mjs"
 echo "  fotografie: $FOTO"
 

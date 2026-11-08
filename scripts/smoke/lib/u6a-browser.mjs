@@ -187,9 +187,8 @@ try {
   await p.vai(E.WEB + '/impostazioni');
   eq('Impostazioni: Conti, Controparti, Studio (+ Categorie, Import ed export da U6b)', 5, (await p.aspetta('document.querySelector("nav[aria-label=Registro]")')) && await n('nav[aria-label=Registro] a'));
   await p.vai(E.WEB + '/');
-  await p.aspetta('document.querySelector("[data-scegli-conto]")');
-  await p.clic('[data-scegli-conto]');
-  eq('Estratto: «Gestisci i conti» nel pannello', 'true', await p.aspetta("document.querySelector('dialog[open] [data-gestisci-conti]')"));
+  eq('Registro: i conti nella fascia, «Conti» nella barra', 'true',
+    await p.aspetta("document.querySelector('[data-fascia] [data-carta-conto]') && document.querySelector('nav[aria-label=Navigazione] a[href=\"/conti\"]')"));
   eq('zero violazioni CSP', 0, p.violazioni.length);
   if (p.violazioni.length) console.log(p.violazioni.slice(0, 5));
 } catch (e) {
