@@ -180,7 +180,10 @@ eq "con un filtro in piu': saldo del conto, non dei soli filtrati" \
   "$(q "SELECT 1000 + sum(CASE WHEN tipo='Entrata' THEN importo ELSE -importo END) FROM movimenti m WHERE conto_id=$CONTO AND (data, id) <= (SELECT data, id FROM movimenti WHERE id=$MU)")" \
   "$(py "print(d['movimenti'][0]['saldo_progressivo'])")"
 hit "${AU[@]}" "$API/movimenti?limit=1" >/dev/null
-eq "senza conto_id nessun saldo progressivo" "False" "$(py "print('saldo_progressivo' in d['movimenti'][0])")"
+# U7: senza conto_id il saldo e' quello di tutti i conti dell'utente insieme.
+eq "senza conto_id: saldo di tutti i conti (U7)" \
+  "$(q "SELECT (SELECT sum(saldo_iniziale) FROM conti_correnti WHERE user_id=c.user_id) + coalesce((SELECT sum(CASE WHEN tipo='Entrata' THEN importo ELSE -importo END) FROM movimenti WHERE user_id=c.user_id),0) FROM conti_correnti c WHERE c.id=$CONTO")" \
+  "$(py "print(d['movimenti'][0]['saldo_progressivo'])")"
 hit "${AV[@]}" "$API/movimenti?conto_id=$CONTO" >/dev/null
 eq "conto di U chiesto da V: nessuna riga" "0" "$(py "print(len(d['movimenti']))")"
 
