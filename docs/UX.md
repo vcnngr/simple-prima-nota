@@ -481,6 +481,43 @@ anticipazioni), senza togliere niente dal saldo di tutti i conti.
 **Prova**: `scripts/smoke/u7b-conti.sh` (API e browser a 1366 e 390 px): 56/0; sul codice di
 v0.6.1 33 FAIL.
 
+## U8a — Classificazione (09/11/2026)
+
+**Il problema.** Confrontando `web/` con il vecchio `frontend/` (09/11/2026): categorie e tipologie si
+gestivano in Impostazioni ma non si potevano assegnare (niente categoria ne' note nel modulo del
+movimento, niente tipologia nella controparte) ne' filtrare (tipologia, categoria, importo). In piu'
+`POST /movimenti` scartava la categoria da sempre: si salvava solo in modifica (PUT) e dall'import.
+
+**Scelte del titolare** (tavole `tmp/mockup/u8/`): 1 A (categoria a bottoni, nota a richiesta), 2 A
+(tipologia e categoria della controparte a bottoni con «+ Nuova»), 3 B («Altri filtri» in un pannello;
+al telefono le stesse sezioni nel pannello Filtri). In piu': importo incollato o battuto sulla tastiera.
+
+**Come funziona ora.**
+
+- `GET /movimenti`: `tipologie=2,7` (tipologie della controparte), `categorie=A&categorie=B` (nomi esatti,
+  massimo 50 da 100 caratteri; vuoto, oggetto o troppo lungo: 400), `importo_min`/`importo_max` valgono
+  anche a 0 (prima 0 era ignorato). Il saldo progressivo resta quello vero dei conti.
+- `GET /movimenti/categorie?tipo=`: categorie dell'elenco (`categorie_movimenti` attive) e quelle scritte
+  sui movimenti, con `utilizzi` e `utilizzi_tipo`; prima le piu' usate per il tipo.
+- `GET /anagrafiche/cerca` e `/anagrafiche/:id`: `ultima_categoria` (ultima categoria usata con la
+  controparte), proposta nel nuovo movimento.
+- `POST /movimenti` salva `categoria`.
+- Modulo del movimento: 4 bottoni (le piu' usate per il tipo) + quella proposta + «+ Altra» (campo con
+  suggerimenti; una categoria nuova entra anche nell'elenco); un tocco sul bottone scelto lo toglie.
+  «Aggiungi una nota». Importo: campo invisibile sopra la cifra (`inputMode=none`): «Incolla» tenendo
+  premuto, Cmd/Ctrl+V, cifre e , . ⌫ + − = dalla tastiera. `daIncollare` (`util/importi.js`) accetta
+  `1.234,56`, `1234,56`, `1234.56`, `1,234.56`, `€ 12,30`, `12,30 EUR`; rifiuta senza indovinare `1.234`
+  e `1,234`, negativi, testo, piu' di due decimali, oltre 10 cifre.
+- Controparte: tipologie e categorie (`categorie_anagrafiche`) a bottoni, «+ Nuova» le crea; con una
+  tipologia «di solito» e' quello della tipologia (trigger `sync_anagrafica_tipo_movimento`).
+- Registro: filtri `tipologie`, `cat` (ripetuto), `da`/`a` nell'indirizzo; da computer «Altri filtri»
+  apre un pannello a destra (`BottomSheet lato`) e le etichette si tolgono una a una o tutte; nella
+  tabella la tipologia (col colore) sta sotto la categoria.
+
+**Prova**: `scripts/smoke/u8a-classificazione.sh` (70 controlli: API, isolamento fra utenti, token dello
+studio, browser a 390 e 1366 px, database dopo il browser, CSP). Sul codice di prima (`cf423a1`) 28 FAIL.
+`u6a-registro.sh` aggiornato (categoria della controparte a bottoni).
+
 ## Fase APP — app iOS (dopo U6)
 
 Ratificata il 09/10/2026; non parte prima della fine di U6.
