@@ -1,6 +1,6 @@
 // CSV per gli export (U8b): virgola come separatore, ogni campo di testo tra
 // virgolette, a capo e virgolette protetti, BOM per Excel. Una cella che comincia
-// con = + - @ (o tab, ritorno) diventerebbe una formula in Excel o LibreOffice:
+// con = + - @ (anche dopo spazi o tab), o con tab o ritorno, diventerebbe una formula in Excel o LibreOffice:
 // le si mette davanti un apostrofo. I numeri (anche negativi) restano numeri.
 const NUMERO = /^-?\d+(\.\d+)?$/;
 
@@ -9,7 +9,8 @@ function cellaCsv(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
   let s = String(v);
   if (NUMERO.test(s)) return s;
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  // Anche dopo spazi o tab iniziali (RED t_886b0088: " =1+1" passava).
+  if (/^[\s]*[=+\-@]/.test(s) || /^[\t\r]/.test(s)) s = `'${s}`;
   return `"${s.replace(/"/g, '""')}"`;
 }
 

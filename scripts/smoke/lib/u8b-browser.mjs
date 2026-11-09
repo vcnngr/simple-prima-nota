@@ -68,10 +68,13 @@ try {
   eq('pannello «Nuova controparte», contatti aperti, niente Elimina', 'true|0',
     `${await p.aspetta(`document.querySelector('dialog[open][data-sheet="Nuova controparte"] input[name=email]')`)}|${await n('dialog[open] [data-elimina-controparte]')}`);
   await p.scrivi('dialog[open] input[name=nome]', 'Nuova Ditta');
+  // I bottoni di tipologie e categorie arrivano con le loro query: si aspettano.
+  await p.aspetta(`document.querySelector('dialog[open] [data-tipologia-scelta="${E.TF}"]') && document.querySelector('dialog[open] [data-categoria-controparte="Energia"]')`, 10000);
   await p.clic(`dialog[open] [data-tipologia-scelta="${E.TF}"]`);
   await p.clic('dialog[open] [data-categoria-controparte="Energia"]');
   await p.scrivi('dialog[open] input[name=email]', 'info@nuova.it');
   await p.foto(`${E.FOTO}/nuova-1366.png`);
+  eq('scelte fatte: Fornitori ed Energia premuti', 'true|true', `${await attr(`dialog[open] [data-tipologia-scelta="${E.TF}"]`, 'aria-pressed')}|${await attr('dialog[open] [data-categoria-controparte="Energia"]', 'aria-pressed')}`);
   await p.clic('[data-salva-controparte]');
   eq('creata: si apre la sua scheda', 'true', await p.aspetta(`/^\\/controparti\\/\\d+$/.test(location.pathname) && document.querySelector('[data-scheda-controparte]')?.textContent.includes('Nuova Ditta')`, 10000));
   await p.vai(E.WEB + '/controparti');

@@ -122,6 +122,31 @@ import csv,io;r=list(csv.DictReader(io.StringIO(open('$T/body',encoding='utf-8-s
 eq "export XLSX: 200, file zip" "200|PK" "$(hit "${AU[@]}" "$X1?formato=xlsx")|$(head -c 2 "$T/body")"
 eq "export: formato sconosciuto 400" "400" "$(hit "${AU[@]}" "$X1?formato=pdf")"
 eq "export: senza token 401" "401" "$(hit "$X1?formato=csv")"
+# RED t_886b0088: = + - @ TAB CR in testa, anche dopo spazi o whitespace (utente a parte).
+# Dall'API (come nella review) e dal DB per i caratteri di controllo.
+W="u8bw$SFX"; WT=$(reg_u "$W"); WID=$(uid "$W")
+for nome in "=1+1" " =1+1" "  @SUM(1,2)" "+3" "   +3" "-4x" " -4x" "@A1"; do
+  hit -X POST -H "Authorization: Bearer $WT" "${JSON[@]}" "$API/anagrafiche" \
+    -d "$(python3 -c 'import json,sys;print(json.dumps({"nome":sys.argv[1]}))' "$nome")" >/dev/null
+done
+q "INSERT INTO anagrafiche (nome, user_id) VALUES (E'\\t=2+2', $WID), (E'\\r=5', $WID), (E'\\tciao', $WID),
+  (E'\\rciao', $WID), (E' \\t-6', $WID), (E'  \\t@X', $WID), (E' \\r+7', $WID), (E' \\r\\n=8', $WID),
+  (E'\\u00a0=9', $WID), (E'\\t \\t=10', $WID) RETURNING id" >/dev/null
+eq "export CSV: 18 celle pericolose, tutte con l'apostrofo e il testo intatto dopo" "18|18|18" \
+  "$(hit -H "Authorization: Bearer $WT" "$X1?formato=csv" >/dev/null; python3 -c "
+import csv,io;r=list(csv.DictReader(io.StringIO(open('$T/body',encoding='utf-8-sig',newline='').read())))
+a=[x['Nome'] for x in r]
+print(len(a),sum(1 for n in a if n.startswith(chr(39))),sum(1 for n in a if n[1:].lstrip()[:1] in '=+-@' or n[1:2] in '\\t\\r'),sep='|')")"
+q "INSERT INTO anagrafiche (nome, user_id) VALUES ('  Rossi', $WID), (' Bianchi 2', $WID) RETURNING id" >/dev/null
+eq "export CSV: spazi davanti a testo normale, niente apostrofo" "' Bianchi 2'|'  Rossi'" \
+  "$(hit -H "Authorization: Bearer $WT" "$X1?formato=csv" >/dev/null; python3 -c "
+import csv,io;r=list(csv.DictReader(io.StringIO(open('$T/body',encoding='utf-8-sig',newline='').read())))
+print('|'.join(repr(x['Nome']) for x in r if x['Nome'].strip() in ('Rossi','Bianchi 2')))")"
+# shellcheck disable=SC2016
+eq "cellaCsv: numeri restano numeri, formule dopo whitespace neutralizzate" \
+  '["12","-4.5","0","-12.50","\"\u0027 =1\"","\"\u0027\t \t@x\"","\"\u0027\r+1\"","\"\u0027 -1\"","\"ciao =1\"","\"\u0027\tciao\""]' \
+  "$(node -e "const {cellaCsv:c}=require('$R/backend/utils/csv');
+console.log(JSON.stringify([c(12),c(-4.5),c('0'),c('-12.50'),c(' =1'),c('\\t \\t@x'),c('\\r+1'),c(' -1'),c('ciao =1'),c('\\tciao')]).replace(/'/g,'\\\\u0027'))")"
 eq "export di V: solo il suo" "Di V srl" "$(hit "${AV[@]}" "$X1?formato=csv" >/dev/null; python3 -c "
 import csv,io;r=list(csv.DictReader(io.StringIO(open('$T/body',encoding='utf-8-sig').read())));print(','.join(x['Nome'] for x in r))")"
 eq "nuova controparte con la tipologia di V: 400" "400" "$(hit -X POST "${AU[@]}" "${JSON[@]}" "$API/anagrafiche" -d "{\"nome\":\"Furba\",\"tipologia_id\":$TV}")"
