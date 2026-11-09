@@ -21,6 +21,8 @@ export const registroApi = {
   elenco: ({ q, ordina, offset = 0, limite = 30, ...filtri }) =>
     chiama('/anagrafiche/elenco', { params: { ...filtri, q, ordina, offset, limit: limite } }),
   riepilogoControparti: () => chiama('/anagrafiche/riepilogo'),
+  // U8c: movimenti coi filtri del Registro, Excel o CSV.
+  esportaMovimenti: params => chiama('/movimenti/export', { params, comeFile: true }),
   esportaControparti: params => chiama('/anagrafiche/export', { params, comeFile: true }),
   controparte: id => chiama(`/anagrafiche/${id}`),
   creaControparte: a => chiama('/anagrafiche', { metodo: 'POST', corpo: a }),

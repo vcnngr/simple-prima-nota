@@ -547,6 +547,33 @@ export, nessun modo di creare una controparte se non dal nuovo movimento, solo c
 CSV con cella-formula, browser a 1366 e 390 px, database dopo il browser, CSP). Sul codice di prima
 (`b8d9211`) 32 FAIL.
 
+## U8c — Export coi filtri del Registro (09/11/2026)
+
+**Il problema.** Dal Registro «Esporta» portava all'Archivio, che esporta solo per periodo: il
+vecchio sistema esportava i movimenti coi filtri della pagina (tipo, conto, tipologia).
+`GET /movimenti/export` esisteva ma non era usato da `web/`: filtri parziali e non validati,
+date come oggetti Date (slittamento di un giorno fuori da UTC), saldo in virgola mobile e solo per
+un conto, CSV senza virgolette (un `;` nei campi spostava le colonne), nessuna protezione dalle
+celle-formula.
+
+**Come funziona ora.**
+
+- I filtri di `GET /movimenti` stanno in `filtriMovimenti()` (routes/movimenti.js), usata anche
+  dall'export: stesse righe dell'elenco per periodo, conti, controparte, tipologie, categorie,
+  tipo, importo, ricerca, da chiarire.
+- `GET /movimenti/export?formato=csv|xlsx` (schema dell'elenco senza paginazione): in ordine di data;
+  saldo progressivo calcolato nel database come nell'elenco (il saldo vero dei conti scelti);
+  date e importi come testo dal database; CSV da `utils/csv.js` (BOM, virgolette, celle-formula
+  neutralizzate); XLSX con date vere e importi numerici, foglio «Riepilogo» con totali e filtri.
+  Oltre 20.000 righe: 400 col numero, «restringi il periodo».
+- Registro: «Esporta» (barra da computer, riga dei totali al telefono) apre «Esporta questi
+  movimenti» con quanti sono e quali filtri, Excel o CSV, e il link all'Archivio (export per lo
+  studio e copia di sicurezza).
+
+**Prova**: `scripts/smoke/u8c-export.sh` (42 controlli: righe e saldo uguali all'elenco con dieci
+combinazioni di filtri, date col backend a Los Angeles, CSV e XLSX, isolamento, token, tetto delle
+20.000 righe, browser a 1366 e 390 px con file scaricato, CSP). Sul codice di 0.6.3 25 FAIL.
+
 ## Fase APP — app iOS (dopo U6)
 
 Ratificata il 09/10/2026; non parte prima della fine di U6.

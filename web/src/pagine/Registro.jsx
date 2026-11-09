@@ -16,6 +16,7 @@ import { Bottone } from '../componenti/Bottoni';
 import { etichettaPeriodo, giornoLungo, periodo } from '../util/date';
 import Fascia from '../componenti/Fascia';
 import TabellaRegistro from '../componenti/TabellaRegistro';
+import EsportaMovimenti from '../componenti/EsportaMovimenti';
 
 // Filtri nell'indirizzo (si condividono e sopravvivono al ritorno indietro).
 // U8a: tipologie della controparte (id), categorie (cat, ripetuto), importo da/a (euro, "12.50").
@@ -260,6 +261,7 @@ export default function Registro() {
   const { conti } = useConti();
   const [testo, setTesto] = useState(filtri.q ?? '');
   const [pannello, setPannello] = useState(false); // false | 'tutti' | 'altri'
+  const [esporta, setEsporta] = useState(false); // U8c
   const [aperto, setAperto] = useState(null); // { id, modo }
   const el = useEliminaDopo();
   const riepilogo = useQuery({ queryKey: ['riepilogo', filtri.conto ?? null], queryFn: () => registroApi.riepilogo({ conti: filtri.conto }),
@@ -351,9 +353,9 @@ export default function Registro() {
           className={`${selettore} inline-flex items-center gap-2 ${altre.length ? 'border-principale font-semibold text-principale' : ''}`}>
           <SlidersHorizontal size={18} aria-hidden="true" />Altri filtri{altre.length ? ` · ${altre.length}` : ''}
         </button>
-        <Link to="/archivio" data-link-esporta className={`${selettore} inline-flex items-center gap-2`}>
+        <button type="button" onClick={() => setEsporta(true)} data-link-esporta className={`${selettore} inline-flex items-center gap-2`}>
           <Download size={18} aria-hidden="true" />Esporta
-        </Link>
+        </button>
       </div>
       {altre.length > 0 && (
         <div className="mt-2 hidden flex-wrap items-center gap-2 lg:flex" data-etichette-largo>
@@ -401,7 +403,13 @@ export default function Registro() {
       {tot && (
         <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-y border-bordo bg-superficie px-4 py-2 text-[15px] lg:mt-3 lg:justify-end lg:gap-6 lg:border-0 lg:bg-transparent lg:px-0 lg:text-base"
           data-totali={tot.numero_movimenti}>
-          <span className="basis-full text-tenue lg:mr-auto lg:basis-auto">{tot.numero_movimenti} moviment{tot.numero_movimenti === '1' ? 'o' : 'i'}{etichette.length || filtri.q ? ' con questi filtri' : ''}</span>
+          <span className="flex basis-full items-center justify-between gap-2 text-tenue lg:mr-auto lg:basis-auto">
+            <span>{tot.numero_movimenti} moviment{tot.numero_movimenti === '1' ? 'o' : 'i'}{etichette.length || filtri.q ? ' con questi filtri' : ''}</span>
+            <button type="button" onClick={() => setEsporta(true)} data-esporta-telefono
+              className="inline-flex items-center gap-1 rounded-full border border-bordo px-2.5 py-1 text-sm text-testo lg:hidden">
+              <Download size={14} aria-hidden="true" />Esporta
+            </button>
+          </span>
           <span className="importo text-entrata">entrate {formatta(centesimiDa(tot.totale_entrate) ?? 0)}</span>
           <span className="importo text-uscita">uscite {formatta(centesimiDa(tot.totale_uscite) ?? 0)}</span>
         </div>
@@ -444,6 +452,8 @@ export default function Registro() {
         </div>
       )}
 
+      {esporta && <EsportaMovimenti filtri={perApi(filtri)} etichette={[...etichette.map(x => x.e), ...(filtri.q ? [`«${filtri.q}»`] : [])]}
+        numero={tot ? Number(tot.numero_movimenti) : null} onChiudi={() => setEsporta(false)} />}
       {pannello && <PannelloFiltri key={pannello} soloAltri={pannello === 'altri'} filtri={filtri} conti={conti} onChiudi={() => setPannello(false)}
         onApplica={f => { imposta({ ...f, q: filtri.q }); setPannello(false); }} />}
       {aperto && <DettaglioMovimento key={`${aperto.id}-${aperto.modo}`} id={aperto.id} modo={aperto.modo} onChiudi={() => setAperto(null)} />}

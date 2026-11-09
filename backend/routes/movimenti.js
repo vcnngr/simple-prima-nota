@@ -6,6 +6,7 @@ const { validate, validateQuery, schemas, giorno, elencoConti } = require('../mi
 const moment = require('moment');
 const UnifiedImportProcessor = require('../services/UnifiedImportProcessor');
 const { logErrore } = require('../utils/errori');
+const { testoCsv } = require('../utils/csv');
 const { cartellaXlsx } = require('../utils/xlsx');
 
 const { idNumerici } = require('../middleware/parametri');
@@ -70,171 +71,191 @@ function cursoreValido(v, helpers) {
   return v;
 }
 
-// GET /api/movimenti/export - Export movimenti (AGGIORNATO CON TIPOLOGIE)
-router.get('/export', async (req, res) => {
+// Filtri di GET /movimenti, uguali per l'export (U8c): condizioni su m (movimenti)
+// e a (anagrafiche), parametri da $1 (user_id). idsConti: i conti scelti o null.
+function filtriMovimenti(userId, f) {
+  const { data_inizio, data_fine, conto_id, conti, anagrafica_id, tipologia_id, tipologie, categorie,
+    tipo, importo_min, importo_max, search, da_chiarire } = f;
+        let whereConditions = ['m.user_id = $1'];
+        let params = [userId];
+        let paramIndex = 2;
+        
+        // Filtri esistenti (INVARIATI)
+        if (data_inizio) {
+          whereConditions.push(`m.data >= $${paramIndex}`);
+          params.push(data_inizio);
+          paramIndex++;
+        }
+        
+        if (data_fine) {
+          whereConditions.push(`m.data <= $${paramIndex}`);
+          params.push(data_fine);
+          paramIndex++;
+        }
+        
+        // Conti scelti (U7b): uno (conto_id) o piu' (conti); nessuno = tutti.
+        const idsConti = conto_id ? [conto_id] : (conti || null);
+        if (idsConti) {
+          whereConditions.push(`m.conto_id = ANY($${paramIndex}::int[])`);
+          params.push(idsConti);
+          paramIndex++;
+        }
+        
+        if (anagrafica_id) {
+          whereConditions.push(`m.anagrafica_id = $${paramIndex}`);
+          params.push(anagrafica_id);
+          paramIndex++;
+        }
+        
+        // NUOVO: Filtro per tipologia
+        if (tipologia_id) {
+          whereConditions.push(`a.tipologia_id = $${paramIndex}`);
+          params.push(tipologia_id);
+          paramIndex++;
+        }
+
+        // U8a: tipologie della controparte e categorie del movimento, piu' d'una.
+        if (tipologie) {
+          whereConditions.push(`a.tipologia_id = ANY($${paramIndex}::int[])`);
+          params.push(tipologie);
+          paramIndex++;
+        }
+        if (categorie) {
+          whereConditions.push(`m.categoria = ANY($${paramIndex}::text[])`);
+          params.push([].concat(categorie));
+          paramIndex++;
+        }
+        
+        if (tipo) {
+          whereConditions.push(`m.tipo = $${paramIndex}`);
+          params.push(tipo);
+          paramIndex++;
+        }
+        
+        if (importo_min !== undefined) {
+          whereConditions.push(`m.importo >= $${paramIndex}`);
+          params.push(importo_min);
+          paramIndex++;
+        }
+        
+        if (importo_max !== undefined) {
+          whereConditions.push(`m.importo <= $${paramIndex}`);
+          params.push(importo_max);
+          paramIndex++;
+        }
+        
+        if (da_chiarire !== undefined) {
+          whereConditions.push(`${da_chiarire ? '' : 'NOT '}EXISTS (SELECT 1 FROM messaggi_commercialista mc
+            JOIN collegamenti_commercialista cl ON cl.id = mc.collegamento_id
+            WHERE mc.movimento_id = m.id AND cl.user_id = m.user_id AND cl.stato = 'attiva'
+              AND mc.chiarimento_stato = 'aperta')`);
+        }
+
+        if (search) {
+          whereConditions.push(`(m.descrizione ILIKE $${paramIndex} OR m.note ILIKE $${paramIndex} OR a.nome ILIKE $${paramIndex})`);
+          params.push(`%${search}%`);
+          paramIndex++;
+        }
+        
+  return { whereConditions, params, idsConti };
+}
+
+// GET /api/movimenti/export?formato=csv|xlsx - Export dei movimenti con gli
+// stessi filtri del Registro (U8c): periodo, conti, controparte, tipologie,
+// categorie, tipo, importo, ricerca, da chiarire. In ordine di data; il saldo e'
+// quello vero dei conti scelti (come in GET /movimenti), non dei soli filtrati.
+// Date e importi come testo dal database (niente slittamenti di fuso, niente
+// virgola mobile). Al massimo 20.000 righe: oltre, 400 con il numero.
+const ESPORTA_MAX = 20000;
+const exportSchema = movimentiFiltersSchema.fork(['limit', 'offset', 'order_by', 'order_direction', 'dopo'], x => x.strip())
+  .keys({ formato: require('joi').string().valid('csv', 'xlsx').default('csv') });
+router.get('/export', validateQuery(exportSchema), async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { 
-      formato = 'csv',
-      data_inizio,
-      data_fine,
-      conto_id,
-      anagrafica_id,
-      tipologia_id, // NUOVO
-      tipo,
-      limit = 5000
-    } = req.query;
-    
-    let whereConditions = ['m.user_id = $1'];
-    let params = [userId];
-    let paramIndex = 2;
-    
-    // Filtri esistenti
-    if (data_inizio) {
-      whereConditions.push(`m.data >= $${paramIndex}`);
-      params.push(data_inizio);
-      paramIndex++;
+    const { whereConditions, params, idsConti } = filtriMovimenti(req.user.id, req.query);
+    const tot = await queryOne(`
+      SELECT count(*)::int AS n,
+             coalesce(sum(m.importo) FILTER (WHERE m.tipo = 'Entrata'), 0.00)::text AS entrate,
+             coalesce(sum(m.importo) FILTER (WHERE m.tipo = 'Uscita'), 0.00)::text AS uscite
+      FROM movimenti m LEFT JOIN anagrafiche a ON a.id = m.anagrafica_id
+      WHERE ${whereConditions.join(' AND ')}`, params);
+    if (tot.n > ESPORTA_MAX) {
+      return res.status(400).json({ error: `Troppi movimenti da esportare (${tot.n}): restringi il periodo, al massimo ${ESPORTA_MAX}` });
     }
-    
-    if (data_fine) {
-      whereConditions.push(`m.data <= $${paramIndex}`);
-      params.push(data_fine);
-      paramIndex++;
+    const pp = [...params];
+    let soloConti = '', soloMovimenti = '';
+    if (idsConti) {
+      pp.push(idsConti);
+      soloConti = ` AND cc3.id = ANY($${pp.length}::int[])`;
+      soloMovimenti = ` AND m2.conto_id = ANY($${pp.length}::int[])`;
     }
-    
-    if (conto_id) {
-      whereConditions.push(`m.conto_id = $${paramIndex}`);
-      params.push(conto_id);
-      paramIndex++;
-    }
-    
-    if (anagrafica_id) {
-      whereConditions.push(`m.anagrafica_id = $${paramIndex}`);
-      params.push(anagrafica_id);
-      paramIndex++;
-    }
-    
-    // NUOVO: Filtro per tipologia
-    if (tipologia_id) {
-      whereConditions.push(`a.tipologia_id = $${paramIndex}`);
-      params.push(tipologia_id);
-      paramIndex++;
-    }
-    
-    if (tipo && ['Entrata', 'Uscita'].includes(tipo)) {
-      whereConditions.push(`m.tipo = $${paramIndex}`);
-      params.push(tipo);
-      paramIndex++;
-    }
-    
-    // Query con calcolo saldo progressivo (AGGIORNATA CON TIPOLOGIE)
-    const movimenti = await queryAll(`
-      SELECT 
-        m.data,
-        COALESCE(a.nome, 'Non specificato') as anagrafica,
-        COALESCE(ta.nome, 'Senza tipologia') as tipologia,
-        COALESCE(cc.nome_banca, 'Non specificato') as conto,
-        COALESCE(a.categoria, m.tipo) as categoria,
-        m.descrizione as operazione,
-        CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE 0 END as entrate,
-        CASE WHEN m.tipo = 'Uscita' THEN m.importo ELSE 0 END as uscite,
-        COALESCE(m.note, '') as note
+    const righe = await queryAll(`
+      SELECT to_char(m.data, 'DD/MM/YYYY') AS "Data",
+             to_char(m.data, 'YYYY-MM-DD') AS giorno,
+             coalesce(cc.nome_banca, '') AS "Conto",
+             coalesce(a.nome, '') AS "Controparte",
+             coalesce(ta.nome, '') AS "Tipologia",
+             coalesce(m.categoria, '') AS "Categoria",
+             m.descrizione AS "Descrizione",
+             CASE WHEN m.tipo = 'Entrata' THEN m.importo::text ELSE '' END AS "Entrate",
+             CASE WHEN m.tipo = 'Uscita' THEN m.importo::text ELSE '' END AS "Uscite",
+             sp.saldo::text AS "Saldo",
+             coalesce(m.note, '') AS "Note"
       FROM movimenti m
-      LEFT JOIN anagrafiche a ON m.anagrafica_id = a.id
-      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
-      LEFT JOIN conti_correnti cc ON m.conto_id = cc.id
+      LEFT JOIN anagrafiche a ON a.id = m.anagrafica_id AND a.user_id = m.user_id
+      LEFT JOIN tipologie_anagrafiche ta ON ta.id = a.tipologia_id AND ta.user_id = m.user_id
+      LEFT JOIN conti_correnti cc ON cc.id = m.conto_id AND cc.user_id = m.user_id
+      LEFT JOIN (
+        SELECT m2.id,
+               (SELECT coalesce(sum(cc3.saldo_iniziale), 0) FROM conti_correnti cc3 WHERE cc3.user_id = $1${soloConti})
+               + sum(CASE WHEN m2.tipo = 'Entrata' THEN m2.importo ELSE -m2.importo END) OVER (ORDER BY m2.data, m2.id) AS saldo
+        FROM movimenti m2
+        JOIN conti_correnti cc2 ON cc2.id = m2.conto_id AND cc2.user_id = $1
+        WHERE m2.user_id = $1${soloMovimenti}
+      ) sp ON sp.id = m.id
       WHERE ${whereConditions.join(' AND ')}
-      ORDER BY m.data ASC, m.created_at ASC
-      LIMIT $${paramIndex}
-    `, [...params, Math.min(Math.max(parseInt(limit, 10) || 5000, 1), 5000)]); // era "LIMIT ${paramIndex}": export sempre in errore (08P01)
-      
-      // Calcola saldo progressivo (INVARIATO)
-      let saldoProgressivo = 0;
-      
-      if (conto_id) {
-        const saldoIniziale = await queryOne(`
-        SELECT 
-          cc.saldo_iniziale,
-          COALESCE(SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE -m.importo END), 0) as movimenti_precedenti
-        FROM conti_correnti cc
-        LEFT JOIN movimenti m ON cc.id = m.conto_id AND m.data < COALESCE($3, '1900-01-01')
-        WHERE cc.id = $1 AND cc.user_id = $2
-        GROUP BY cc.saldo_iniziale
-      `, [conto_id, userId, data_inizio]);
-          
-          saldoProgressivo = parseFloat(saldoIniziale?.saldo_iniziale || 0) + parseFloat(saldoIniziale?.movimenti_precedenti || 0);
-        }
-        
-        const movimentiConSaldo = movimenti.map(movimento => {
-          saldoProgressivo += parseFloat(movimento.entrate) - parseFloat(movimento.uscite);
-          return {
-            ...movimento,
-            saldo: saldoProgressivo
-          };
-        });
-        
-        if (formato === 'xlsx') {
-          
-          // Prepara dati per Excel (AGGIORNATO CON TIPOLOGIA)
-          const excelData = movimentiConSaldo.map(m => ({
-            'Data': m.data,
-            'Anagrafica': m.anagrafica,
-            'Tipologia': m.tipologia,
-            'Conto': m.conto,
-            'Categoria': m.categoria,
-            'Operazione': m.operazione,
-            'Entrate': parseFloat(m.entrate).toFixed(2) + ' €',
-            'Uscite': parseFloat(m.uscite).toFixed(2) + ' €',
-            'Saldo': parseFloat(m.saldo).toFixed(2) + ' €',
-            'Note': m.note
-          }));
-          
-          const buffer = cartellaXlsx([{ nome: 'Prima Nota', righe: excelData }]);
-          
-          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-          res.setHeader('Content-Disposition', `attachment; filename="prima_nota_${new Date().toISOString().split('T')[0]}.xlsx"`);
-          res.send(buffer);
-        } else {
-          // CSV nel formato con tipologie (AGGIORNATO)
-          let csvContent = 'Data;Anagrafica;Tipologia;Conto;Categoria;Operazione;Entrate;Uscite;Saldo;Note\n';
-          
-          // Riga vuota come nel formato originale
-          csvContent += ';;;;;;;;;;;\n';
-          
-          movimentiConSaldo.forEach(movimento => {
-            const data = movimento.data;
-            const anagrafica = movimento.anagrafica.replace(/;/g, ',');
-            const tipologia = movimento.tipologia.replace(/;/g, ','); // NUOVO
-            const conto = movimento.conto.replace(/;/g, ',');
-            const categoria = movimento.categoria.replace(/;/g, ',');
-            const operazione = movimento.operazione.replace(/;/g, ',');
-            const entrate = parseFloat(movimento.entrate).toFixed(2).replace('.', ',') + ' €';
-            const uscite = parseFloat(movimento.uscite).toFixed(2).replace('.', ',') + ' €';
-            const saldo = parseFloat(movimento.saldo).toFixed(2).replace('.', ',') + ' €';
-            const note = movimento.note.replace(/;/g, ',');
-            
-            csvContent += `${data};${anagrafica};${tipologia};${conto};${categoria};${operazione};${entrate};${uscite};${saldo};${note}\n`;
-          });
-          
-          // Aggiungi riga riepilogativa finale (INVARIATA)
-          const totaleEntrate = movimentiConSaldo.reduce((sum, m) => sum + parseFloat(m.entrate), 0);
-          const totaleUscite = movimentiConSaldo.reduce((sum, m) => sum + parseFloat(m.uscite), 0);
-          const saldoFinale = totaleEntrate - totaleUscite;
-          const numeroTransazioni = movimentiConSaldo.length;
-          
-          csvContent += `;;;;Numero transazioni:;${numeroTransazioni};${totaleEntrate.toFixed(2).replace('.', ',')} €;${totaleUscite.toFixed(2).replace('.', ',')} €;${saldoFinale.toFixed(2).replace('.', ',')} €**%**;;\n`;
-          
-          res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-          res.setHeader('Content-Disposition', `attachment; filename="prima_nota_${new Date().toISOString().split('T')[0]}.csv"`);
-          
-          res.send('\uFEFF' + csvContent);
-        }
-        
-      } catch (error) {
-        logErrore('Error exporting movimenti', error);
-        res.status(500).json({ error: 'Errore durante l\'export dei movimenti' });
-      }
+      ORDER BY m.data, m.id
+    `, pp);
+    const COLONNE = ['Data', 'Conto', 'Controparte', 'Tipologia', 'Categoria', 'Descrizione', 'Entrate', 'Uscite', 'Saldo', 'Note'];
+    const oggi = new Date().toISOString().slice(0, 10);
+
+    if (req.query.formato === 'xlsx') {
+      // Excel: date vere (mezzanotte locale, nessuno slittamento) e importi come numeri.
+      const num = v => (v === '' || v == null ? '' : Number(v));
+      const xl = righe.map(r => {
+        const [y, mm, d] = r.giorno.split('-').map(Number);
+        return { Data: new Date(y, mm - 1, d), Conto: r.Conto, Controparte: r.Controparte, Tipologia: r.Tipologia,
+          Categoria: r.Categoria, Descrizione: r.Descrizione, Entrate: num(r.Entrate), Uscite: num(r.Uscite), Saldo: num(r.Saldo), Note: r.Note };
+      });
+      const riepilogo = [{ Movimenti: tot.n, Entrate: Number(tot.entrate), Uscite: Number(tot.uscite),
+        Netto: Number((Number(tot.entrate) - Number(tot.uscite)).toFixed(2)), Filtri: descriviFiltri(req.query) }];
+      const buffer = cartellaXlsx([{ nome: 'Prima Nota', righe: xl, larghezze: true }, { nome: 'Riepilogo', righe: riepilogo, larghezze: true }]);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="prima_nota_${oggi}.xlsx"`);
+      return res.send(buffer);
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="prima_nota_${oggi}.csv"`);
+    res.send(testoCsv(COLONNE, righe));
+  } catch (error) {
+    logErrore('Error exporting movimenti', error);
+    res.status(500).json({ error: 'Errore durante l\'export dei movimenti' });
+  }
 });
+
+// Testo leggibile dei filtri dell'export (foglio Riepilogo).
+function descriviFiltri(f) {
+  const v = [];
+  if (f.data_inizio || f.data_fine) v.push(`periodo ${f.data_inizio || '…'} – ${f.data_fine || '…'}`);
+  if (f.conto_id || f.conti) v.push(`conti ${[].concat(f.conto_id || f.conti).join(', ')}`);
+  if (f.tipo) v.push(f.tipo === 'Entrata' ? 'solo entrate' : 'solo uscite');
+  if (f.anagrafica_id) v.push(`controparte ${f.anagrafica_id}`);
+  if (f.tipologie) v.push(`tipologie ${[].concat(f.tipologie).join(', ')}`);
+  if (f.categorie) v.push(`categorie ${[].concat(f.categorie).join(', ')}`);
+  if (f.importo_min !== undefined || f.importo_max !== undefined) v.push(`importo ${f.importo_min ?? '…'} – ${f.importo_max ?? '…'}`);
+  if (f.search) v.push(`ricerca «${f.search}»`);
+  if (f.da_chiarire) v.push('da chiarire');
+  return v.join('; ') || 'nessuno: tutti i movimenti';
+}
 
 // GET /api/movimenti/template - Template con tipologie (AGGIORNATO)
 // GET /api/movimenti/categorie?tipo= - Categorie dei movimenti (U8a): quelle
@@ -624,86 +645,7 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           da_chiarire
         } = req.query;
         
-        let whereConditions = ['m.user_id = $1'];
-        let params = [req.user.id];
-        let paramIndex = 2;
-        
-        // Filtri esistenti (INVARIATI)
-        if (data_inizio) {
-          whereConditions.push(`m.data >= $${paramIndex}`);
-          params.push(data_inizio);
-          paramIndex++;
-        }
-        
-        if (data_fine) {
-          whereConditions.push(`m.data <= $${paramIndex}`);
-          params.push(data_fine);
-          paramIndex++;
-        }
-        
-        // Conti scelti (U7b): uno (conto_id) o piu' (conti); nessuno = tutti.
-        const idsConti = conto_id ? [conto_id] : (conti || null);
-        if (idsConti) {
-          whereConditions.push(`m.conto_id = ANY($${paramIndex}::int[])`);
-          params.push(idsConti);
-          paramIndex++;
-        }
-        
-        if (anagrafica_id) {
-          whereConditions.push(`m.anagrafica_id = $${paramIndex}`);
-          params.push(anagrafica_id);
-          paramIndex++;
-        }
-        
-        // NUOVO: Filtro per tipologia
-        if (tipologia_id) {
-          whereConditions.push(`a.tipologia_id = $${paramIndex}`);
-          params.push(tipologia_id);
-          paramIndex++;
-        }
-
-        // U8a: tipologie della controparte e categorie del movimento, piu' d'una.
-        if (tipologie) {
-          whereConditions.push(`a.tipologia_id = ANY($${paramIndex}::int[])`);
-          params.push(tipologie);
-          paramIndex++;
-        }
-        if (categorie) {
-          whereConditions.push(`m.categoria = ANY($${paramIndex}::text[])`);
-          params.push([].concat(categorie));
-          paramIndex++;
-        }
-        
-        if (tipo) {
-          whereConditions.push(`m.tipo = $${paramIndex}`);
-          params.push(tipo);
-          paramIndex++;
-        }
-        
-        if (importo_min !== undefined) {
-          whereConditions.push(`m.importo >= $${paramIndex}`);
-          params.push(importo_min);
-          paramIndex++;
-        }
-        
-        if (importo_max !== undefined) {
-          whereConditions.push(`m.importo <= $${paramIndex}`);
-          params.push(importo_max);
-          paramIndex++;
-        }
-        
-        if (da_chiarire !== undefined) {
-          whereConditions.push(`${da_chiarire ? '' : 'NOT '}EXISTS (SELECT 1 FROM messaggi_commercialista mc
-            JOIN collegamenti_commercialista cl ON cl.id = mc.collegamento_id
-            WHERE mc.movimento_id = m.id AND cl.user_id = m.user_id AND cl.stato = 'attiva'
-              AND mc.chiarimento_stato = 'aperta')`);
-        }
-
-        if (search) {
-          whereConditions.push(`(m.descrizione ILIKE $${paramIndex} OR m.note ILIKE $${paramIndex} OR a.nome ILIKE $${paramIndex})`);
-          params.push(`%${search}%`);
-          paramIndex++;
-        }
+        const { whereConditions, params, idsConti } = filtriMovimenti(req.user.id, req.query);
         
         const validOrderBy = ['data', 'importo', 'created_at'];
         const validDirection = ['ASC', 'DESC'];
