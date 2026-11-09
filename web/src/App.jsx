@@ -76,7 +76,7 @@ const router = createBrowserRouter([
         { path: '/', element: <Registro />, handle: { largo: true } },
         { path: '/movimenti', element: <VersoRegistro /> },
         { path: '/nuovo', element: <NuovoMovimento />, handle: { largo: true } },
-        { path: '/controparti', element: <Controparti /> },
+        { path: '/controparti', element: <Controparti />, handle: { largo: true } },
         { path: '/controparti/:id', element: <Controparte /> },
         { path: '/report', element: <Report /> },
         { path: '/report/:mese', element: <ReportMese /> },

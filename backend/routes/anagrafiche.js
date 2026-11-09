@@ -6,6 +6,7 @@ const { validate, validateQuery, schemas } = require('../middleware/validation')
 const { contiene, iniziaCon } = require('../utils/ricerca');
 const { logErrore } = require('../utils/errori');
 const { cartellaXlsx } = require('../utils/xlsx');
+const { testoCsv } = require('../utils/csv');
 
 const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
@@ -243,84 +244,60 @@ router.patch('/tipologie/:id/toggle-stato', async (req, res) => {
 // ENDPOINTS ANAGRAFICHE (DOPO LE TIPOLOGIE PER EVITARE CONFLITTI DI ROUTING)
 // ==============================================================================
 
-// GET /api/anagrafiche/export - Export anagrafiche (AGGIORNATO)
-router.get('/export', async (req, res) => {
+// GET /api/anagrafiche/export?formato=csv|xlsx - Export delle controparti (U8b):
+// stessi filtri di /elenco (q, tipologie, categorie, attivo), colonne in italiano,
+// importi e conteggi di sempre. Le date come testo YYYY-MM-DD (niente slittamenti
+// di fuso). CSV con BOM, campi tra virgolette e celle-formula neutralizzate.
+router.get('/export', validateQuery(schemas.exportAnagrafiche), async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { formato = 'csv', tipologia_id } = req.query;
-
-    let whereCondition = 'a.user_id = $1';
-    let params = [userId];
-
-    if (tipologia_id) {
-      whereCondition += ' AND a.tipologia_id = $2';
-      params.push(tipologia_id);
-    }
-
-    const anagrafiche = await queryAll(`
-      SELECT 
-        a.nome,
-        COALESCE(ta.nome, 'Senza tipologia') as tipologia,
-        ta.tipo_movimento_default,
-        a.categoria,
-        a.email,
-        a.telefono,
-        a.piva,
-        a.indirizzo,
-        CASE WHEN a.attivo THEN 'Attivo' ELSE 'Inattivo' END as stato,
-        COALESCE(stats.numero_movimenti, 0) as numero_movimenti,
-        COALESCE(stats.totale_entrate, 0) as totale_entrate,
-        COALESCE(stats.totale_uscite, 0) as totale_uscite,
-        COALESCE(stats.ultimo_movimento, NULL) as ultimo_movimento,
-        a.created_at::date as data_creazione
+    const { q, tipologie, senza_tipologia, categorie, senza_categoria, formato } = req.query;
+    const attivo = req.query.attivo === 'tutte' ? undefined : req.query.attivo === 'true';
+    const f = filtriAnagrafiche(req.user.id, { q, attivo, tipologie, senza_tipologia, categorie, senza_categoria });
+    const righe = await queryAll(`
+      SELECT a.nome AS "Nome",
+             coalesce(ta.nome, '') AS "Tipologia",
+             coalesce(a.tipo_movimento_preferito, ta.tipo_movimento_default, '') AS "Di solito",
+             coalesce(a.categoria, '') AS "Categoria",
+             coalesce(a.email, '') AS "Email",
+             coalesce(a.telefono, '') AS "Telefono",
+             coalesce(a.piva, '') AS "P.IVA",
+             coalesce(a.indirizzo, '') AS "Indirizzo",
+             CASE WHEN a.attivo THEN 'Attiva' ELSE 'Disattivata' END AS "Stato",
+             s.numero_movimenti AS "Movimenti",
+             s.totale_entrate AS "Entrate",
+             s.totale_uscite AS "Uscite",
+             coalesce(to_char(s.ultimo_movimento, 'YYYY-MM-DD'), '') AS "Ultimo movimento"
       FROM anagrafiche a
-      LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
-      LEFT JOIN (
-        SELECT 
-          m.anagrafica_id,
-          COUNT(*) as numero_movimenti,
-          SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE 0 END) as totale_entrate,
-          SUM(CASE WHEN m.tipo = 'Uscita' THEN m.importo ELSE 0 END) as totale_uscite,
-          MAX(m.data) as ultimo_movimento
+      LEFT JOIN tipologie_anagrafiche ta ON ta.id = a.tipologia_id AND ta.user_id = a.user_id
+      CROSS JOIN LATERAL (
+        SELECT count(*)::int AS numero_movimenti,
+               coalesce(sum(m.importo) FILTER (WHERE m.tipo = 'Entrata'), 0.00) AS totale_entrate,
+               coalesce(sum(m.importo) FILTER (WHERE m.tipo = 'Uscita'), 0.00) AS totale_uscite,
+               max(m.data) AS ultimo_movimento
         FROM movimenti m
-        WHERE m.user_id = $1
-        GROUP BY m.anagrafica_id
-      ) stats ON a.id = stats.anagrafica_id
-      WHERE ${whereCondition}
-      ORDER BY ta.nome, a.nome
-    `, params);
+        WHERE m.anagrafica_id = a.id AND m.user_id = $1
+      ) s
+      WHERE ${f.dove.join(' AND ')}
+      ORDER BY lower(a.nome), a.id
+    `, f.params);
+    const giorno = new Date().toISOString().slice(0, 10);
 
     if (formato === 'xlsx') {
-      const buffer = cartellaXlsx([{ nome: 'Anagrafiche', righe: anagrafiche }]);
-      
+      // Importi come numeri: in Excel si sommano.
+      const xl = righe.map(r => ({ ...r, Entrate: Number(r.Entrate), Uscite: Number(r.Uscite) }));
+      const buffer = cartellaXlsx([{ nome: 'Controparti', righe: xl, larghezze: true }]);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="anagrafiche_${new Date().toISOString().split('T')[0]}.xlsx"`);
-      res.send(buffer);
-    } else {
-      // Default CSV  
-      const fields = Object.keys(anagrafiche[0] || {});
-      let csvContent = fields.join(',') + '\n';
-      
-      anagrafiche.forEach(anagrafica => {
-        const values = fields.map(field => {
-          let value = anagrafica[field];
-          if (value === null || value === undefined) value = '';
-          if (typeof value === 'string' && value.includes(',')) {
-            value = `"${value.replace(/"/g, '""')}"`;
-          }
-          return value;
-        });
-        csvContent += values.join(',') + '\n';
-      });
-
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="anagrafiche_${new Date().toISOString().split('T')[0]}.csv"`);
-      res.send(csvContent);
+      res.setHeader('Content-Disposition', `attachment; filename="controparti_${giorno}.xlsx"`);
+      return res.send(buffer);
     }
-
+    const intestazione = ['Nome', 'Tipologia', 'Di solito', 'Categoria', 'Email', 'Telefono', 'P.IVA', 'Indirizzo',
+      'Stato', 'Movimenti', 'Entrate', 'Uscite', 'Ultimo movimento'];
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="controparti_${giorno}.csv"`);
+    res.send(testoCsv(intestazione, righe));
   } catch (error) {
     logErrore('Error exporting anagrafiche', error);
-    res.status(500).json({ error: 'Errore durante l\'export delle anagrafiche' });
+    res.status(500).json({ error: 'Errore durante l\'export delle controparti' });
   }
 });
 
@@ -421,13 +398,22 @@ router.get('/categorie', async (req, res) => {
 // e spariscono con la sua ricostruzione.
 
 // Filtri comuni a /cerca e /elenco. Ritorna { dove, params }.
-function filtriAnagrafiche(userId, { q, attivo, tipologia_id, lettera }) {
+function filtriAnagrafiche(userId, { q, attivo, tipologia_id, lettera, tipologie, senza_tipologia, categorie, senza_categoria }) {
   const dove = ['a.user_id = $1'];
   const params = [userId];
   const p = (v) => { params.push(v); return `$${params.length}`; };
   if (attivo === true) dove.push('a.attivo = true');
   if (attivo === false) dove.push('a.attivo = false');
   if (tipologia_id) dove.push(`a.tipologia_id = ${p(tipologia_id)}`);
+  // U8b: piu' tipologie / categorie, ed eventualmente chi non ne ha (in OR).
+  const o = [];
+  if (tipologie) o.push(`a.tipologia_id = ANY(${p(tipologie)}::int[])`);
+  if (senza_tipologia) o.push('a.tipologia_id IS NULL');
+  if (o.length) dove.push(`(${o.join(' OR ')})`);
+  const c = [];
+  if (categorie) c.push(`a.categoria = ANY(${p([].concat(categorie))}::text[])`);
+  if (senza_categoria) c.push(`nullif(trim(a.categoria), '') IS NULL`);
+  if (c.length) dove.push(`(${c.join(' OR ')})`);
   if (q) {
     const like = p(contiene(q));
     dove.push(`(lower(a.nome) LIKE ${like} ESCAPE '\\' OR lower(coalesce(a.piva, '')) LIKE ${like} ESCAPE '\\')`);
@@ -487,10 +473,11 @@ router.get('/cerca', validateQuery(schemas.cercaAnagrafiche), async (req, res) =
 // filtri, lettera esclusa (l'indice resta intero mentre si salta fra lettere).
 router.get('/elenco', validateQuery(schemas.elencoAnagrafiche), async (req, res) => {
   try {
-    const { q, lettera, tipologia_id, ordina, limit, offset } = req.query;
+    const { q, lettera, tipologia_id, ordina, limit, offset, tipologie, senza_tipologia, categorie, senza_categoria } = req.query;
     const attivo = req.query.attivo === 'tutte' ? undefined : req.query.attivo === 'true';
-    const f = filtriAnagrafiche(req.user.id, { q, attivo, tipologia_id, lettera });
-    const g = filtriAnagrafiche(req.user.id, { q, attivo, tipologia_id });
+    const piu = { tipologie, senza_tipologia, categorie, senza_categoria };
+    const f = filtriAnagrafiche(req.user.id, { q, attivo, tipologia_id, lettera, ...piu });
+    const g = filtriAnagrafiche(req.user.id, { q, attivo, tipologia_id, ...piu });
 
     const ordine = {
       nome: 'lower(a.nome), a.id',
@@ -546,6 +533,47 @@ router.get('/elenco', validateQuery(schemas.elencoAnagrafiche), async (req, res)
   }
 });
 
+// GET /api/anagrafiche/riepilogo - Conteggi della pagina Controparti (U8b), su
+// tutte le controparti dell'utente: attive e disattivate, per tipologia (anche
+// quelle senza controparti, e «senza tipologia»), per categoria (quelle
+// dell'elenco e quelle scritte sulle controparti, e «senza categoria»).
+router.get('/riepilogo', async (req, res) => {
+  try {
+    const conti = await queryOne(`
+      SELECT count(*)::int AS totale,
+             count(*) FILTER (WHERE attivo)::int AS attive,
+             count(*) FILTER (WHERE NOT attivo)::int AS disattivate,
+             count(*) FILTER (WHERE tipologia_id IS NULL)::int AS senza_tipologia,
+             count(*) FILTER (WHERE nullif(trim(categoria), '') IS NULL)::int AS senza_categoria
+      FROM anagrafiche WHERE user_id = $1
+    `, [req.user.id]);
+    const tipologie = await queryAll(`
+      SELECT ta.id, ta.nome, ta.colore, ta.attiva, ta.tipo_movimento_default,
+             count(a.id)::int AS n
+      FROM tipologie_anagrafiche ta
+      LEFT JOIN anagrafiche a ON a.tipologia_id = ta.id AND a.user_id = ta.user_id
+      WHERE ta.user_id = $1
+      GROUP BY ta.id
+      ORDER BY count(a.id) DESC, lower(ta.nome), ta.id
+    `, [req.user.id]);
+    const categorie = await queryAll(`
+      WITH nomi AS (
+        SELECT nome FROM categorie_anagrafiche WHERE user_id = $1 AND attiva = true
+        UNION
+        SELECT categoria FROM anagrafiche WHERE user_id = $1 AND nullif(trim(categoria), '') IS NOT NULL
+      )
+      SELECT n.nome, ca.colore,
+             (SELECT count(*)::int FROM anagrafiche a WHERE a.user_id = $1 AND a.categoria = n.nome) AS n
+      FROM nomi n
+      LEFT JOIN categorie_anagrafiche ca ON ca.user_id = $1 AND ca.nome = n.nome
+      ORDER BY 3 DESC, lower(n.nome)
+    `, [req.user.id]);
+    res.json({ ...conti, tipologie, categorie });
+  } catch (error) {
+    logErrore('Error fetching riepilogo anagrafiche', error);
+    res.status(500).json({ error: 'Errore durante il caricamento del riepilogo' });
+  }
+});
 
 // GET /api/anagrafiche/:id - Dettaglio singola anagrafica (AGGIORNATO)
 router.get('/:id', async (req, res) => {

@@ -518,6 +518,35 @@ al telefono le stesse sezioni nel pannello Filtri). In piu': importo incollato o
 studio, browser a 390 e 1366 px, database dopo il browser, CSP). Sul codice di prima (`cf423a1`) 28 FAIL.
 `u6a-registro.sh` aggiornato (categoria della controparte a bottoni).
 
+## U8b — Controparti complete (09/11/2026)
+
+**Il problema.** Il confronto col vecchio sistema (09/11/2026) ha trovato nella pagina delle
+controparti: nessun filtro per tipologia, categoria o stato, nessun conteggio per tipologia, nessun
+export, nessun modo di creare una controparte se non dal nuovo movimento, solo col nome.
+
+**Come funziona ora.**
+
+- `GET /anagrafiche/riepilogo`: totale, attive, disattivate, senza tipologia, senza categoria; per
+  tipologia (anche quelle senza controparti) e per categoria (quelle dell'elenco e quelle scritte),
+  sempre e solo dell'utente.
+- `GET /anagrafiche/elenco` e `GET /anagrafiche/export`: filtri `tipologie=2,7`, `senza_tipologia`,
+  `categorie=A&categorie=B` (nomi esatti), `senza_categoria` (vuota o di soli spazi), `attivo`;
+  tipologie e «senza» in OR, il resto in AND. Una tipologia di un altro utente non trova niente.
+- Export riscritto (`?formato=csv|xlsx`, validato): colonne in italiano, movimenti, entrate,
+  uscite, ultimo movimento come testo `YYYY-MM-DD`; CSV con BOM, campi tra virgolette e celle che
+  cominciano con `= + - @` precedute da un apostrofo (`utils/csv.js`: prima un nome come
+  `=HYPERLINK(...)` diventava una formula in Excel); XLSX con gli importi come numeri.
+- Pagina `/controparti`: conteggi per tipologia che filtrano con un tocco (e «Disattivate»),
+  pannello «Filtri» (a destra da computer, come «Altri filtri» del Registro) con tipologie,
+  categorie e stato, etichette togliibili, filtri nell'indirizzo (`tip`, `cat`, `st`, `ord`, `q`);
+  «Esporta» (Excel o CSV di quello che si vede); «Nuova» apre la scheda della controparte in modo
+  creazione (nome, tipologia, categoria, contatti) e porta alla sua pagina. Da 1024 px una tabella
+  con Nome, Tipologia, Categoria, Contatti, Movimenti, Entrate, Uscite.
+
+**Prova**: `scripts/smoke/u8b-controparti.sh` (57 controlli: API, isolamento, token dello studio,
+CSV con cella-formula, browser a 1366 e 390 px, database dopo il browser, CSP). Sul codice di prima
+(`b8d9211`) 32 FAIL.
+
 ## Fase APP — app iOS (dopo U6)
 
 Ratificata il 09/10/2026; non parte prima della fine di U6.

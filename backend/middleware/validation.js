@@ -49,6 +49,19 @@ const elencoConti = () => Joi.string().pattern(/^[1-9]\d{0,9}(,[1-9]\d{0,9}){0,4
   })
   .messages({ 'string.pattern.base': '{{#label}} deve essere un elenco di id separati da virgola', 'any.invalid': '{{#label}} contiene un id non valido' });
 
+// U8b: filtri della pagina Controparti. tipologie: id ("2,7"); categorie: nomi
+// esatti (?categorie=A&categorie=B); senza_*: anche chi non ne ha (in OR).
+const nomiCategorie = () => Joi.alternatives().try(
+  Joi.array().items(Joi.string().trim().min(1).max(100)).min(1).max(50).unique(),
+  Joi.string().trim().min(1).max(100)
+);
+const filtriControparti = () => ({
+  tipologie: elencoConti().optional(),
+  senza_tipologia: Joi.boolean().optional(),
+  categorie: nomiCategorie().optional(),
+  senza_categoria: Joi.boolean().optional()
+});
+
 const schemas = {
   // U6c: riepilogo del cliente per lo studio.
   riepilogoCliente: Joi.object({
@@ -328,10 +341,18 @@ const schemas = {
     q: Joi.string().trim().max(100).allow('').default(''),
     lettera: Joi.string().pattern(/^([A-Z]|#)$/).optional(),
     tipologia_id: Joi.number().integer().min(1).max(2147483647).optional(),
+    ...filtriControparti(),
     attivo: Joi.string().valid('true', 'false', 'tutte').default('tutte'),
     ordina: Joi.string().valid('nome', 'uso', 'recente').default('nome'),
     limit: Joi.number().integer().min(1).max(100).default(50),
     offset: Joi.number().integer().min(0).max(1000000).default(0)
+  }),
+  // U8b: export delle controparti con gli stessi filtri della pagina.
+  exportAnagrafiche: Joi.object({
+    q: Joi.string().trim().max(100).allow('').default(''),
+    ...filtriControparti(),
+    attivo: Joi.string().valid('true', 'false', 'tutte').default('tutte'),
+    formato: Joi.string().valid('csv', 'xlsx').default('csv')
   }),
 
   paginazione: Joi.object({

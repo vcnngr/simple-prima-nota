@@ -17,7 +17,9 @@ const ALTRI = [['piva', 'Partita IVA', 20], ['email', 'Email', 100], ['telefono'
 // Modifica della controparte (U6a, tavola 3 A): nome, di solito entrata o uscita,
 // categoria; P.IVA e contatti dietro una riga. Elimina solo senza movimenti
 // (lo dice il server), altrimenti si disattiva: sparisce dalla ricerca.
+// U8b: senza c.id e' «Nuova controparte» (POST), poi si apre la sua scheda.
 export default function PannelloControparte({ c, aperto, onChiudi }) {
+  const nuova = !c.id;
   const qc = useQueryClient();
   const vai = useNavigate();
   const [v, setV] = useState(() => ({
@@ -25,7 +27,7 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
     tipologia_id: c.tipologia_id ?? null,
     piva: c.piva ?? '', email: c.email ?? '', telefono: c.telefono ?? '', indirizzo: c.indirizzo ?? ''
   }));
-  const [altri, setAltri] = useState(false);
+  const [altri, setAltri] = useState(nuova);
   const [conferma, setConferma] = useState(false);
   const campo = k => e => setV(x => ({ ...x, [k]: e.target.value }));
   const fatto = () => { aggiornaRegistro(qc); };
@@ -47,13 +49,13 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
   });
 
   const salva = useMutation({
-    mutationFn: () => registroApi.modificaControparte(c.id, {
+    mutationFn: () => (nuova ? registroApi.creaControparte : corpo => registroApi.modificaControparte(c.id, corpo))({
       ...Object.fromEntries(Object.entries(v).filter(([k]) => k !== 'tipologia_id').map(([k, x]) => [k, x.trim() || null])),
       nome: v.nome.trim().replace(/\s+/g, ' '),
       tipologia_id: v.tipologia_id,
       tipo_movimento_preferito: diSolito
     }),
-    onSuccess: () => { fatto(); onChiudi(); }
+    onSuccess: r => { fatto(); onChiudi(); if (nuova && r?.id) vai(`/controparti/${r.id}`); }
   });
   const attiva = useMutation({
     mutationFn: () => registroApi.modificaControparte(c.id, { attivo: !c.attivo }),
@@ -67,16 +69,16 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
   const occupato = salva.isPending || attiva.isPending || elimina.isPending;
 
   return (
-    <BottomSheet aperto={aperto} onChiudi={onChiudi} titolo="Modifica controparte" piede={
+    <BottomSheet aperto={aperto} onChiudi={onChiudi} titolo={nuova ? 'Nuova controparte' : 'Modifica controparte'} piede={
       <button type="submit" form="pannello-controparte" disabled={!v.nome.trim() || occupato} data-salva-controparte
         className="h-12 w-full rounded-xl bg-principale font-bold text-su-principale disabled:opacity-40">
-        {salva.isPending ? 'Salvataggio…' : 'Salva'}
+        {salva.isPending ? 'Salvataggio…' : nuova ? 'Crea la controparte' : 'Salva'}
       </button>
     }>
       <form id="pannello-controparte" className="space-y-3" onSubmit={e => { e.preventDefault(); if (v.nome.trim() && !occupato) salva.mutate(); }}>
         <label className="block text-sm">
           <span className="text-tenue">Nome</span>
-          <input name="nome" value={v.nome} onChange={campo('nome')} maxLength={100} required
+          <input name="nome" value={v.nome} onChange={campo('nome')} maxLength={100} required autoFocus={nuova}
             className="mt-1 w-full rounded-xl border border-bordo bg-fondo px-3 py-2" />
         </label>
         <fieldset data-tipologie-controparte>
@@ -128,7 +130,7 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
           </label>
         ))}
         {errore && <p role="alert" className="text-sm text-uscita">{errore.message}</p>}
-        <div className="flex gap-2 border-t border-bordo pt-3 text-sm">
+        {!nuova && <div className="flex gap-2 border-t border-bordo pt-3 text-sm">
           <button type="button" data-attiva-controparte disabled={occupato} onClick={() => attiva.mutate()}
             className="flex-1 rounded-xl border border-bordo py-2 font-semibold">{c.attivo ? 'Disattiva' : 'Riattiva'}</button>
           {conferma ? (
@@ -138,7 +140,7 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
             <button type="button" data-elimina-controparte disabled={occupato} onClick={() => setConferma(true)}
               className="flex-1 rounded-xl border border-uscita py-2 font-semibold text-uscita">Elimina</button>
           )}
-        </div>
+        </div>}
         {c.attivo === false && <p className="text-xs text-tenue">Disattivata: non compare nella ricerca di «Chi?».</p>}
       </form>
     </BottomSheet>

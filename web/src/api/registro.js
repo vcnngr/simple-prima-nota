@@ -17,8 +17,11 @@ export const registroApi = {
   elimina: id => chiama(`/movimenti/${id}`, { metodo: 'DELETE' }),
 
   // Controparti: pagine con aggregati (U1) e scheda.
-  elenco: ({ q, ordina, offset = 0, limite = 30 }) =>
-    chiama('/anagrafiche/elenco', { params: { q, ordina, offset, limit: limite } }),
+  // U8b: anche tipologie, senza_tipologia, categorie, senza_categoria, attivo.
+  elenco: ({ q, ordina, offset = 0, limite = 30, ...filtri }) =>
+    chiama('/anagrafiche/elenco', { params: { ...filtri, q, ordina, offset, limit: limite } }),
+  riepilogoControparti: () => chiama('/anagrafiche/riepilogo'),
+  esportaControparti: params => chiama('/anagrafiche/export', { params, comeFile: true }),
   controparte: id => chiama(`/anagrafiche/${id}`),
   creaControparte: a => chiama('/anagrafiche', { metodo: 'POST', corpo: a }),
   modificaControparte: (id, a) => chiama(`/anagrafiche/${id}`, { metodo: 'PUT', corpo: a }),
