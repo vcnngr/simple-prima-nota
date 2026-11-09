@@ -123,7 +123,12 @@ try {
   await p.clic('[data-modifica-controparte]');
   eq('pannello breve aperto, nome compilato', 'Enel Energia', (await p.aspetta("document.querySelector('dialog[open] input[name=nome]')")) && await p.valuta("document.querySelector('dialog[open] input[name=nome]').value"));
   eq('P.IVA nascosta dietro la riga', 0, await n('dialog[open] input[name=piva]'));
-  await p.scrivi('dialog[open] input[name=categoria]', 'Luce e gas');
+  // U8a: categoria a bottoni, «+ Nuova» la crea e la sceglie.
+  await p.clic('dialog[open] [data-nuova-voce=categoria-controparte]');
+  await p.aspetta("document.querySelector('dialog[open] input[name=nuova-categoria-controparte]')");
+  await p.scrivi('dialog[open] input[name=nuova-categoria-controparte]', 'Luce e gas');
+  await p.clic('dialog[open] [data-aggiungi-voce=categoria-controparte]');
+  await p.aspetta("document.querySelector('dialog[open] [data-categoria-controparte=\"Luce e gas\"][aria-pressed=true]')");
   await p.clic('dialog[open] [data-altri-dati]');
   eq('P.IVA visibile, compilata', '00934061003', (await p.aspetta("document.querySelector('dialog[open] input[name=piva]')")) && await p.valuta("document.querySelector('dialog[open] input[name=piva]').value"));
   await stretto('Pannello controparte');

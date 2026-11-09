@@ -10,6 +10,8 @@ export const registroApi = {
   movimenti: ({ conto, dopo, limite = 30, filtri = {} }) =>
     chiama('/movimenti', { params: { ...filtri, conto_id: conto ?? filtri.conto_id, dopo, limit: limite, order_by: 'data', order_direction: 'DESC' } }),
   movimento: id => chiama(`/movimenti/${id}`),
+  // Categorie dei movimenti con quante volte sono usate (U8a): elenco e scritte.
+  categorie: tipo => chiama('/movimenti/categorie', { params: { tipo } }),
   registra: movimento => chiama('/movimenti', { metodo: 'POST', corpo: movimento }),
   modifica: (id, movimento) => chiama(`/movimenti/${id}`, { metodo: 'PUT', corpo: movimento }),
   elimina: id => chiama(`/movimenti/${id}`, { metodo: 'DELETE' }),

@@ -9,6 +9,10 @@ export function datiRiga(m) {
     chi: m.anagrafica_nome || m.descrizione,
     cosa: m.anagrafica_nome ? m.descrizione : '',
     categoria: m.categoria || m.tipologia_nome || '',
+    // U8a: nel Registro da computer categoria e tipologia stanno separate.
+    soloCategoria: m.categoria || '',
+    tipologia: m.tipologia_nome || '',
+    coloreTipologia: m.tipologia_colore || '',
     importo: m.tipo === 'Uscita' ? -c : c,
     entrata: m.tipo === 'Entrata',
     saldo: m.saldo_progressivo == null ? null : centesimiDa(m.saldo_progressivo),

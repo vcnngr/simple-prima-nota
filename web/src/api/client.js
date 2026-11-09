@@ -36,7 +36,9 @@ export async function chiama(percorso, { metodo = 'GET', corpo, params, segnale,
   const url = new URL(BASE + percorso, window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
+      // Un elenco diventa il parametro ripetuto (?categorie=a&categorie=b, U8a).
+      if (Array.isArray(v)) v.forEach(x => url.searchParams.append(k, x));
+      else if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
     }
   }
   const tipo = tipoSessione();

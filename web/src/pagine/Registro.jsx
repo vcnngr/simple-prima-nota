@@ -10,13 +10,17 @@ import DettaglioMovimento from '../componenti/DettaglioMovimento';
 import { aggiornaRegistro } from '../componenti/ModuloMovimento';
 import { datiRiga, perGiorno } from '../componenti/righe/comune';
 import { alternaConto, contiScelti, nomeConto, scriviConti, useConti } from '../componenti/conti';
-import { centesimiDa, formatta } from '../util/importi';
+import { centesimiDa, formatta, leggi, perApi as importoApi } from '../util/importi';
+import { archivioApi } from '../api/archivio';
+import { Bottone } from '../componenti/Bottoni';
 import { etichettaPeriodo, giornoLungo, periodo } from '../util/date';
 import Fascia from '../componenti/Fascia';
 import TabellaRegistro from '../componenti/TabellaRegistro';
 
 // Filtri nell'indirizzo (si condividono e sopravvivono al ritorno indietro).
-const CHIAVI = ['q', 'tipo', 'conto', 'dal', 'al', 'controparte', 'chiarire'];
+// U8a: tipologie della controparte (id), categorie (cat, ripetuto), importo da/a (euro, "12.50").
+const CHIAVI = ['q', 'tipo', 'conto', 'dal', 'al', 'controparte', 'chiarire', 'tipologie', 'da', 'a'];
+const IMPORTO = /^\d{1,10}(\.\d{1,2})?$/;
 const GIORNO = /^\d{4}-\d{2}-\d{2}$/;
 
 function leggiFiltri(p) {
@@ -28,6 +32,10 @@ function leggiFiltri(p) {
   if (f.conto) { const v = scriviConti(contiScelti(f.conto)); if (v) f.conto = v; else delete f.conto; }
   for (const k of ['dal', 'al']) if (f[k] && !GIORNO.test(f[k])) delete f[k];
   if (f.chiarire !== '1') delete f.chiarire;
+  if (f.tipologie) { const v = scriviConti(contiScelti(f.tipologie)); if (v) f.tipologie = v; else delete f.tipologie; }
+  const cat = [...new Set(p.getAll('cat').map(x => x.trim()).filter(x => x && x.length <= 100))].slice(0, 50);
+  if (cat.length) f.cat = cat;
+  for (const k of ['da', 'a']) if (f[k] && !IMPORTO.test(f[k])) delete f[k];
   return f;
 }
 
@@ -35,7 +43,8 @@ function leggiFiltri(p) {
 function perApi(f) {
   return {
     search: f.q, tipo: f.tipo, conti: f.conto, data_inizio: f.dal, data_fine: f.al,
-    anagrafica_id: f.controparte, da_chiarire: f.chiarire ? 'true' : undefined
+    anagrafica_id: f.controparte, da_chiarire: f.chiarire ? 'true' : undefined,
+    tipologie: f.tipologie, categorie: f.cat, importo_min: f.da, importo_max: f.a
   };
 }
 
@@ -87,14 +96,17 @@ function PulsanteConti({ conti, scelta, onScegli, className }) {
 const PERIODI = [['mese', 'Questo mese'], ['mese_scorso', 'Mese scorso'], ['anno', "Quest'anno"], ['tutto', 'Sempre']];
 
 // Pannello dei filtri: si lavora su una bozza, «Mostra» la applica.
-function PannelloFiltri({ filtri, conti, onApplica, onChiudi }) {
+// soloAltri (computer, tavola 3 B): solo tipologia, categoria e importo, gli
+// altri filtri stanno nella barra.
+function PannelloFiltri({ filtri, conti, onApplica, onChiudi, soloAltri = false }) {
   const [b, setB] = useState(filtri);
-  const metti = (k, v) => setB(x => { const y = { ...x }; if (v) y[k] = v; else delete y[k]; return y; });
+  const metti = (k, v) => setB(x => { const y = { ...x }; if (Array.isArray(v) ? v.length : v) y[k] = v; else delete y[k]; return y; });
   const sceltaPeriodo = PERIODI.find(([k]) => { const p = periodo(k); return (p.dal ?? undefined) === b.dal && (p.al ?? undefined) === b.al; })?.[0];
   return (
-    <BottomSheet aperto onChiudi={onChiudi} titolo="Filtri"
+    <BottomSheet aperto onChiudi={onChiudi} titolo={soloAltri ? 'Altri filtri' : 'Filtri'} lato={soloAltri}
       piede={<button type="button" data-applica onClick={() => onApplica(b)} className="h-12 w-full rounded-xl bg-principale font-bold text-su-principale">Mostra i movimenti</button>}>
-      <div className="space-y-4" data-pannello-filtri>
+      <div className="space-y-4" data-pannello-filtri={soloAltri ? 'altri' : 'tutti'}>
+        {!soloAltri && <>
         <section>
           <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-tenue">Periodo</h3>
           <div className="flex flex-wrap gap-2">
@@ -130,8 +142,72 @@ function PannelloFiltri({ filtri, conti, onApplica, onChiudi }) {
           <span>Solo quelli da chiarire con lo studio</span>
           <input type="checkbox" checked={!!b.chiarire} onChange={e => metti('chiarire', e.target.checked ? '1' : null)} className="h-5 w-5" data-filtro-chiarire />
         </label>
+        </>}
+        <AltriFiltri b={b} metti={metti} />
       </div>
     </BottomSheet>
+  );
+}
+
+// Tipologia della controparte, categoria del movimento, importo (U8a, tavola 3 B).
+function AltriFiltri({ b, metti }) {
+  const tip = useQuery({ queryKey: ['categorie', 'tipologie'], queryFn: () => archivioApi.elenco('tipologie') });
+  const cat = useQuery({ queryKey: ['categorie-movimenti', null], queryFn: () => registroApi.categorie() });
+  const tipologie = tip.data ?? [];
+  const categorie = cat.data?.categorie ?? [];
+  const sceltiT = contiScelti(b.tipologie);
+  const sceltiC = b.cat ?? [];
+  const [da, setDa] = useState(b.da ? b.da.replace('.', ',') : '');
+  const [a, setA] = useState(b.a ? b.a.replace('.', ',') : '');
+  const importo = (k, testo, set) => {
+    set(testo);
+    const c = testo.trim() ? leggi(testo) : null;
+    metti(k, c != null && c >= 0 ? importoApi(c) : null);
+  };
+  const errato = t => t.trim() && (leggi(t) == null || leggi(t) < 0);
+  const titolo = t => <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-tenue">{t}</h3>;
+  return (
+    <>
+      {tipologie.length > 0 && (
+        <section data-filtro-tipologie>
+          {titolo('Tipologia della controparte')}
+          <div className="flex flex-wrap gap-2">
+            {tipologie.map(t => (
+              <Bottone key={t.id} attivo={sceltiT.includes(String(t.id))} colore={t.colore} data-filtro-tipologia={t.id}
+                onClick={() => metti('tipologie', alternaConto(sceltiT, t.id))}>{t.nome}</Bottone>
+            ))}
+          </div>
+        </section>
+      )}
+      {categorie.length > 0 && (
+        <section data-filtro-categorie>
+          {titolo('Categoria')}
+          <ul className="space-y-0.5">
+            {categorie.map(c => (
+              <li key={c.nome}>
+                <label className="flex cursor-pointer items-center gap-3 py-1.5">
+                  <input type="checkbox" className="h-5 w-5 shrink-0" checked={sceltiC.includes(c.nome)} data-filtro-categoria={c.nome}
+                    onChange={e => metti('cat', e.target.checked ? [...sceltiC, c.nome] : sceltiC.filter(x => x !== c.nome))} />
+                  <span className="min-w-0 flex-1 truncate">{c.nome}</span>
+                  <span className="importo text-sm text-tenue">{c.utilizzi}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <section>
+        {titolo('Importo')}
+        <div className="flex gap-2">
+          {[['da', da, setDa, 'da €'], ['a', a, setA, 'a €']].map(([k, v, set, seg]) => (
+            <input key={k} name={`importo-${k}`} inputMode="decimal" autoComplete="off" value={v} placeholder={seg} aria-label={`Importo ${seg}`}
+              onChange={e => importo(k, e.target.value, set)} aria-invalid={!!errato(v)}
+              className={`importo min-w-0 flex-1 rounded-xl border bg-fondo px-3 py-2 ${errato(v) ? 'border-uscita' : 'border-bordo'}`} />
+          ))}
+        </div>
+        {(errato(da) || errato(a)) && <p role="alert" className="mt-1 text-sm text-uscita">Importo non valido (es. 1.250,00).</p>}
+      </section>
+    </>
   );
 }
 
@@ -183,13 +259,13 @@ export default function Registro() {
   const filtri = useMemo(() => leggiFiltri(params), [params]);
   const { conti } = useConti();
   const [testo, setTesto] = useState(filtri.q ?? '');
-  const [pannello, setPannello] = useState(false);
+  const [pannello, setPannello] = useState(false); // false | 'tutti' | 'altri'
   const [aperto, setAperto] = useState(null); // { id, modo }
   const el = useEliminaDopo();
   const riepilogo = useQuery({ queryKey: ['riepilogo', filtri.conto ?? null], queryFn: () => registroApi.riepilogo({ conti: filtri.conto }),
     placeholderData: keepPreviousData });
 
-  const imposta = f => setParams(Object.fromEntries(Object.entries(f).filter(([, v]) => v)), { replace: true });
+  const imposta = f => setParams(Object.fromEntries(Object.entries(f).filter(([, v]) => (Array.isArray(v) ? v.length : v))), { replace: true });
   const togli = (...k) => { const f = { ...filtri }; for (const x of k) delete f[x]; imposta(f); };
 
   // Ricerca mentre si scrive, con un attimo di respiro.
@@ -215,12 +291,23 @@ export default function Registro() {
   const tot = lista.data?.pages?.[0]?.totali;
   const ids = contiScelti(filtri.conto);
   const conto = ids.length === 1 ? conti.find(c => String(c.id) === ids[0]) : null;
+  const tipologie = useQuery({ queryKey: ['categorie', 'tipologie'], queryFn: () => archivioApi.elenco('tipologie'), enabled: !!filtri.tipologie }).data ?? [];
+  const euro = v => formatta(centesimiDa(v) ?? 0);
+  // Etichette di tipologie, categorie e importo: una per voce, si tolgono una a una.
+  const altre = [
+    ...contiScelti(filtri.tipologie).map(id => ({ k: ['tipologie'], id: `t${id}`, e: tipologie.find(t => String(t.id) === id)?.nome ?? 'Tipologia',
+      via: () => imposta({ ...filtri, tipologie: scriviConti(contiScelti(filtri.tipologie).filter(x => x !== id)) || null }) })),
+    ...(filtri.cat ?? []).map(n => ({ k: ['cat'], id: `c${n}`, e: n, via: () => imposta({ ...filtri, cat: filtri.cat.filter(x => x !== n) }) })),
+    (filtri.da || filtri.a) && { k: ['da', 'a'], id: 'importo',
+      e: filtri.da && filtri.a ? `da ${euro(filtri.da)} a ${euro(filtri.a)} €` : filtri.da ? `da ${euro(filtri.da)} €` : `fino a ${euro(filtri.a)} €` }
+  ].filter(Boolean);
   const etichette = [
     (filtri.dal || filtri.al) && { k: ['dal', 'al'], e: etichettaPeriodo(filtri.dal, filtri.al) },
     filtri.tipo && { k: ['tipo'], e: filtri.tipo === 'Entrata' ? 'Entrate' : 'Uscite' },
     filtri.conto && { k: ['conto'], e: ids.length > 1 ? `${ids.length} conti` : conto ? conto.nome_banca : 'Conto' },
     filtri.controparte && { k: ['controparte'], e: nomeControparte || 'Controparte' },
-    filtri.chiarire && { k: ['chiarire'], e: 'Da chiarire' }
+    filtri.chiarire && { k: ['chiarire'], e: 'Da chiarire' },
+    ...altre
   ].filter(Boolean);
   const sceltaPeriodo = (filtri.dal || filtri.al)
     ? PERIODI.find(([k]) => { const p = periodo(k); return (p.dal ?? undefined) === filtri.dal && (p.al ?? undefined) === filtri.al; })?.[0] ?? 'altro'
@@ -260,10 +347,24 @@ export default function Registro() {
             {nomeControparte || 'Controparte'}<X size={14} aria-hidden="true" />
           </Chip>
         )}
+        <button type="button" data-apri-altri onClick={() => setPannello('altri')}
+          className={`${selettore} inline-flex items-center gap-2 ${altre.length ? 'border-principale font-semibold text-principale' : ''}`}>
+          <SlidersHorizontal size={18} aria-hidden="true" />Altri filtri{altre.length ? ` · ${altre.length}` : ''}
+        </button>
         <Link to="/archivio" data-link-esporta className={`${selettore} inline-flex items-center gap-2`}>
           <Download size={18} aria-hidden="true" />Esporta
         </Link>
       </div>
+      {altre.length > 0 && (
+        <div className="mt-2 hidden flex-wrap items-center gap-2 lg:flex" data-etichette-largo>
+          {altre.map(x => (
+            <Chip key={x.id} attiva onClick={() => (x.via ? x.via() : togli(...x.k))} aria-label={`Togli il filtro ${x.e}`} data-togli-largo={x.id}>
+              {x.e}<X size={14} aria-hidden="true" />
+            </Chip>
+          ))}
+          <button type="button" onClick={() => togli('tipologie', 'cat', 'da', 'a')} data-togli-altri className="px-2 text-sm text-principale">Togli tutti</button>
+        </div>
+      )}
 
       {/* Ricerca e filtri del telefono */}
       <div className="mt-3 lg:hidden">
@@ -279,11 +380,11 @@ export default function Registro() {
           </Link>
         </div>
         <div className="mt-2 flex gap-2 overflow-x-auto px-4 pb-2 md:px-0" data-etichette>
-          <Chip attiva={etichette.length > 0} onClick={() => setPannello(true)} data-apri-filtri>
+          <Chip attiva={etichette.length > 0} onClick={() => setPannello('tutti')} data-apri-filtri>
             <SlidersHorizontal size={14} aria-hidden="true" />Filtri{etichette.length ? ` · ${etichette.length}` : ''}
           </Chip>
           {etichette.map(x => (
-            <Chip key={x.k[0]} attiva onClick={() => togli(...x.k)} aria-label={`Togli il filtro ${x.e}`} data-togli={x.k[0]}>
+            <Chip key={x.id ?? x.k[0]} attiva onClick={() => (x.via ? x.via() : togli(...x.k))} aria-label={`Togli il filtro ${x.e}`} data-togli={x.k[0]}>
               {x.e}<X size={14} aria-hidden="true" />
             </Chip>
           ))}
@@ -343,7 +444,7 @@ export default function Registro() {
         </div>
       )}
 
-      {pannello && <PannelloFiltri filtri={filtri} conti={conti} onChiudi={() => setPannello(false)}
+      {pannello && <PannelloFiltri key={pannello} soloAltri={pannello === 'altri'} filtri={filtri} conti={conti} onChiudi={() => setPannello(false)}
         onApplica={f => { imposta({ ...f, q: filtri.q }); setPannello(false); }} />}
       {aperto && <DettaglioMovimento key={`${aperto.id}-${aperto.modo}`} id={aperto.id} modo={aperto.modo} onChiudi={() => setAperto(null)} />}
     </div>

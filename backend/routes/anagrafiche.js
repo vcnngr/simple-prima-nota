@@ -459,7 +459,10 @@ router.get('/cerca', validateQuery(schemas.cercaAnagrafiche), async (req, res) =
       SELECT a.id, a.nome, a.piva, a.categoria, a.attivo,
              ta.nome AS tipologia_nome, ta.colore AS tipologia_colore,
              coalesce(a.tipo_movimento_preferito, ta.tipo_movimento_default) AS tipo_movimento_preferito,
-             coalesce(u.n, 0) AS movimenti_recenti, u.ultimo AS ultimo_movimento
+             coalesce(u.n, 0) AS movimenti_recenti, u.ultimo AS ultimo_movimento,
+             -- U8a: categoria proposta nel nuovo movimento.
+             (SELECT m2.categoria FROM movimenti m2 WHERE m2.user_id = a.user_id AND m2.anagrafica_id = a.id
+               AND nullif(trim(m2.categoria), '') IS NOT NULL ORDER BY m2.data DESC, m2.id DESC LIMIT 1) AS ultima_categoria
       FROM anagrafiche a
       LEFT JOIN tipologie_anagrafiche ta ON ta.id = a.tipologia_id AND ta.user_id = a.user_id
       LEFT JOIN uso u ON u.anagrafica_id = a.id
@@ -561,7 +564,9 @@ router.get('/:id', async (req, res) => {
         COALESCE(SUM(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE 0 END), 0) as totale_entrate,
         COALESCE(SUM(CASE WHEN m.tipo = 'Uscita' THEN m.importo ELSE 0 END), 0) as totale_uscite,
         MAX(m.data) as ultimo_movimento,
-        MIN(m.data) as primo_movimento
+        MIN(m.data) as primo_movimento,
+        (SELECT m2.categoria FROM movimenti m2 WHERE m2.user_id = a.user_id AND m2.anagrafica_id = a.id
+               AND nullif(trim(m2.categoria), '') IS NOT NULL ORDER BY m2.data DESC, m2.id DESC LIMIT 1) AS ultima_categoria
       FROM anagrafiche a
       LEFT JOIN tipologie_anagrafiche ta ON a.tipologia_id = ta.id
       LEFT JOIN movimenti m ON a.id = m.anagrafica_id

@@ -1,18 +1,25 @@
 import { useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Pencil } from 'lucide-react';
 import { registroApi } from '../api/registro';
+import { archivioApi } from '../api/archivio';
 import SelettoreControparte from './SelettoreControparte';
 import Tastierino from './Tastierino';
+import { Bottone, NuovaVoce } from './Bottoni';
 import { nomeConto, useConti } from './conti';
 import { VUOTO, daCentesimi, espressione, premi, problema, totale } from '../util/tastierino';
-import { centesimiDa, formatta, perApi } from '../util/importi';
+import { centesimiDa, daIncollare, formatta, perApi } from '../util/importi';
 import { oggi } from '../util/date';
 
 const TIPI = ['Uscita', 'Entrata'];
+// Bottoni delle categorie in vista (tavola 1 A); le altre con «+ Altra».
+const IN_VISTA = 4;
+// Tasti della tastiera vera -> tasti del tastierino (U8a).
+const TASTIERA = { ',': ',', '.': ',', Backspace: 'canc', Delete: 'canc', '+': '+', '-': '-', '=': '=' };
 
 // Ogni lista e scheda che mostra movimenti, saldi o totali si ricarica.
 export function aggiornaRegistro(qc) {
-  for (const k of ['estratto', 'riepilogo', 'conti', 'conto', 'cerca-controparti', 'movimenti', 'movimento', 'controparti', 'controparte', 'report']) {
+  for (const k of ['estratto', 'riepilogo', 'conti', 'conto', 'cerca-controparti', 'movimenti', 'movimento', 'controparti', 'controparte', 'report', 'categorie-movimenti']) {
     qc.invalidateQueries({ queryKey: [k] });
   }
 }
@@ -21,6 +28,8 @@ export function aggiornaRegistro(qc) {
 // prima la controparte, poi l'importo con tipo e conto gia' proposti.
 //   iniziale: movimento da modificare (PUT) — si parte dall'importo;
 //   controparte: controparte gia' scelta (dalla sua scheda) — si parte dall'importo.
+// U8a: categoria a bottoni (proposta l'ultima usata con la controparte), nota a
+// richiesta, importo anche incollato o scritto con la tastiera vera.
 export default function ModuloMovimento({ iniziale, controparte: proposta, onFatto }) {
   const qc = useQueryClient();
   const { conti, conto: contoProposto } = useConti();
@@ -34,6 +43,14 @@ export default function ModuloMovimento({ iniziale, controparte: proposta, onFat
   const [contoId, setContoId] = useState(iniziale?.conto_id ?? null);
   // In modifica la descrizione resta quella salvata, anche se uguale al nome.
   const [descrizione, setDescrizione] = useState(iniziale?.descrizione ?? '');
+  const [categoria, setCategoria] = useState(iniziale ? iniziale.categoria ?? '' : proposta?.ultima_categoria ?? '');
+  // Scelta a mano: la controparte cambiata dopo non la sovrascrive.
+  const [categoriaScelta, setCategoriaScelta] = useState(!!iniziale);
+  // Categorie aggiunte con «+»: il bottone resta anche se la si toglie.
+  const [aggiunte, setAggiunte] = useState([]);
+  const [note, setNote] = useState(iniziale?.note ?? '');
+  const [notaAperta, setNotaAperta] = useState(!!iniziale?.note);
+  const [erroreIncolla, setErroreIncolla] = useState(null);
   // Il conto del movimento anche se disattivato nel frattempo (non e' fra gli attivi).
   const conto = conti.find(c => c.id === contoId)
     || (iniziale && contoId === iniziale.conto_id ? { id: iniziale.conto_id, nome_banca: iniziale.nome_banca } : null)
@@ -41,20 +58,34 @@ export default function ModuloMovimento({ iniziale, controparte: proposta, onFat
   // Un tocco, un movimento (U4): il ref blocca subito il secondo invio.
   const inviato = useRef(false);
 
+  const cat = useQuery({ queryKey: ['categorie-movimenti', tipo], queryFn: () => registroApi.categorie(tipo), enabled: passo === 'quanto' });
+  const tutte = cat.data?.categorie ?? [];
+  const nome = categoria.trim();
+  const inVista = tutte.slice(0, IN_VISTA);
+  for (const x of [nome, ...aggiunte]) if (x && !inVista.some(c => c.nome === x)) inVista.push(tutte.find(c => c.nome === x) ?? { nome: x });
+  const proposta_ = !categoriaScelta && nome && controparte?.ultima_categoria === nome;
+
   const salva = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      // Una categoria nuova entra anche nell'elenco delle categorie (best effort:
+      // se c'e' gia' o non si puo', il movimento si registra lo stesso).
+      if (nome && !tutte.some(c => c.nome === nome)) {
+        await archivioApi.crea('movimenti', { nome, tipo: 'Entrambi' }).catch(() => {});
+      }
       const corpo = {
         data,
         anagrafica_id: controparte?.id ?? null,
         conto_id: conto.id,
         descrizione: descrizione.trim() || controparte?.nome,
+        categoria: nome || null,
+        note: note.trim() || null,
         importo: perApi(totale(tasti)),
         tipo
       };
       return iniziale ? registroApi.modifica(iniziale.id, corpo) : registroApi.registra(corpo);
     },
     onError: () => { inviato.current = false; },
-    onSuccess: () => { aggiornaRegistro(qc); onFatto(); }
+    onSuccess: () => { aggiornaRegistro(qc); qc.invalidateQueries({ queryKey: ['categorie'] }); onFatto(); }
   });
 
   if (passo === 'chi') {
@@ -62,6 +93,7 @@ export default function ModuloMovimento({ iniziale, controparte: proposta, onFat
       <SelettoreControparte onScegli={a => {
         setControparte(a);
         if (a && TIPI.includes(a.tipo_movimento_preferito)) setTipo(a.tipo_movimento_preferito);
+        if (!categoriaScelta) setCategoria(a?.ultima_categoria ?? '');
         setPasso('quanto');
       }} />
     );
@@ -70,6 +102,8 @@ export default function ModuloMovimento({ iniziale, controparte: proposta, onFat
   const t = totale(tasti);
   const errore = !conto ? 'Nessun conto attivo'
     : problema(tasti) || (!descrizione.trim() && !controparte ? 'Scrivi una descrizione' : null);
+  const tasto = k => { setErroreIncolla(null); setTasti(s => premi(s, k)); };
+  const scegli = n => { setCategoriaScelta(true); setCategoria(n === nome ? '' : n); };
 
   return (
     <form className="space-y-3" data-modulo={iniziale ? 'modifica' : 'nuovo'} onSubmit={e => {
@@ -88,12 +122,30 @@ export default function ModuloMovimento({ iniziale, controparte: proposta, onFat
         ))}
       </div>
 
-      <div className="text-right" aria-live="polite">
+      {/* Importo: sopra il testo un campo invisibile che riceve «Incolla» (tenendo
+          premuto sul telefono, Cmd/Ctrl+V da computer) e i tasti della tastiera vera.
+          inputMode none: sul telefono non apre la tastiera di sistema. */}
+      <div className="relative rounded-lg text-right focus-within:ring-2 focus-within:ring-principale/40" aria-live="polite">
         <p className="importo min-h-5 text-sm text-tenue" data-espressione>{espressione(tasti)}</p>
         <p className={`importo text-[40px] font-semibold leading-tight ${tipo === 'Uscita' ? 'text-uscita' : 'text-entrata'}`} data-totale={t}>
           {tipo === 'Uscita' ? '− ' : '+ '}{formatta(Math.abs(t))} €
         </p>
+        <input name="importo" inputMode="none" autoComplete="off" value="" onChange={() => {}}
+          aria-label="Importo: scrivi o incolla la cifra" data-campo-importo
+          autoFocus={typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches}
+          onPaste={e => {
+            e.preventDefault();
+            const r = daIncollare(e.clipboardData.getData('text'));
+            if (r.c) { setTasti(daCentesimi(r.c)); setErroreIncolla(null); } else setErroreIncolla(r.errore);
+          }}
+          onKeyDown={e => {
+            if (e.metaKey || e.ctrlKey || e.altKey) return;
+            const k = /^\d$/.test(e.key) ? e.key : TASTIERA[e.key];
+            if (k) { e.preventDefault(); tasto(k); }
+          }}
+          className="absolute inset-0 h-full w-full cursor-text opacity-0" style={{ caretColor: 'transparent' }} />
       </div>
+      {erroreIncolla && <p role="alert" className="text-right text-sm text-uscita" data-errore-incolla>{erroreIncolla}</p>}
 
       <div className="flex flex-wrap gap-2 text-sm">
         <button type="button" data-cambia-controparte onClick={() => setPasso('chi')}
@@ -114,7 +166,33 @@ export default function ModuloMovimento({ iniziale, controparte: proposta, onFat
         placeholder={controparte ? `Descrizione (${controparte.nome})` : 'Descrizione'} aria-label="Descrizione"
         className="w-full rounded-xl border border-bordo bg-fondo px-3 py-2" />
 
-      <Tastierino onTasto={k => setTasti(s => premi(s, k))} />
+      <fieldset data-categorie-movimento>
+        <legend className="flex w-full justify-between text-sm text-tenue">
+          <span>Categoria</span>
+          {proposta_ && <span data-categoria-proposta>proposta da {controparte.nome}</span>}
+        </legend>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {inVista.map(c => (
+            <Bottone key={c.nome} attivo={c.nome === nome} colore={c.colore ?? null} onClick={() => scegli(c.nome)} data-categoria-scelta={c.nome}>
+              {c.nome}
+            </Bottone>
+          ))}
+          <NuovaVoce nome="categoria" etichetta={tutte.length > IN_VISTA ? 'Altra' : 'Nuova'} segnaposto="Nome della categoria"
+            suggerimenti={tutte.map(c => c.nome)} onAggiungi={n => { setCategoriaScelta(true); setCategoria(n); setAggiunte(a => (a.includes(n) ? a : [...a, n])); }} />
+        </div>
+      </fieldset>
+
+      {notaAperta ? (
+        <textarea name="note" value={note} onChange={e => setNote(e.target.value)} rows={2} maxLength={2000} autoFocus={!iniziale?.note}
+          placeholder="Nota (facoltativa)" aria-label="Nota" className="w-full rounded-xl border border-bordo bg-fondo px-3 py-2" />
+      ) : (
+        <button type="button" data-aggiungi-nota onClick={() => setNotaAperta(true)}
+          className="inline-flex items-center gap-2 text-[0.9375rem] text-principale">
+          <Pencil size={16} aria-hidden="true" />Aggiungi una nota
+        </button>
+      )}
+
+      <Tastierino onTasto={tasto} />
 
       {(salva.isError || (errore && t !== 0)) && (
         <p role="alert" className="text-sm text-uscita">{salva.isError ? salva.error.message : errore}</p>

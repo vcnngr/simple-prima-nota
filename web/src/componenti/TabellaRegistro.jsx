@@ -40,7 +40,15 @@ export default function TabellaRegistro({ gruppi, onApri, conConto }) {
                   {r.daChiarire && <Chiarire />}
                   {r.cosa && <p className="text-[0.9375rem] text-tenue">{r.cosa}</p>}
                 </td>
-                <td className="py-3 pr-3">{r.categoria}</td>
+                <td className="py-3 pr-3" data-categoria-riga={r.soloCategoria}>
+                  {r.soloCategoria}
+                  {r.tipologia && (
+                    <p className="flex items-center gap-1.5 text-[0.9375rem] text-tenue" data-tipologia-riga={r.tipologia}>
+                      <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: r.coloreTipologia || 'var(--pn-neutro)' }} />
+                      {r.tipologia}
+                    </p>
+                  )}
+                </td>
                 {conConto && <td className="py-3 pr-3">{r.conto}</td>}
                 <td className={`importo py-3 pr-3 text-right text-lg font-semibold text-entrata ${filetto}`} data-entrata>
                   {r.entrata ? formatta(r.importo) : ''}

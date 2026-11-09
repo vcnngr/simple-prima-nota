@@ -38,6 +38,13 @@ const movimentiFiltersSchema = require('joi').object({
   conti: elencoConti().optional(),
   anagrafica_id: require('joi').number().integer().optional(),
   tipologia_id: require('joi').number().integer().optional(), // NUOVO
+  // U8a: piu' tipologie della controparte ("2,7") e piu' categorie del movimento
+  // (?categorie=Utenze&categorie=Affitto; nomi esatti).
+  tipologie: elencoConti().optional(),
+  categorie: require('joi').alternatives().try(
+    require('joi').array().items(require('joi').string().trim().min(1).max(100)).min(1).max(50).unique(),
+    require('joi').string().trim().min(1).max(100)
+  ).optional(),
   tipo: require('joi').string().valid('Entrata', 'Uscita').optional(),
   importo_min: require('joi').number().min(0).optional(),
   importo_max: require('joi').number().min(0).optional(),
@@ -230,6 +237,35 @@ router.get('/export', async (req, res) => {
 });
 
 // GET /api/movimenti/template - Template con tipologie (AGGIORNATO)
+// GET /api/movimenti/categorie?tipo= - Categorie dei movimenti (U8a): quelle
+// dell'elenco (categorie_movimenti, attive) e quelle scritte sui movimenti, con
+// quante volte sono usate. Con tipo: prima le piu' usate per quel tipo.
+router.get('/categorie', validateQuery(require('joi').object({
+  tipo: require('joi').string().valid('Entrata', 'Uscita').optional()
+})), async (req, res) => {
+  try {
+    const righe = await queryAll(`
+      WITH usate AS (
+        SELECT m.categoria AS nome, count(*)::int AS n,
+               count(*) FILTER (WHERE m.tipo = $2)::int AS n_tipo
+        FROM movimenti m
+        WHERE m.user_id = $1 AND nullif(trim(m.categoria), '') IS NOT NULL
+        GROUP BY m.categoria
+      ), elenco AS (
+        SELECT nome, colore, tipo FROM categorie_movimenti WHERE user_id = $1 AND attiva = true
+      )
+      SELECT coalesce(u.nome, e.nome) AS nome, e.colore, e.tipo,
+             coalesce(u.n, 0) AS utilizzi, coalesce(u.n_tipo, 0) AS utilizzi_tipo
+      FROM usate u FULL JOIN elenco e ON e.nome = u.nome
+      ORDER BY coalesce(u.n_tipo, 0) DESC, coalesce(u.n, 0) DESC, lower(coalesce(u.nome, e.nome))
+    `, [req.user.id, req.query.tipo ?? null]);
+    res.json({ categorie: righe });
+  } catch (error) {
+    logErrore('Error fetching categorie usate', error);
+    res.status(500).json({ error: 'Errore durante il caricamento delle categorie' });
+  }
+});
+
 router.get('/template', (req, res) => {
   try {
     const { formato = 'csv' } = req.query;
@@ -574,6 +610,8 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           conti,
           anagrafica_id,
           tipologia_id, // NUOVO
+          tipologie,
+          categorie,
           tipo,
           importo_min,
           importo_max,
@@ -623,6 +661,18 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           params.push(tipologia_id);
           paramIndex++;
         }
+
+        // U8a: tipologie della controparte e categorie del movimento, piu' d'una.
+        if (tipologie) {
+          whereConditions.push(`a.tipologia_id = ANY($${paramIndex}::int[])`);
+          params.push(tipologie);
+          paramIndex++;
+        }
+        if (categorie) {
+          whereConditions.push(`m.categoria = ANY($${paramIndex}::text[])`);
+          params.push([].concat(categorie));
+          paramIndex++;
+        }
         
         if (tipo) {
           whereConditions.push(`m.tipo = $${paramIndex}`);
@@ -630,13 +680,13 @@ router.get('/', validateQuery(movimentiFiltersSchema), async (req, res) => {
           paramIndex++;
         }
         
-        if (importo_min) {
+        if (importo_min !== undefined) {
           whereConditions.push(`m.importo >= $${paramIndex}`);
           params.push(importo_min);
           paramIndex++;
         }
         
-        if (importo_max) {
+        if (importo_max !== undefined) {
           whereConditions.push(`m.importo <= $${paramIndex}`);
           params.push(importo_max);
           paramIndex++;
@@ -823,7 +873,7 @@ return res.status(404).json({ error: 'Movimento non trovato' });
 // POST /api/movimenti - Crea nuovo movimento (INVARIATO - usa schema esistente)
 router.post('/', validate(schemas.movimento), async (req, res) => {
                 try {
-                  const { data, anagrafica_id, conto_id, descrizione, importo, tipo, note } = req.body;
+                  const { data, anagrafica_id, conto_id, descrizione, categoria, importo, tipo, note } = req.body;
                   
                   // Verifica che il conto appartenga all'utente
                   const conto = await queryOne(
@@ -857,8 +907,8 @@ if (!anagrafica.attivo) {
                   
                   const result = await query(`
       INSERT INTO movimenti 
-      (data, anagrafica_id, conto_id, descrizione, importo, tipo, note, user_id) 
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
+      (data, anagrafica_id, conto_id, descrizione, importo, tipo, note, user_id, categoria) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
       RETURNING *
     `, [
 data,
@@ -868,7 +918,9 @@ descrizione,
 importo,
 tipo,
 note || null,
-req.user.id
+req.user.id,
+// U8a: la categoria si salvava solo in modifica (PUT), mai alla registrazione.
+(categoria && categoria.trim()) || null
                   ]);
                   
                   const newMovimento = result.rows[0];

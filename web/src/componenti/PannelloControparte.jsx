@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { registroApi } from '../api/registro';
 import BottomSheet from './BottomSheet';
 import { aggiornaRegistro } from './ModuloMovimento';
+import { archivioApi } from '../api/archivio';
+import { Bottone, NuovaVoce } from './Bottoni';
+
+// Colori proposti per una tipologia nuova (gli stessi della pagina Categorie).
+const COLORI = ['#2B5D8A', '#2F6B4F', '#C08A1E', '#B4442E', '#7A4E9C', '#6B7280'];
 
 const DI_SOLITO = [['Uscita', 'Uscita'], ['Entrata', 'Entrata'], ['Entrambi', 'Tutte e due']];
 const ALTRI = [['piva', 'Partita IVA', 20], ['email', 'Email', 100], ['telefono', 'Telefono', 20], ['indirizzo', 'Indirizzo', 300]];
@@ -17,18 +22,36 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
   const vai = useNavigate();
   const [v, setV] = useState(() => ({
     nome: c.nome ?? '', tipo_movimento_preferito: c.tipo_movimento_preferito ?? 'Entrambi', categoria: c.categoria ?? '',
+    tipologia_id: c.tipologia_id ?? null,
     piva: c.piva ?? '', email: c.email ?? '', telefono: c.telefono ?? '', indirizzo: c.indirizzo ?? ''
   }));
   const [altri, setAltri] = useState(false);
   const [conferma, setConferma] = useState(false);
   const campo = k => e => setV(x => ({ ...x, [k]: e.target.value }));
   const fatto = () => { aggiornaRegistro(qc); };
+  // U8a (tavola 2 A): tipologia e categoria a bottoni, «+ Nuova» al volo.
+  const tip = useQuery({ queryKey: ['categorie', 'tipologie'], queryFn: () => archivioApi.elenco('tipologie') });
+  const cat = useQuery({ queryKey: ['categorie', 'controparti'], queryFn: () => archivioApi.elenco('controparti') });
+  const tipologie = (tip.data ?? []).filter(t => t.attiva !== false || t.id === v.tipologia_id);
+  const categorie = (cat.data ?? []).filter(x => x.attiva !== false || x.nome === v.categoria);
+  const tipologia = (tip.data ?? []).find(t => t.id === v.tipologia_id) ?? null;
+  // Con una tipologia «di solito» lo decide lei (trigger del database).
+  const diSolito = tipologia ? tipologia.tipo_movimento_default || 'Entrambi' : v.tipo_movimento_preferito;
+  const creaTipologia = useMutation({
+    mutationFn: nome => archivioApi.crea('tipologie', { nome, colore: COLORI[(tip.data ?? []).length % COLORI.length], tipo_movimento_default: v.tipo_movimento_preferito }),
+    onSuccess: t => { qc.invalidateQueries({ queryKey: ['categorie'] }); setV(x => ({ ...x, tipologia_id: t.id })); }
+  });
+  const creaCategoria = useMutation({
+    mutationFn: nome => archivioApi.crea('controparti', { nome }),
+    onSuccess: (_, nome) => { qc.invalidateQueries({ queryKey: ['categorie'] }); setV(x => ({ ...x, categoria: nome })); }
+  });
 
   const salva = useMutation({
     mutationFn: () => registroApi.modificaControparte(c.id, {
-      ...Object.fromEntries(Object.entries(v).map(([k, x]) => [k, x.trim() || null])),
+      ...Object.fromEntries(Object.entries(v).filter(([k]) => k !== 'tipologia_id').map(([k, x]) => [k, x.trim() || null])),
       nome: v.nome.trim().replace(/\s+/g, ' '),
-      tipo_movimento_preferito: v.tipo_movimento_preferito
+      tipologia_id: v.tipologia_id,
+      tipo_movimento_preferito: diSolito
     }),
     onSuccess: () => { fatto(); onChiudi(); }
   });
@@ -40,7 +63,7 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
     mutationFn: () => registroApi.eliminaControparte(c.id),
     onSuccess: () => { fatto(); vai('/controparti', { replace: true }); }
   });
-  const errore = salva.error || attiva.error || elimina.error;
+  const errore = salva.error || attiva.error || elimina.error || creaTipologia.error || creaCategoria.error;
   const occupato = salva.isPending || attiva.isPending || elimina.isPending;
 
   return (
@@ -56,22 +79,43 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
           <input name="nome" value={v.nome} onChange={campo('nome')} maxLength={100} required
             className="mt-1 w-full rounded-xl border border-bordo bg-fondo px-3 py-2" />
         </label>
+        <fieldset data-tipologie-controparte>
+          <legend className="text-sm text-tenue">Tipologia</legend>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {tipologie.map(t => (
+              <Bottone key={t.id} attivo={t.id === v.tipologia_id} colore={t.colore} data-tipologia-scelta={t.id}
+                onClick={() => setV(x => ({ ...x, tipologia_id: x.tipologia_id === t.id ? null : t.id }))}>{t.nome}</Bottone>
+            ))}
+            <NuovaVoce nome="tipologia" segnaposto="Nome della tipologia" occupato={creaTipologia.isPending}
+              onAggiungi={n => creaTipologia.mutate(n)} />
+          </div>
+        </fieldset>
         <fieldset>
-          <legend className="text-sm text-tenue">Di solito</legend>
-          {c.tipologia_id && <p className="text-xs text-tenue">Lo decide la tipologia «{c.tipologia_nome}».</p>}
+          <legend className="flex w-full justify-between text-sm text-tenue">
+            <span>Di solito</span>{tipologia && <span>dalla tipologia</span>}
+          </legend>
           <div className="mt-1 flex rounded-xl bg-fondo p-1" role="radiogroup" aria-label="Di solito">
             {DI_SOLITO.map(([k, t]) => (
-              <button key={k} type="button" role="radio" aria-checked={v.tipo_movimento_preferito === k} data-di-solito={k}
-                disabled={!!c.tipologia_id} onClick={() => setV(x => ({ ...x, tipo_movimento_preferito: k }))}
-                className={`flex-1 rounded-lg py-2 text-sm font-semibold disabled:opacity-60 ${v.tipo_movimento_preferito === k ? 'bg-superficie shadow' : 'text-tenue'}`}>{t}</button>
+              <button key={k} type="button" role="radio" aria-checked={diSolito === k} data-di-solito={k}
+                disabled={!!tipologia} onClick={() => setV(x => ({ ...x, tipo_movimento_preferito: k }))}
+                className={`flex-1 rounded-lg py-2 text-sm font-semibold disabled:opacity-60 ${diSolito === k ? 'bg-superficie shadow' : 'text-tenue'}`}>{t}</button>
             ))}
           </div>
         </fieldset>
-        <label className="block text-sm">
-          <span className="text-tenue">Categoria</span>
-          <input name="categoria" value={v.categoria} onChange={campo('categoria')} maxLength={100} placeholder="es. Utenze"
-            className="mt-1 w-full rounded-xl border border-bordo bg-fondo px-3 py-2" />
-        </label>
+        <fieldset data-categorie-controparte>
+          <legend className="text-sm text-tenue">Categoria</legend>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {categorie.map(x => (
+              <Bottone key={x.id} attivo={x.nome === v.categoria} data-categoria-controparte={x.nome}
+                onClick={() => setV(y => ({ ...y, categoria: y.categoria === x.nome ? '' : x.nome }))}>{x.nome}</Bottone>
+            ))}
+            {v.categoria && !categorie.some(x => x.nome === v.categoria) && (
+              <Bottone attivo onClick={() => setV(y => ({ ...y, categoria: '' }))}>{v.categoria}</Bottone>
+            )}
+            <NuovaVoce nome="categoria-controparte" segnaposto="Nome della categoria" occupato={creaCategoria.isPending}
+              onAggiungi={n => (categorie.some(x => x.nome === n) ? setV(y => ({ ...y, categoria: n })) : creaCategoria.mutate(n))} />
+          </div>
+        </fieldset>
         <button type="button" onClick={() => setAltri(x => !x)} aria-expanded={altri} data-altri-dati
           className="flex w-full items-center justify-between border-t border-bordo pt-3 text-sm text-principale">
           P.IVA, contatti, indirizzo <ChevronDown size={16} aria-hidden="true" className={altri ? 'rotate-180' : ''} />
