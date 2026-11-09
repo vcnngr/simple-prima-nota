@@ -151,7 +151,7 @@ scarica() {  # scarica <descrizione> <file> <foglio> <testo atteso> <curl args..
 }
 scarica "GET /movimenti/export xlsx" mov.xlsx "Prima Nota" "$DESCR" "$API/movimenti/export?formato=xlsx" "${AU[@]}"
 scarica "GET /conti-bancari/export xlsx" conti.xlsx "Conti Bancari" "K4banca$SFX" "$API/conti-bancari/export?formato=xlsx" "${AU[@]}"
-scarica "GET /anagrafiche/export xlsx" ana.xlsx "Anagrafiche" "K4ana$SFX" "$API/anagrafiche/export?formato=xlsx" "${AU[@]}"
+scarica "GET /anagrafiche/export xlsx" ana.xlsx "Controparti" "K4ana$SFX" "$API/anagrafiche/export?formato=xlsx" "${AU[@]}"
 scarica "GET /reports/estratto-conto xlsx" rep.xlsx "Report" "$DESCR" "$API/reports/estratto-conto?formato=xlsx&data_inizio=2026-09-01&data_fine=2026-09-30" "${AU[@]}"
 scarica "POST /export/generate xlsx (due fogli)" gen.xlsx "Informazioni" "$DESCR" -X POST "$API/export/generate" "${AU[@]}" "${JSON[@]}" \
   -d '{"export_type":"semplice","tutto_storico":true,"formato":"xlsx","ordina_per":"data","ordine":"desc"}'
