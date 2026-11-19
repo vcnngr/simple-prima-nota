@@ -199,7 +199,7 @@ export default function Controparti() {
   const lista = useInfiniteQuery({
     queryKey: ['controparti', q, filtri],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => registroApi.elenco({ q, ordina: filtri.ordina, offset: pageParam, ...perApiControparti(filtri) }),
+    queryFn: ({ pageParam }) => registroApi.elenco({ ordina: filtri.ordina, offset: pageParam, ...perApiControparti(filtri, q) }),
     getNextPageParam: p => (p.altri ? p.offset + p.limit : undefined)
   });
   const voci = useMemo(() => (lista.data?.pages ?? []).flatMap(p => p.anagrafiche), [lista.data]);

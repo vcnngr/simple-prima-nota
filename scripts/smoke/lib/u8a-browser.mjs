@@ -84,10 +84,9 @@ try {
   await p.clic('[data-modifica-controparte]');
   await p.aspetta(`document.querySelector('[data-tipologia-scelta="${E.TF}"]')`);
   eq('tipologie a bottoni, nessuna scelta', 'false', await attr(`[data-tipologia-scelta="${E.TF}"]`, 'aria-pressed'));
-  await p.clic('[data-nuova-voce=tipologia]');
-  await p.aspetta("document.querySelector('input[name=nuova-tipologia]')");
-  await p.scrivi('input[name=nuova-tipologia]', 'Ospiti');
-  await p.clic('[data-aggiungi-voce=tipologia]');
+  await p.aspetta("document.querySelector('input[name=cerca-tipologia]')");
+  await p.scrivi('input[name=cerca-tipologia]', 'Ospiti');
+  await p.clic('[data-crea-voce=tipologia]');
   eq('tipologia nuova creata e scelta', 'true', await p.aspetta("[...document.querySelectorAll('[data-tipologia-scelta][aria-pressed=true]')].some(e => e.textContent === 'Ospiti')"));
   await p.clic(`[data-tipologia-scelta="${E.TF}"]`);
   eq('Fornitori: «di solito» Uscita, deciso dalla tipologia', 'true|true',

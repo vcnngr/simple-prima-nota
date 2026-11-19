@@ -6,7 +6,7 @@ import { registroApi } from '../api/registro';
 import BottomSheet from './BottomSheet';
 import { aggiornaRegistro } from './ModuloMovimento';
 import { archivioApi } from '../api/archivio';
-import { Bottone, NuovaVoce } from './Bottoni';
+import { SceltaVoce } from './Bottoni';
 
 // Colori proposti per una tipologia nuova (gli stessi della pagina Categorie).
 const COLORI = ['#2B5D8A', '#2F6B4F', '#C08A1E', '#B4442E', '#7A4E9C', '#6B7280'];
@@ -34,8 +34,17 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
   // U8a (tavola 2 A): tipologia e categoria a bottoni, «+ Nuova» al volo.
   const tip = useQuery({ queryKey: ['categorie', 'tipologie'], queryFn: () => archivioApi.elenco('tipologie') });
   const cat = useQuery({ queryKey: ['categorie', 'controparti'], queryFn: () => archivioApi.elenco('controparti') });
-  const tipologie = (tip.data ?? []).filter(t => t.attiva !== false || t.id === v.tipologia_id);
-  const categorie = (cat.data ?? []).filter(x => x.attiva !== false || x.nome === v.categoria);
+  // U8d: tutte le tipologie e tutte le categorie, anche quelle scritte solo sulle
+  // controparti (non nell'elenco), con quante controparti le usano.
+  const rie = useQuery({ queryKey: ['controparti', 'riepilogo'], queryFn: registroApi.riepilogoControparti });
+  const usoT = Object.fromEntries((rie.data?.tipologie ?? []).map(t => [t.id, t.n]));
+  const vociTipologie = (tip.data ?? []).filter(t => t.attiva !== false || t.id === v.tipologia_id)
+    .map(t => ({ chiave: t.id, nome: t.nome, colore: t.colore, n: usoT[t.id] ?? 0 }));
+  const nomiC = new Map();
+  for (const x of cat.data ?? []) if (x.attiva !== false) nomiC.set(x.nome, { chiave: x.nome, nome: x.nome, n: 0 });
+  for (const x of rie.data?.categorie ?? []) nomiC.set(x.nome, { chiave: x.nome, nome: x.nome, n: x.n });
+  if (v.categoria && !nomiC.has(v.categoria)) nomiC.set(v.categoria, { chiave: v.categoria, nome: v.categoria, n: 0 });
+  const vociCategorie = [...nomiC.values()];
   const tipologia = (tip.data ?? []).find(t => t.id === v.tipologia_id) ?? null;
   // Con una tipologia «di solito» lo decide lei (trigger del database).
   const diSolito = tipologia ? tipologia.tipo_movimento_default || 'Entrambi' : v.tipo_movimento_preferito;
@@ -83,14 +92,9 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
         </label>
         <fieldset data-tipologie-controparte>
           <legend className="text-sm text-tenue">Tipologia</legend>
-          <div className="mt-1 flex flex-wrap gap-2">
-            {tipologie.map(t => (
-              <Bottone key={t.id} attivo={t.id === v.tipologia_id} colore={t.colore} data-tipologia-scelta={t.id}
-                onClick={() => setV(x => ({ ...x, tipologia_id: x.tipologia_id === t.id ? null : t.id }))}>{t.nome}</Bottone>
-            ))}
-            <NuovaVoce nome="tipologia" segnaposto="Nome della tipologia" occupato={creaTipologia.isPending}
-              onAggiungi={n => creaTipologia.mutate(n)} />
-          </div>
+          <SceltaVoce nome="tipologia" cosa="una tipologia" attr="data-tipologia-scelta" voci={vociTipologie} scelta={v.tipologia_id}
+            occupato={creaTipologia.isPending} onScegli={id => setV(x => ({ ...x, tipologia_id: id }))}
+            onCrea={n => creaTipologia.mutate(n)} />
         </fieldset>
         <fieldset>
           <legend className="flex w-full justify-between text-sm text-tenue">
@@ -106,17 +110,9 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
         </fieldset>
         <fieldset data-categorie-controparte>
           <legend className="text-sm text-tenue">Categoria</legend>
-          <div className="mt-1 flex flex-wrap gap-2">
-            {categorie.map(x => (
-              <Bottone key={x.id} attivo={x.nome === v.categoria} data-categoria-controparte={x.nome}
-                onClick={() => setV(y => ({ ...y, categoria: y.categoria === x.nome ? '' : x.nome }))}>{x.nome}</Bottone>
-            ))}
-            {v.categoria && !categorie.some(x => x.nome === v.categoria) && (
-              <Bottone attivo onClick={() => setV(y => ({ ...y, categoria: '' }))}>{v.categoria}</Bottone>
-            )}
-            <NuovaVoce nome="categoria-controparte" segnaposto="Nome della categoria" occupato={creaCategoria.isPending}
-              onAggiungi={n => (categorie.some(x => x.nome === n) ? setV(y => ({ ...y, categoria: n })) : creaCategoria.mutate(n))} />
-          </div>
+          <SceltaVoce nome="categoria-controparte" cosa="una categoria" attr="data-categoria-controparte" voci={vociCategorie} scelta={v.categoria || null}
+            occupato={creaCategoria.isPending} onScegli={n => setV(y => ({ ...y, categoria: n ?? '' }))}
+            onCrea={n => creaCategoria.mutate(n)} />
         </fieldset>
         <button type="button" onClick={() => setAltri(x => !x)} aria-expanded={altri} data-altri-dati
           className="flex w-full items-center justify-between border-t border-bordo pt-3 text-sm text-principale">
