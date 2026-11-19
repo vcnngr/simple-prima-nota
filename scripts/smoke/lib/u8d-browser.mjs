@@ -78,6 +78,29 @@ try {
   await p.clic('[data-salva-controparte]');
   await p.aspetta(`/^\\/controparti\\/\\d+$/.test(location.pathname)`, 10000);
 
+  console.log('--- RED t_9f0f8523: corrispondenza parziale e doppio Invio');
+  const invio = () => p.invia('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  const campo = "dialog[open] input[name=cerca-categoria-controparte]";
+  await p.vai(E.WEB + '/controparti');
+  await p.aspetta(`document.querySelector('[data-nuova-controparte]')`);
+  await p.clic('[data-nuova-controparte]');
+  await p.aspetta(`document.querySelectorAll('dialog[open] [data-scelta-voce="categoria-controparte"] [aria-pressed]').length >= 8`, 10000);
+  await p.scrivi('dialog[open] input[name=nome]', 'Terza Prova');
+  await p.scrivi(campo, 'Ricambi');
+  eq('«Ricambi»: compare solo «Ricambi auto» e «Crea «Ricambi»»', 'true|1',
+    `${await p.aspetta(`document.querySelector('dialog[open] [data-categoria-controparte="Ricambi auto"]')`)}|${await n('dialog[open] [data-crea-voce="categoria-controparte"]')}`);
+  await p.valuta(`(document.querySelector(${JSON.stringify(campo)}).focus(), true)`);
+  await invio();
+  eq('Invio con corrispondenza solo parziale: crea e sceglie «Ricambi», non «Ricambi auto»', 'true|false',
+    `${await p.aspetta(`document.querySelector('dialog[open] [data-categoria-controparte="Ricambi"][aria-pressed=true]')`, 10000)}|${(await attr('dialog[open] [data-categoria-controparte="Ricambi auto"]', 'aria-pressed')) === 'true'}`);
+  await p.scrivi(campo, 'Duplicata70');
+  await p.valuta(`(document.querySelector(${JSON.stringify(campo)}).focus(), true)`);
+  await invio(); await invio(); await invio();
+  eq('tre Invio di fila: «Duplicata70» scelta, nessun errore', 'true|0',
+    `${await p.aspetta(`document.querySelector('dialog[open] [data-categoria-controparte="Duplicata70"][aria-pressed=true]')`, 10000)}|${await n('dialog[open] [role=alert]')}`);
+  await p.clic('[data-salva-controparte]');
+  await p.aspetta(`/^\\/controparti\\/\\d+$/.test(location.pathname)`, 10000);
+
   eq('nessuna violazione della CSP', '[]', JSON.stringify(p.violazioni));
 } catch (e) {
   fail++; console.log('  FAIL  eccezione nel browser: ' + e.message);

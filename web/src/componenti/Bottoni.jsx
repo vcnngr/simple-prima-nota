@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 
 // Bottoni di scelta (U8a, tavole 1 A e 2 A): categorie e tipologie come pillole
@@ -66,11 +66,18 @@ export function SceltaVoce({ voci, scelta, onScegli, onCrea, occupato, nome, cos
   }
   const pulito = testo.trim().replace(/\s+/g, ' ');
   const scegli = v => { onScegli(v.chiave === scelta ? null : v.chiave); setTesto(''); };
-  const invio = () => {
-    if (esatta) scegli(esatta);
-    else if (mostrate.length === 1 && t) scegli(mostrate[0]);
-    else if (pulito && pulito.length <= 100 && onCrea) { onCrea(pulito); setTesto(''); }
+  // Una creazione alla volta (RED t_9f0f8523): due Invio ravvicinati mandavano due
+  // POST. onCrea ritorna una promessa; fino alla fine ogni altra conferma si ignora.
+  const inCorso = useRef(false);
+  const crea = () => {
+    if (inCorso.current || occupato || !pulito || pulito.length > 100 || !onCrea) return;
+    inCorso.current = true;
+    setTesto('');
+    Promise.resolve(onCrea(pulito)).catch(() => {}).finally(() => { inCorso.current = false; });
   };
+  // Invio: la voce col nome esatto, altrimenti si crea il nome scritto (una
+  // corrispondenza parziale non basta: «Ricambi» non e' «Ricambi auto»).
+  const invio = () => { if (esatta) scegli(esatta); else if (t) crea(); };
   return (
     <div className="mt-1 space-y-2" data-scelta-voce={nome}>
       <input type="search" name={`cerca-${nome}`} value={testo} onChange={e => setTesto(e.target.value)} maxLength={100} autoComplete="off"
@@ -84,7 +91,7 @@ export function SceltaVoce({ voci, scelta, onScegli, onCrea, occupato, nome, cos
           </Bottone>
         ))}
         {t && !esatta && pulito.length <= 100 && onCrea && (
-          <button type="button" disabled={occupato} onClick={() => { onCrea(pulito); setTesto(''); }} data-crea-voce={nome}
+          <button type="button" disabled={occupato} onClick={crea} data-crea-voce={nome}
             className="inline-flex max-w-full items-center gap-1 rounded-full border border-dashed border-principale/60 px-3 py-1.5 text-[0.9375rem] text-principale disabled:opacity-40">
             <Plus size={15} aria-hidden="true" /><span className="truncate">Crea «{pulito}»</span>
           </button>

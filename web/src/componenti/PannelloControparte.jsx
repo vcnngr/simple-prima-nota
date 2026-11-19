@@ -94,7 +94,7 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
           <legend className="text-sm text-tenue">Tipologia</legend>
           <SceltaVoce nome="tipologia" cosa="una tipologia" attr="data-tipologia-scelta" voci={vociTipologie} scelta={v.tipologia_id}
             occupato={creaTipologia.isPending} onScegli={id => setV(x => ({ ...x, tipologia_id: id }))}
-            onCrea={n => creaTipologia.mutate(n)} />
+            onCrea={n => creaTipologia.mutateAsync(n)} />
         </fieldset>
         <fieldset>
           <legend className="flex w-full justify-between text-sm text-tenue">
@@ -112,7 +112,7 @@ export default function PannelloControparte({ c, aperto, onChiudi }) {
           <legend className="text-sm text-tenue">Categoria</legend>
           <SceltaVoce nome="categoria-controparte" cosa="una categoria" attr="data-categoria-controparte" voci={vociCategorie} scelta={v.categoria || null}
             occupato={creaCategoria.isPending} onScegli={n => setV(y => ({ ...y, categoria: n ?? '' }))}
-            onCrea={n => creaCategoria.mutate(n)} />
+            onCrea={n => creaCategoria.mutateAsync(n)} />
         </fieldset>
         <button type="button" onClick={() => setAltri(x => !x)} aria-expanded={altri} data-altri-dati
           className="flex w-full items-center justify-between border-t border-bordo pt-3 text-sm text-principale">

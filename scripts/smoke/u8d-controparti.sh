@@ -101,6 +101,11 @@ eq "nessuna tipologia doppia, nessuna «Cat 11» creata nell'elenco" "12|0" \
 eq "«Crea» per un nome nuovo: categoria «Ricambi auto» nell'elenco e sulla controparte" "1|Ricambi auto" \
   "$(q "SELECT (SELECT count(*) FROM categorie_anagrafiche WHERE user_id=$UID_ AND nome='Ricambi auto')||'|'||coalesce((SELECT categoria FROM anagrafiche WHERE user_id=$UID_ AND nome='Seconda Prova'),'-')")"
 
+eq "Invio su «Ricambi» (parziale): creata «Ricambi», «Ricambi auto» resta una" "1|1" \
+  "$(q "SELECT (SELECT count(*) FROM categorie_anagrafiche WHERE user_id=$UID_ AND nome='Ricambi')||'|'||(SELECT count(*) FROM categorie_anagrafiche WHERE user_id=$UID_ AND nome='Ricambi auto')")"
+eq "tre Invio: una sola «Duplicata70»; Terza Prova con Duplicata70" "1|Duplicata70" \
+  "$(q "SELECT (SELECT count(*) FROM categorie_anagrafiche WHERE user_id=$UID_ AND nome='Duplicata70')||'|'||coalesce((SELECT categoria FROM anagrafiche WHERE user_id=$UID_ AND nome='Terza Prova'),'-')")"
+
 echo
 echo "PASS $PASS   FAIL $FAIL"
 [ "$FAIL" -eq 0 ]
