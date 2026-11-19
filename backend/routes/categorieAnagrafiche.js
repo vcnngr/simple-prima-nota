@@ -10,7 +10,7 @@ const { queryAll, queryOne, withTransaction } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 const { logErrore } = require('../utils/errori');
-const { contiene } = require('../utils/ricerca');
+const { contiene, piega } = require('../utils/ricerca');
 
 const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
@@ -27,7 +27,7 @@ router.get('/', async (req, res) => {
     const params = [req.user.id];
     if (typeof req.query.search === 'string' && req.query.search) {
       params.push(contiene(req.query.search));
-      cond.push(`lower(ca.nome) LIKE $${params.length} ESCAPE '\\'`);
+      cond.push(`${piega('ca.nome')} LIKE $${params.length} ESCAPE '\\'`);
     }
     if (req.query.attiva === 'true' || req.query.attiva === 'false') {
       params.push(req.query.attiva === 'true');
@@ -47,11 +47,11 @@ router.get('/suggestions', async (req, res) => {
     if (q.length < 2) return res.json([]);
     res.json(await queryAll(`
       SELECT nome, colore, descrizione, 'categoria' AS fonte
-      FROM categorie_anagrafiche WHERE user_id = $1 AND attiva = true AND lower(nome) LIKE $2 ESCAPE '\\'
+      FROM categorie_anagrafiche WHERE user_id = $1 AND attiva = true AND ${piega('nome')} LIKE $2 ESCAPE '\\'
       UNION
       SELECT DISTINCT categoria, '#6B7280', 'Categoria usata nelle controparti', 'anagrafica'
       FROM anagrafiche
-      WHERE user_id = $1 AND categoria IS NOT NULL AND categoria <> '' AND lower(categoria) LIKE $2 ESCAPE '\\'
+      WHERE user_id = $1 AND categoria IS NOT NULL AND categoria <> '' AND ${piega('categoria')} LIKE $2 ESCAPE '\\'
         AND categoria NOT IN (SELECT nome FROM categorie_anagrafiche WHERE user_id = $1)
       ORDER BY 1 LIMIT 10`, [req.user.id, contiene(q)]));
   } catch (error) {

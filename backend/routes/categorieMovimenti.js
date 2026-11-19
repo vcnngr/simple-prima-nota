@@ -8,7 +8,7 @@ const { query, queryAll, queryOne, withTransaction } = require('../config/databa
 const { auth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validation');
 const { logErrore } = require('../utils/errori');
-const { contiene } = require('../utils/ricerca');
+const { contiene, piega } = require('../utils/ricerca');
 
 const { idNumerici } = require('../middleware/parametri');
 const router = express.Router();
@@ -83,7 +83,7 @@ router.get('/suggestions', async (req, res) => {
     const suggestions = await queryAll(`
       SELECT DISTINCT nome, tipo, colore, descrizione, 'categoria' as fonte
       FROM categorie_movimenti 
-      WHERE user_id = $1 AND attiva = true AND lower(nome) LIKE $2 ESCAPE '\\' ${tipoCondition}
+      WHERE user_id = $1 AND attiva = true AND ${piega('nome')} LIKE $2 ESCAPE '\\' ${tipoCondition}
       
       UNION
       
@@ -95,7 +95,7 @@ router.get('/suggestions', async (req, res) => {
         'movimento' as fonte
       FROM movimenti 
       WHERE user_id = $1 AND categoria IS NOT NULL AND categoria != '' 
-        AND lower(categoria) LIKE $2 ESCAPE '\\'
+        AND ${piega('categoria')} LIKE $2 ESCAPE '\\'
         AND categoria NOT IN (
           SELECT nome FROM categorie_movimenti WHERE user_id = $1
         )

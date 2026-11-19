@@ -3,7 +3,7 @@ const express = require('express');
 const { query, queryOne, queryAll } = require('../config/database');
 const { auth } = require('../middleware/auth');
 const { validate, validateQuery, schemas } = require('../middleware/validation');
-const { contiene, iniziaCon } = require('../utils/ricerca');
+const { contiene, iniziaCon, piega } = require('../utils/ricerca');
 const { logErrore } = require('../utils/errori');
 const { cartellaXlsx } = require('../utils/xlsx');
 const { testoCsv } = require('../utils/csv');
@@ -416,7 +416,7 @@ function filtriAnagrafiche(userId, { q, attivo, tipologia_id, lettera, tipologie
   if (c.length) dove.push(`(${c.join(' OR ')})`);
   if (q) {
     const like = p(contiene(q));
-    dove.push(`(lower(a.nome) LIKE ${like} ESCAPE '\\' OR lower(coalesce(a.piva, '')) LIKE ${like} ESCAPE '\\')`);
+    dove.push(`(${piega('a.nome')} LIKE ${like} ESCAPE '\\' OR ${piega("coalesce(a.piva, '')")} LIKE ${like} ESCAPE '\\')`);
   }
   if (lettera === '#') dove.push(`upper(left(a.nome, 1)) !~ '^[A-Z]$'`);
   else if (lettera) dove.push(`upper(left(a.nome, 1)) = ${p(lettera)}`);
@@ -454,7 +454,7 @@ router.get('/cerca', validateQuery(schemas.cercaAnagrafiche), async (req, res) =
       LEFT JOIN uso u ON u.anagrafica_id = a.id
       WHERE ${dove.join(' AND ')}
       ORDER BY
-        ${prefisso ? `(lower(a.nome) LIKE ${prefisso} ESCAPE '\\') DESC,` : ''}
+        ${prefisso ? `(${piega('a.nome')} LIKE ${prefisso} ESCAPE '\\') DESC,` : ''}
         ${tipoP ? `(coalesce(a.tipo_movimento_preferito, ta.tipo_movimento_default, 'Entrambi') IN (${tipoP}, 'Entrambi')) DESC,` : ''}
         u.n DESC NULLS LAST, u.ultimo DESC NULLS LAST, lower(a.nome), a.id
       LIMIT ${tetto}

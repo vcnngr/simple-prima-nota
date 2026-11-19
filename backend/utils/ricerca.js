@@ -1,11 +1,34 @@
 // utils/ricerca.js
 // Testo cercato dall'utente dentro un LIKE (fase UX, blocco U1). `%` e `_`
 // digitati sono caratteri, non jolly: senza escape "%" trovava tutto e "_" ogni
-// carattere. Le query usano `ESCAPE '\'` e lower() su entrambi i lati.
+// carattere. Le query usano `ESCAPE '\'` e piega() su entrambi i lati.
+//
+// U8e: la ricerca non guarda accenti ne' maiuscole («caffe» trova «Caffè»,
+// «citta» trova «CITTÀ»). Il database ha collation C, dove lower() abbassa solo
+// le lettere ASCII: per questo translate() porta anche le maiuscole accentate
+// alla lettera semplice. Gli apostrofi tipografici diventano '. Niente
+// estensioni nuove (unaccent) e niente migrazioni.
+const GRUPPI = {
+  a: 'àáâãäåāăą', e: 'èéêëēėęě', i: 'ìíîïīį', o: 'òóôõöøōő', u: 'ùúûüūůű',
+  c: 'çćč', n: 'ñń', y: 'ýÿ', s: 'š', z: 'žź', l: 'ł', "'": '’‘`´'
+};
+const COPPIE = Object.entries(GRUPPI).flatMap(([semplice, lettere]) =>
+  [...lettere, ...(semplice === "'" ? [] : [...lettere.toUpperCase()])].map((c) => [c, semplice]));
+const MAPPA = new Map(COPPIE);
+const DA = COPPIE.map(([c]) => c).join('');
+const A_ = COPPIE.map(([, x]) => x).join('');
+
+// Lato JavaScript: la stessa piega del database.
+function piegaTesto(testo) {
+  return [...String(testo)].map((c) => MAPPA.get(c) ?? c).join('').toLowerCase();
+}
+// Lato SQL: espressione da confrontare con contiene()/iniziaCon().
+const piega = (espr) => `translate(lower(${espr}), '${DA}', '${A_.replace(/'/g, "''")}')`;
+
 function escapeLike(testo) {
-  return String(testo).toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`);
+  return piegaTesto(testo).replace(/[\\%_]/g, (c) => `\\${c}`);
 }
 const contiene = (testo) => `%${escapeLike(testo)}%`;
 const iniziaCon = (testo) => `${escapeLike(testo)}%`;
 
-module.exports = { escapeLike, contiene, iniziaCon };
+module.exports = { escapeLike, contiene, iniziaCon, piega, piegaTesto };

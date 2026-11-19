@@ -7,6 +7,7 @@ const moment = require('moment');
 const UnifiedImportProcessor = require('../services/UnifiedImportProcessor');
 const { logErrore } = require('../utils/errori');
 const { testoCsv } = require('../utils/csv');
+const { contiene, piega } = require('../utils/ricerca');
 const { cartellaXlsx } = require('../utils/xlsx');
 
 const { idNumerici } = require('../middleware/parametri');
@@ -152,8 +153,9 @@ function filtriMovimenti(userId, f) {
         }
 
         if (search) {
-          whereConditions.push(`(m.descrizione ILIKE $${paramIndex} OR m.note ILIKE $${paramIndex} OR a.nome ILIKE $${paramIndex})`);
-          params.push(`%${search}%`);
+          // U8e: senza badare ad accenti e maiuscole; % e _ restano caratteri.
+          whereConditions.push(`(${piega('m.descrizione')} LIKE $${paramIndex} ESCAPE '\\' OR ${piega('m.note')} LIKE $${paramIndex} ESCAPE '\\' OR ${piega('a.nome')} LIKE $${paramIndex} ESCAPE '\\')`);
+          params.push(contiene(search));
           paramIndex++;
         }
         
