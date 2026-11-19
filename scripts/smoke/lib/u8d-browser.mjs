@@ -95,7 +95,10 @@ try {
     `${await p.aspetta(`document.querySelector('dialog[open] [data-categoria-controparte="Ricambi"][aria-pressed=true]')`, 10000)}|${(await attr('dialog[open] [data-categoria-controparte="Ricambi auto"]', 'aria-pressed')) === 'true'}`);
   await p.scrivi(campo, 'Duplicata70');
   await p.valuta(`(document.querySelector(${JSON.stringify(campo)}).focus(), true)`);
-  await invio(); await invio(); await invio();
+  // Tre Invio nello stesso giro del browser, prima che React ridisegni.
+  await p.valuta(`(() => { const el = document.querySelector(${JSON.stringify(campo)});
+    for (let i = 0; i < 3; i++) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+    return true; })()`);
   eq('tre Invio di fila: «Duplicata70» scelta, nessun errore', 'true|0',
     `${await p.aspetta(`document.querySelector('dialog[open] [data-categoria-controparte="Duplicata70"][aria-pressed=true]')`, 10000)}|${await n('dialog[open] [role=alert]')}`);
   await p.clic('[data-salva-controparte]');
