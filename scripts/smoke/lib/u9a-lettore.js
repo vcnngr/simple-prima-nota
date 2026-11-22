@@ -88,6 +88,14 @@ const bomba = (() => {
   eocd.writeUInt32LE(cen.length + nome.length, 12); eocd.writeUInt32LE(loc.length + nome.length + dati.length, 16);
   return Buffer.concat([loc, nome, dati, cen, nome, eocd]);
 })();
+console.log('--- Excel Fineco (struttura del file vero, dati inventati: scripts/smoke/dati/fineco-finto.xlsx)');
+const fx = tutto(require('fs').readFileSync(path.join(__dirname, '../dati/fineco-finto.xlsx')), 'movements.xlsx');
+eq('Fineco: intestazione alla riga 13, Entrate/Uscite, Descrizione_Completa, Stato', { data: 0, descrizione: 5, stato: 6, data_valuta: 1, entrate: 2, uscite: 3, intestazione: 12 }, fx.h && fx.h.mappa);
+eq('Fineco: celle t="str", date dal seriale, uscite negative', ['2026-10-30|E|150000|Ord: BIANCHI SRL Ben: ROSSI MARIO Dati Pag: Fattura 12',
+  '2026-10-25|U|4530|Addebito SDD ENEL ENERGIA SPA bolletta ottobre', '2026-10-05|U|43545|Rata 7 di 48 prestito', '2026-10-02|U|50|Commissione SDD'], breve(fx.r.movimenti));
+eq('Fineco: «Autorizzato» non entra', ['non contabilizzata'], fx.r.scartate.map(x => x.motivo));
+eq('Fineco: saldo finale scritto sopra la tabella', 101925, L.saldoDichiarato(fx.t.righe, fx.h.mappa.intestazione));
+eq('saldo dichiarato: formati', [123456, -50, null], [[['Saldo Finale: 1.234,56 EUR']], [['Saldo contabile: -0,50']], [['Saldo: abc']]].map(r => L.saldoDichiarato(r, 1)));
 eq('zip bomb fermata', true, /troppo grande/.test(errDi(() => L.leggiTabella(bomba, 'b.xlsx'))));
 eq('testo senza colonne', "Non riesco a leggere le colonne del file", errDi(() => L.leggiTabella(Buffer.from('ciao\nmondo\n'))));
 eq('mappa ostile rifiutata', [false, false, true], [{ data: -1, descrizione: 1, importo: 2, intestazione: 0 }, { data: '0', descrizione: 1, importo: 2, intestazione: 0 },

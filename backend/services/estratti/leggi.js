@@ -223,8 +223,13 @@ const NOMI = {
   descrizione: ['descrizione operazione', 'descrizione completa', 'descrizione', 'causale', 'operazione', 'dettagli', 'description', 'motivo', 'beneficiario'],
   importo: ['importo', 'importo eur', 'amount', 'ammontare'],
   entrate: ['entrate', 'avere', 'accrediti', 'accredito', 'credito', 'credit'],
-  uscite: ['uscite', 'dare', 'addebiti', 'addebito', 'debito', 'debit']
+  uscite: ['uscite', 'dare', 'addebiti', 'addebito', 'debito', 'debit'],
+  stato: ['stato', 'stato operazione', 'stato movimento', 'status']
 };
+// Righe non ancora contabilizzate (Fineco: «Autorizzato» accanto a «Contabilizzato»):
+// cambiano o spariscono, non entrano nel Registro.
+const NON_CONTABILIZZATE = ['autorizzato', 'autorizzata', 'in lavorazione', 'non contabilizzato', 'non contabilizzata',
+  'prenotato', 'prenotata', 'pending', 'in attesa'];
 function propostaMappa(celle) {
   const n = celle.map(norm);
   const trova = (chiave, gia) => {
@@ -245,7 +250,9 @@ function propostaMappa(celle) {
   const entrate = metti('entrate'), uscite = metti('uscite');
   const importo = entrate >= 0 && uscite >= 0 ? -1 : metti('importo');
   const descrizione = metti('descrizione');
+  const stato = metti('stato');
   const m = { data, descrizione };
+  if (stato >= 0) m.stato = stato;
   if (data_valuta >= 0) m.data_valuta = data_valuta;
   if (importo >= 0) m.importo = importo;
   else if (entrate >= 0 && uscite >= 0) { m.entrate = entrate; m.uscite = uscite; }
@@ -269,7 +276,7 @@ const firmaIntestazione = celle =>
 function mappaValida(m, colonne) {
   if (!m || typeof m !== 'object') return false;
   const ok = k => m[k] === undefined || (Number.isInteger(m[k]) && m[k] >= 0 && m[k] < colonne);
-  if (!['data', 'data_valuta', 'descrizione', 'importo', 'entrate', 'uscite', 'intestazione'].every(ok)) return false;
+  if (!['data', 'data_valuta', 'descrizione', 'importo', 'entrate', 'uscite', 'stato', 'intestazione'].every(ok)) return false;
   if (m.decimali !== undefined && m.decimali !== ',' && m.decimali !== '.') return false;
   if (m.inverti !== undefined && typeof m.inverti !== 'boolean') return false;
   return mappaCompleta(m) && Number.isInteger(m.intestazione);
@@ -291,6 +298,10 @@ function applicaMappa(righe, m) {
       cent = e ? Math.abs(e) : u ? -Math.abs(u) : null;
     }
     if (cent !== null && m.inverti) cent = -cent;
+    if (m.stato >= 0 && NON_CONTABILIZZATE.includes(norm(r[m.stato]))) {
+      scartate.push({ riga, motivo: 'non contabilizzata', testo: String(r[m.stato]).slice(0, 40) });
+      return;
+    }
     const descrizione = String(r[m.descrizione] ?? '').replace(/\s+/g, ' ').trim().slice(0, 1000);
     // Righe di saldo e totali (niente data, o «saldo ...» in descrizione): si saltano.
     if (!data || cent === null || cent === 0) {
@@ -303,6 +314,18 @@ function applicaMappa(righe, m) {
     });
   });
   return { movimenti, scartate, decimali };
+}
+
+// Saldo scritto dalla banca sopra l'intestazione (Fineco: «Saldo Finale: -4.251,43»),
+// per il controllo del saldo. null se non c'e' o non si legge.
+function saldoDichiarato(righe, intestazione) {
+  for (const r of righe.slice(0, Math.max(0, intestazione))) {
+    for (const c of r) {
+      const m = /^\s*saldo\s+(?:finale|contabile|al\s+[\d/.\-]+)\s*:?\s*([-+]?[\d.,]+\s*(?:€|EUR)?)\s*$/i.exec(String(c));
+      if (m) return leggiImporto(m[1], decimaliDi([m[1]]));
+    }
+  }
+  return null;
 }
 
 // ------------------------------------------------------------------ camt.053
@@ -353,6 +376,6 @@ function impronte(movimenti) {
 }
 
 module.exports = {
-  leggiTabella, leggiCamt, trovaIntestazione, applicaMappa, mappaValida, firmaIntestazione, impronte,
+  leggiTabella, leggiCamt, trovaIntestazione, applicaMappa, saldoDichiarato, mappaValida, firmaIntestazione, impronte,
   leggiData, leggiImporto, decimaliDi, ErroreEstratto, MAX_FILE
 };
