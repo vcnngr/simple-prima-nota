@@ -21,6 +21,7 @@ export const VOCI = {
     voci: [
       { a: '/studio/da-fare', etichetta: 'Da fare', Icona: ListChecks },
       { a: '/studio/clienti', etichetta: 'Clienti', Icona: Users },
+      { a: '/studio/estratti', etichetta: 'Estratti', Icona: Landmark },
       { a: '/studio/messaggi', etichetta: 'Chat', Icona: MessagesSquare },
       { a: '/studio/impostazioni', etichetta: 'Impostazioni', Icona: Settings }
     ],

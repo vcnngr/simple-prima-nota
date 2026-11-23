@@ -100,11 +100,15 @@ export default function CaricaEstratto() {
   const [contoId, setContoId] = useState(null);
   const [file, setFile] = useState(null);
   const [mappa, setMappa] = useState(null);
-  const conto = contoId ?? proposto?.id ?? null;
+  // Un estratto e' della banca: si propone l'ultimo conto usato per un estratto,
+  // poi il conto del Registro se non e' la cassa, poi il primo che non lo e'.
+  const cassa = c => /\b(cassa|contanti)\b/i.test(c?.nome_banca || '');
+  const ultimo = conti.find(c => c.id === Number(localStorage.getItem('pn_conto_estratto')));
+  const conto = contoId ?? (ultimo || (!cassa(proposto) && proposto) || conti.find(c => !cassa(c)) || proposto)?.id ?? null;
   const anteprima = useMutation({ mutationFn: x => estrattiApi.anteprima(x) });
   const importa = useMutation({
     mutationFn: () => estrattiApi.importa({ file, conto, mappa }),
-    onSuccess: () => aggiornaRegistro(qc)
+    onSuccess: () => { localStorage.setItem('pn_conto_estratto', String(conto)); aggiornaRegistro(qc); }
   });
   const leggi = (f, m) => { importa.reset(); if (f && conto) anteprima.mutate({ file: f, conto, mappa: m }); };
   const err = anteprima.error;

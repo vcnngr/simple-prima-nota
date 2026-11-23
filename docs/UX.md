@@ -591,3 +591,23 @@ Ratificata il 09/10/2026; non parte prima della fine di U6.
 - **Modalità B** (dati sul telefono, sincronizzazione facoltativa): da decidere dopo; richiede
   replica locale di saldi e categorie e gestione dei conflitti.
 
+
+## U9 — Estratto conto della banca (22–23/11/2026)
+
+Richiesta del commercialista: l'estratto della banca come elenco di controllo, nessun movimento
+«bucato». Tavole scelte: cliente 2 A + B, studio 3 B + C; banche «tutte» (modelli condivisi).
+
+- **U9a (0.7.0, migrazione 015):** il cliente carica CSV/XLSX/camt.053 (`POST /estratti/anteprima`,
+  `POST /estratti`); righe abbinate a movimenti già nel Registro (stesso conto, tipo, importo, ±3
+  giorni), le altre diventano movimenti `da_descrivere`; modelli delle banche in `modelli_estratto`
+  (solo colonne e formati); smoke `u9a-estratti.sh`.
+- **U9b (studio, nessuna migrazione):** `GET /commercialisti/estratti?mesi=` (griglia clienti × mesi:
+  righe, da descrivere, estratti, saldo `ok`/`diverso`), `GET /commercialisti/clienti/:id/estratti?mese=`
+  (righe della banca col loro movimento, accesso `dettaglio_cliente`). Tutto nell'ambito del
+  collegamento; il controllo del saldo si fa solo se l'ambito non ha una data d'inizio (il saldo
+  del Registro somma tutto lo storico del conto). Pagine `/studio/estratti` e
+  `/studio/clienti/:id/estratti`, «Chiedi» apre un chiarimento sulla riga. Da telefono i mesi vanno
+  dal più recente. Correzioni nello stesso blocco: il caricamento propone l'ultimo conto usato per
+  un estratto, altrimenti il primo che non è la cassa; la ricerca toglie anche gli accenti scritti a
+  parte (NFD, P1 della review U8e). Smoke `u9b-studio.sh`.
+- **Da fare:** U9a-bis, lettura dei PDF (Fineco trimestrale, Banco BPM).

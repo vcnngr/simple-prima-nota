@@ -221,7 +221,7 @@ export function Cliente() {
         </section>
       </>}
       <nav aria-label="Cliente" className="divide-y divide-bordo rounded-2xl border border-bordo bg-superficie">
-        {[['movimenti', 'Movimenti', 'sola lettura · chiedi un chiarimento'], ['report', 'Report ed export', 'PDF, Excel, CSV'], ['chat', 'Chat', 'messaggi e documenti'], ['accessi', 'Accessi', 'cosa hai guardato, come lo vede il cliente']].map(([k, t, s]) => (
+        {[['movimenti', 'Movimenti', 'sola lettura · chiedi un chiarimento'], ['estratti', 'Estratti della banca', 'righe da descrivere · saldo'], ['report', 'Report ed export', 'PDF, Excel, CSV'], ['chat', 'Chat', 'messaggi e documenti'], ['accessi', 'Accessi', 'cosa hai guardato, come lo vede il cliente']].map(([k, t, s]) => (
           <Link key={k} to={`${base}/${k}`} data-voce-cliente={k} className="flex items-center gap-3 px-4 py-3">
             <span className="min-w-0 flex-1"><b className="block">{t}</b><span className="block text-xs text-tenue">{s}</span></span>
             <ChevronRight size={18} aria-hidden="true" className="text-tenue" />

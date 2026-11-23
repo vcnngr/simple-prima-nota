@@ -15,12 +15,16 @@ const GRUPPI = {
 const COPPIE = Object.entries(GRUPPI).flatMap(([semplice, lettere]) =>
   [...lettere, ...(semplice === "'" ? [] : [...lettere.toUpperCase()])].map((c) => [c, semplice]));
 const MAPPA = new Map(COPPIE);
-const DA = COPPIE.map(([c]) => c).join('');
+// Accenti scritti a parte (lettera + segno combinante, U+0300-U+036F: testo
+// incollato da PDF o dal Mac): translate() li toglie, perche' in DA non hanno
+// corrispondente in A_ (review t_a3209904, P1).
+const SEGNI = Array.from({ length: 0x70 }, (_, k) => String.fromCharCode(0x300 + k)).join('');
+const DA = COPPIE.map(([c]) => c).join('') + SEGNI;
 const A_ = COPPIE.map(([, x]) => x).join('');
 
 // Lato JavaScript: la stessa piega del database.
 function piegaTesto(testo) {
-  return [...String(testo)].map((c) => MAPPA.get(c) ?? c).join('').toLowerCase();
+  return [...String(testo).normalize('NFC')].map((c) => MAPPA.get(c) ?? c).join('').toLowerCase().replace(/[\u0300-\u036f]/g, '');
 }
 // Lato SQL: espressione da confrontare con contiene()/iniziaCon().
 const piega = (espr) => `translate(lower(${espr}), '${DA}', '${A_.replace(/'/g, "''")}')`;

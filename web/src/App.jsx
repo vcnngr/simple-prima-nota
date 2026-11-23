@@ -4,6 +4,7 @@ import { VOCI } from './shell/voci';
 import Shell from './shell/Shell';
 import Accedi from './pagine/Accedi';
 import Archivio from './pagine/Archivio';
+import { EstrattiCliente, GrigliaEstratti } from './pagine/EstrattiStudio';
 import CaricaEstratto from './pagine/CaricaEstratto';
 import Categorie from './pagine/Categorie';
 import Account from './pagine/Account';
@@ -106,6 +107,8 @@ const router = createBrowserRouter([
         { path: '/studio/clienti/:id/report', element: <ReportCliente /> },
         { path: '/studio/clienti/:id/chat', element: <ChatCliente /> },
         { path: '/studio/clienti/:id/accessi', element: <AccessiCliente /> },
+        { path: '/studio/clienti/:id/estratti', element: <EstrattiCliente /> },
+        { path: '/studio/estratti', element: <GrigliaEstratti /> },
         { path: '/studio/messaggi', element: <ChatStudio /> },
         { path: '/studio/impostazioni', element: <Impostazioni /> },
         { path: '/studio/account', element: <Account /> }

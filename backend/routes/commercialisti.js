@@ -475,6 +475,123 @@ router.get('/clienti/:userId/riepilogo', authCommercialista, validateQuery(schem
 });
 
 // ==============================================================================
+// Estratti conto dei clienti (U9b, tavole 3 B + C)
+// ==============================================================================
+// Le righe della banca caricate dai clienti (U9a) sono l'elenco di controllo:
+// lo studio vede, per cliente e mese, quante righe ci sono e quante restano da
+// descrivere, e se il saldo dell'estratto torna col Registro. Tutto dentro
+// l'ambito del collegamento, letto dal collegamento nella stessa query (conti
+// ammessi, date). Il controllo del saldo usa tutti i movimenti del conto fino
+// alla fine dell'estratto: per non rivelare nulla fuori dalla finestra, si fa
+// solo se l'ambito non ha una data d'inizio.
+const DA_DESCRIVERE = '(mv.id IS NULL OR mv.da_descrivere)';
+const NEL_CONTO = (c, col) => `(${c}.conti_ammessi IS NULL OR cardinality(${c}.conti_ammessi) = 0 OR ${col} = ANY(${c}.conti_ammessi))`;
+const NELLE_DATE = (c, col) => `(${c}.ambito_dal IS NULL OR ${col} >= ${c}.ambito_dal) AND (${c}.ambito_al IS NULL OR ${col} <= ${c}.ambito_al)`;
+const SALDO_REGISTRO = `(SELECT round((coalesce(cc.saldo_iniziale, 0) + coalesce((SELECT sum(CASE WHEN m.tipo = 'Entrata' THEN m.importo ELSE -m.importo END)
+     FROM movimenti m WHERE m.conto_id = cc.id AND m.user_id = e.user_id AND m.data <= e.al), 0)) * 100)::bigint
+   FROM conti_correnti cc WHERE cc.id = e.conto_id AND cc.user_id = e.user_id)`;
+const STATO_SALDO = `CASE WHEN e.saldo_finale IS NULL OR c.ambito_dal IS NOT NULL OR (c.ambito_al IS NOT NULL AND e.al > c.ambito_al) THEN NULL
+     WHEN round(e.saldo_finale * 100)::bigint = ${SALDO_REGISTRO} THEN 'ok' ELSE 'diverso' END`;
+
+const schemaGriglia = require('joi').object({ mesi: require('joi').number().integer().min(1).max(12).default(6) });
+
+// GET /api/commercialisti/estratti?mesi=6 - griglia clienti x mesi
+router.get('/estratti', authCommercialista, validateQuery(schemaGriglia), async (req, res) => {
+  try {
+    await registraAccessiElenco(req.commercialista.id, 'lista_clienti');
+    const mesi = req.query.mesi;
+    const testa = await queryOne(`SELECT array_agg(to_char(g, 'YYYY-MM') ORDER BY g) AS mesi,
+        to_char(min(g), 'YYYY-MM-DD') AS inizio
+      FROM generate_series(date_trunc('month', CURRENT_DATE) - make_interval(months => $1 - 1), date_trunc('month', CURRENT_DATE), interval '1 month') g`, [mesi]);
+    const clienti = await query(`
+      SELECT c.user_id, u.username AS cliente FROM collegamenti_commercialista c JOIN utenti u ON u.id = c.user_id
+      WHERE c.commercialista_id = $1 AND c.stato = 'attiva' ORDER BY lower(u.username), c.user_id`, [req.commercialista.id]);
+    const righe = await query(`
+      SELECT c.user_id, to_char(re.data, 'YYYY-MM') AS mese, count(*)::int AS righe,
+             count(*) FILTER (WHERE ${DA_DESCRIVERE})::int AS da_descrivere
+      FROM collegamenti_commercialista c
+      JOIN righe_estratto re ON re.user_id = c.user_id AND ${NEL_CONTO('c', 're.conto_id')} AND ${NELLE_DATE('c', 're.data')}
+      LEFT JOIN movimenti mv ON mv.id = re.movimento_id AND mv.user_id = re.user_id
+      WHERE c.commercialista_id = $1 AND c.stato = 'attiva' AND re.data >= $2::date
+      GROUP BY 1, 2`, [req.commercialista.id, testa.inizio]);
+    const estratti = await query(`
+      SELECT c.user_id, to_char(g, 'YYYY-MM') AS mese, count(*)::int AS estratti,
+             count(*) FILTER (WHERE s.stato = 'diverso')::int AS saldo_diverso,
+             count(*) FILTER (WHERE s.stato = 'ok')::int AS saldo_ok
+      FROM collegamenti_commercialista c
+      JOIN estratti_conto e ON e.user_id = c.user_id AND ${NEL_CONTO('c', 'e.conto_id')}
+      CROSS JOIN LATERAL (SELECT ${STATO_SALDO} AS stato) s
+      CROSS JOIN LATERAL generate_series(date_trunc('month', e.dal), date_trunc('month', e.al), interval '1 month') g
+      WHERE c.commercialista_id = $1 AND c.stato = 'attiva' AND e.al >= $2::date
+        AND (c.ambito_dal IS NULL OR e.al >= c.ambito_dal) AND (c.ambito_al IS NULL OR e.dal <= c.ambito_al)
+        AND date_trunc('month', g) >= $2::date
+      GROUP BY 1, 2`, [req.commercialista.id, testa.inizio]);
+    const celle = new Map();
+    const cella = (u, m) => { const k = `${u}|${m}`; if (!celle.has(k)) celle.set(k, { righe: 0, da_descrivere: 0, estratti: 0, saldo: null }); return celle.get(k); };
+    for (const r of righe.rows) Object.assign(cella(r.user_id, r.mese), { righe: r.righe, da_descrivere: r.da_descrivere });
+    for (const r of estratti.rows) {
+      const x = cella(r.user_id, r.mese);
+      x.estratti = r.estratti;
+      x.saldo = r.saldo_diverso ? 'diverso' : r.saldo_ok ? 'ok' : null;
+    }
+    res.json({
+      success: true,
+      mesi: testa.mesi,
+      clienti: clienti.rows.map(c => ({
+        user_id: c.user_id, cliente: c.cliente,
+        celle: Object.fromEntries(testa.mesi.map(m => [m, celle.get(`${c.user_id}|${m}`) ?? null]))
+      }))
+    });
+  } catch (error) {
+    logErrore('Griglia estratti error', error);
+    res.status(500).json({ error: 'Errore nel recupero degli estratti dei clienti' });
+  }
+});
+
+// GET /api/commercialisti/clienti/:userId/estratti?mese=YYYY-MM - righe della banca
+// del cliente nel mese (predefinito: il corrente), col loro movimento.
+router.get('/clienti/:userId/estratti', authCommercialista, validateQuery(schemas.riepilogoCliente),
+  requireCollegamento('dettaglio_cliente', req => ({ estratti: req.query.mese || null })), async (req, res) => {
+  try {
+    const mese = (await queryOne(`SELECT to_char(COALESCE(to_date($1::text, 'YYYY-MM'), date_trunc('month', CURRENT_DATE)::date), 'YYYY-MM') AS m`,
+      [req.query.mese || null])).m;
+    const estratti = await query(`
+      SELECT e.id, e.nome_file, to_char(e.dal, 'YYYY-MM-DD') AS dal, to_char(e.al, 'YYYY-MM-DD') AS al,
+             cc.nome_banca AS conto, e.saldo_finale::text AS saldo_file, ${STATO_SALDO} AS saldo
+      FROM collegamenti_commercialista c
+      JOIN estratti_conto e ON e.user_id = c.user_id AND ${NEL_CONTO('c', 'e.conto_id')}
+      JOIN conti_correnti cc ON cc.id = e.conto_id AND cc.user_id = e.user_id
+      WHERE c.id = $1 AND e.dal < (to_date($2, 'YYYY-MM') + interval '1 month') AND e.al >= to_date($2, 'YYYY-MM')
+        AND (c.ambito_dal IS NULL OR e.al >= c.ambito_dal) AND (c.ambito_al IS NULL OR e.dal <= c.ambito_al)
+      ORDER BY e.al DESC, e.id DESC`, [req.collegamento.id, mese]);
+    const righe = await query(`
+      SELECT re.id, re.estratto_id, to_char(re.data, 'YYYY-MM-DD') AS giorno, re.descrizione AS testo_banca,
+             re.importo::text AS importo, re.tipo, re.esito, cc.nome_banca AS conto,
+             ${DA_DESCRIVERE} AS da_descrivere,
+             CASE WHEN mv.id IS NOT NULL THEN json_build_object('id', mv.id, 'descrizione', mv.descrizione,
+               'controparte', a.nome, 'categoria', mv.categoria, 'note', mv.note) END AS movimento,
+             EXISTS (SELECT 1 FROM messaggi_commercialista x WHERE x.collegamento_id = c.id
+                     AND x.movimento_id = mv.id AND x.chiarimento_stato = 'aperta') AS da_chiarire
+      FROM collegamenti_commercialista c
+      JOIN righe_estratto re ON re.user_id = c.user_id AND ${NEL_CONTO('c', 're.conto_id')} AND ${NELLE_DATE('c', 're.data')}
+      JOIN conti_correnti cc ON cc.id = re.conto_id AND cc.user_id = re.user_id
+      LEFT JOIN movimenti mv ON mv.id = re.movimento_id AND mv.user_id = re.user_id
+      LEFT JOIN anagrafiche a ON a.id = mv.anagrafica_id AND a.user_id = mv.user_id
+      WHERE c.id = $1 AND re.data >= to_date($2, 'YYYY-MM') AND re.data < (to_date($2, 'YYYY-MM') + interval '1 month')
+      ORDER BY re.data DESC, re.id DESC
+      LIMIT 2000`, [req.collegamento.id, mese]);
+    const r = righe.rows;
+    res.json({
+      success: true, mese, estratti: estratti.rows, righe: r,
+      totali: { righe: r.length, da_descrivere: r.filter(x => x.da_descrivere).length }
+    });
+  } catch (error) {
+    logErrore('Estratti cliente error', error);
+    res.status(500).json({ error: 'Errore nel recupero degli estratti del cliente' });
+  }
+});
+
+// ==============================================================================
 // POST /api/commercialisti/collega-cliente - Connect client using invitation token
 // ==============================================================================
 router.post('/collega-cliente', authCommercialista, validate(schemas.collegaCliente), async (req, res) => {

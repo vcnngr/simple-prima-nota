@@ -39,3 +39,7 @@ export const portaleApi = {
   chiarimenti: id => chiama('/messaggi/chiarimenti', { params: { ...conCliente(id), stato: 'aperta' } }),
   risolvi: (id, msg) => chiama(`/messaggi/${msg}/chiarimento`, { metodo: 'PUT', params: conCliente(id), corpo: { stato: 'risolta' } })
 };
+
+// Estratti conto dei clienti (U9b): griglia clienti x mesi e righe della banca di un cliente.
+portaleApi.griglia = (mesi = 6) => chiama('/commercialisti/estratti', { params: { mesi } });
+portaleApi.estratti = (id, mese) => chiama(`${CL(id)}/estratti`, { params: { mese } });
