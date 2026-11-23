@@ -145,7 +145,7 @@ for _ in $(seq 1 40); do [ "$(curl -s --max-time 1 -o /dev/null -w '%{http_code}
 eq "nginx con la CSP del progetto" "200" "$(curl -s -o /dev/null -w '%{http_code}' "$WEB/api/health")"
 WEB="$WEB" CHROME="$CHROME" PROFILO="$T/chrome" FOTO="$FOTO" TOKEN="$WT" FILE="$FX" browser node "$R/scripts/smoke/lib/u9a-browser.mjs"
 PRIMO=$(awk '/^PRIMO/{print $2}' "$T/b.log")
-eq "dal browser: descritto con nota e categoria nuova, non piu' da descrivere; 2 restano" "spiegato al browser|Prova U9a|f|2" \
+eq "dal browser: descritto con nota e categoria nuova, non piu' da descrivere; 2 restano" "spiegato al browser|Prova U9a|false|2" \
   "$(q "SELECT note||'|'||categoria||'|'||da_descrivere FROM movimenti WHERE id=${PRIMO:-0} AND user_id=$WID")|$(q "SELECT count(*) FROM movimenti WHERE user_id=$WID AND da_descrivere")"
 echo "  fotografie: $FOTO"
 
