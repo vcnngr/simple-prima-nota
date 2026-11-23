@@ -493,6 +493,12 @@ const SALDO_REGISTRO = `(SELECT round((coalesce(cc.saldo_iniziale, 0) + coalesce
 const STATO_SALDO = `CASE WHEN e.saldo_finale IS NULL OR c.ambito_dal IS NOT NULL OR (c.ambito_al IS NOT NULL AND e.al > c.ambito_al) THEN NULL
      WHEN round(e.saldo_finale * 100)::bigint = ${SALDO_REGISTRO} THEN 'ok' ELSE 'diverso' END`;
 
+// Periodo dell'estratto che lo studio vede: l'estratto intersecato con l'ambito
+// (RED t_baea6a0e: un estratto annuale con ambito 10-20 ottobre compariva anche
+// a novembre). Fuori da qui lo studio non vede ne' mesi ne' date ne' saldo.
+const INIZIO_VISTO = `greatest(e.dal, coalesce(c.ambito_dal, e.dal))`;
+const FINE_VISTA = `least(e.al, coalesce(c.ambito_al, e.al))`;
+
 const schemaGriglia = require('joi').object({ mesi: require('joi').number().integer().min(1).max(12).default(6) });
 
 // GET /api/commercialisti/estratti?mesi=6 - griglia clienti x mesi
@@ -521,9 +527,9 @@ router.get('/estratti', authCommercialista, validateQuery(schemaGriglia), async 
       FROM collegamenti_commercialista c
       JOIN estratti_conto e ON e.user_id = c.user_id AND ${NEL_CONTO('c', 'e.conto_id')}
       CROSS JOIN LATERAL (SELECT ${STATO_SALDO} AS stato) s
-      CROSS JOIN LATERAL generate_series(date_trunc('month', e.dal), date_trunc('month', e.al), interval '1 month') g
-      WHERE c.commercialista_id = $1 AND c.stato = 'attiva' AND e.al >= $2::date
-        AND (c.ambito_dal IS NULL OR e.al >= c.ambito_dal) AND (c.ambito_al IS NULL OR e.dal <= c.ambito_al)
+      CROSS JOIN LATERAL (SELECT ${INIZIO_VISTO} AS dal, ${FINE_VISTA} AS al) v
+      CROSS JOIN LATERAL generate_series(date_trunc('month', v.dal), date_trunc('month', v.al), interval '1 month') g
+      WHERE c.commercialista_id = $1 AND c.stato = 'attiva' AND v.dal <= v.al AND v.al >= $2::date
         AND date_trunc('month', g) >= $2::date
       GROUP BY 1, 2`, [req.commercialista.id, testa.inizio]);
     const celle = new Map();
@@ -556,13 +562,15 @@ router.get('/clienti/:userId/estratti', authCommercialista, validateQuery(schema
     const mese = (await queryOne(`SELECT to_char(COALESCE(to_date($1::text, 'YYYY-MM'), date_trunc('month', CURRENT_DATE)::date), 'YYYY-MM') AS m`,
       [req.query.mese || null])).m;
     const estratti = await query(`
-      SELECT e.id, e.nome_file, to_char(e.dal, 'YYYY-MM-DD') AS dal, to_char(e.al, 'YYYY-MM-DD') AS al,
-             cc.nome_banca AS conto, e.saldo_finale::text AS saldo_file, ${STATO_SALDO} AS saldo
+      SELECT e.id, e.nome_file, to_char(v.dal, 'YYYY-MM-DD') AS dal, to_char(v.al, 'YYYY-MM-DD') AS al,
+             cc.nome_banca AS conto, CASE WHEN s.stato IS NULL THEN NULL ELSE e.saldo_finale::text END AS saldo_file, s.stato AS saldo
       FROM collegamenti_commercialista c
       JOIN estratti_conto e ON e.user_id = c.user_id AND ${NEL_CONTO('c', 'e.conto_id')}
       JOIN conti_correnti cc ON cc.id = e.conto_id AND cc.user_id = e.user_id
-      WHERE c.id = $1 AND e.dal < (to_date($2, 'YYYY-MM') + interval '1 month') AND e.al >= to_date($2, 'YYYY-MM')
-        AND (c.ambito_dal IS NULL OR e.al >= c.ambito_dal) AND (c.ambito_al IS NULL OR e.dal <= c.ambito_al)
+      CROSS JOIN LATERAL (SELECT ${INIZIO_VISTO} AS dal, ${FINE_VISTA} AS al) v
+      CROSS JOIN LATERAL (SELECT ${STATO_SALDO} AS stato) s
+      WHERE c.id = $1 AND v.dal <= v.al
+        AND v.dal < (to_date($2, 'YYYY-MM') + interval '1 month') AND v.al >= to_date($2, 'YYYY-MM')
       ORDER BY e.al DESC, e.id DESC`, [req.collegamento.id, mese]);
     const righe = await query(`
       SELECT re.id, re.estratto_id, to_char(re.data, 'YYYY-MM-DD') AS giorno, re.descrizione AS testo_banca,

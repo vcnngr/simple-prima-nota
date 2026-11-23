@@ -66,17 +66,25 @@ q "INSERT INTO movimenti (data, conto_id, descrizione, importo, tipo, user_id) V
 for p in "$UT $CU" "$VT $CV" "$WT $CWA" "$WT $CWB" "$XT $CX"; do set -- $p; carica "$API/estratti" "$1" "$2" "$FX" >/dev/null; done
 LU=$(collega "$S" "$UID_"); LV=$(collega "$S" "$VID"); LW=$(collega "$S" "$WID")
 q "UPDATE collegamenti_commercialista SET conti_ammessi = ARRAY[$CWA], ambito_dal = '2026-10-10' WHERE id = $LW RETURNING id" >/dev/null
+# RED t_baea6a0e: Y concede solo 10-20 ottobre e ha un estratto annuale (scritto a
+# mano, saldo 1234.56): lo studio lo vede solo in ottobre, dal 10 al 20, senza saldo.
+Y="u9by$SFX"; YT=$(reg_u "$Y"); YID=$(uid "$Y"); CY=$(conto "Banca Y" 0 "$YID")
+LY=$(collega "$S" "$YID")
+q "UPDATE collegamenti_commercialista SET ambito_dal = '2026-10-10', ambito_al = '2026-10-20' WHERE id = $LY RETURNING id" >/dev/null
+q "INSERT INTO estratti_conto (user_id, conto_id, nome_file, formato, dal, al, saldo_finale) VALUES ($YID, $CY, 'annuale.csv', 'csv', '2026-01-01', '2026-12-31', 1234.56) RETURNING id" >/dev/null
 eq "setup: 5 estratti caricati, U 3 da descrivere" "5|3" "$(q "SELECT (SELECT count(*) FROM estratti_conto WHERE user_id IN ($UID_,$VID,$WID,$XID))||'|'||(SELECT count(*) FROM movimenti WHERE user_id=$UID_ AND da_descrivere)")"
 
 echo "=== griglia ==="
 G="$API/commercialisti/estratti"
 eq "griglia: 200, 6 mesi fino a questo" "200|6|$(date +%Y-%m)" "$(hit "${AS[@]}" "$G")|$(py "print(len(d['mesi']),d['mesi'][-1],sep='|')")"
-eq "solo i clienti collegati (U, V, W; non X)" "$U,$V,$W" "$(py "print(','.join(sorted(c['cliente'] for c in d['clienti'])))")"
+eq "solo i clienti collegati (U, V, W, Y; non X)" "$U,$V,$W,$Y" "$(py "print(','.join(sorted(c['cliente'] for c in d['clienti'])))")"
 cella() { py "c=[c for c in d['clienti'] if c['user_id']==$1][0]['celle'].get('2026-10');print('-' if c is None else '|'.join(str(c[k]) for k in ('righe','da_descrivere','estratti','saldo')))"; }
 eq "U ottobre: 4 righe, 3 da descrivere, 1 estratto, saldo torna" "4|3|1|ok" "$(cella "$UID_")"
 eq "V ottobre: saldo diverso" "4|4|1|diverso" "$(cella "$VID")"
 eq "W ottobre: solo il conto A, righe dal 10/10, niente saldo" "2|2|1|None" "$(cella "$WID")"
 eq "mese senza estratti: null" "None" "$(py "c=[c for c in d['clienti'] if c['user_id']==$UID_][0]['celle'];print(c[d['mesi'][0]] if d['mesi'][0]!='2026-10' else None)")"
+eq "Y (ambito 10-20 ottobre, estratto annuale): estratto solo in ottobre" "2026-10" \
+  "$(py "c=[c for c in d['clienti'] if c['user_id']==$YID][0]['celle'];print(','.join(m for m,x in sorted(c.items()) if x and x['estratti']))")"
 eq "altro studio: nessun cliente" "200|0" "$(hit "${AS2[@]}" "$G")|$(py "print(len(d['clienti']))")"
 eq "token dell'utente: 401" "401" "$(hit "${AU[@]}" "$G")"
 eq "senza token: 401" "401" "$(hit "$G")"
@@ -92,6 +100,10 @@ eq "righe col testo della banca e la riga Enel descritta (abbinata)" "abbinata|F
 MOV=$(py "print([r for r in d['righe'] if r['da_descrivere']][0]['movimento']['id'])")
 eq "W: solo il conto A, dal 10/10" "2|Banca A" "$(hit "${AS[@]}" "$E/$WID/estratti?mese=2026-10" >/dev/null; py "print(len(d['righe']),','.join(sorted({r['conto'] for r in d['righe']})),sep='|')")"
 eq "V: saldo diverso con l'importo della banca" "diverso|1019.25" "$(hit "${AS[@]}" "$E/$VID/estratti?mese=2026-10" >/dev/null; py "print(d['estratti'][0]['saldo'],d['estratti'][0]['saldo_file'],sep='|')")"
+eq "Y novembre (fuori ambito): nessun estratto" "200|0" "$(hit "${AS[@]}" "$E/$YID/estratti?mese=2026-11")|$(py "print(len(d['estratti']))")"
+eq "Y settembre (fuori ambito): nessun estratto" "0" "$(hit "${AS[@]}" "$E/$YID/estratti?mese=2026-09" >/dev/null; py "print(len(d['estratti']))")"
+eq "Y ottobre: periodo tagliato all'ambito, niente saldo" "1|2026-10-10|2026-10-20|None|None" \
+  "$(hit "${AS[@]}" "$E/$YID/estratti?mese=2026-10" >/dev/null; py "e=d['estratti'];print(len(e),e[0]['dal'],e[0]['al'],e[0]['saldo_file'],e[0]['saldo'],sep='|')")"
 eq "X non collegato: rifiutato" "1" "$(c=$(hit "${AS[@]}" "$E/$XID/estratti?mese=2026-10"); [ "$c" = 403 ] || [ "$c" = 404 ] && echo 1 || echo "$c")"
 eq "altro studio su U: rifiutato" "1" "$(c=$(hit "${AS2[@]}" "$E/$UID_/estratti"); [ "$c" = 403 ] || [ "$c" = 404 ] && echo 1 || echo "$c")"
 eq "mese non valido: 400" "400" "$(hit "${AS[@]}" "$E/$UID_/estratti?mese=2026-13")"

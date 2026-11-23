@@ -24,7 +24,7 @@ try {
     await p.schermo(w, h, 2, m);
     await studio();
     await p.vai(E.WEB + '/studio/estratti');
-    eq('griglia: 3 clienti, cella U ottobre con 3 da descrivere', 'true', await p.aspetta(`document.querySelectorAll('[data-riga-cliente]').length === 3
+    eq('griglia: 4 clienti, cella U ottobre con 3 da descrivere', 'true', await p.aspetta(`document.querySelectorAll('[data-riga-cliente]').length === 4
       && document.querySelector('[data-cella="${E.CLIENTE}|2026-10"] [data-stato="descrivere"]')?.textContent === '3'`, 10000));
     eq('voce «Estratti» nella navigazione', 'true', await p.valuta(`[...document.querySelectorAll('a[href="/studio/estratti"]')].length > 0`));
     if (w === 390) eq('390 px: primo mese in vista = il corrente', new Date().toISOString().slice(0, 7), await p.valuta(`document.querySelector('[data-riga-cliente] [data-cella]').dataset.cella.split('|')[1]`));
