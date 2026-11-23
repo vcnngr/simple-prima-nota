@@ -60,6 +60,8 @@ const movimentiFiltersSchema = require('joi').object({
   // frattempo non fanno saltare ne' ripetere righe.
   // U5: solo i movimenti con una richiesta di chiarimento aperta dello studio.
   da_chiarire: require('joi').boolean().optional(),
+  // U9a: solo i movimenti creati da un estratto e non ancora descritti.
+  da_descrivere: require('joi').boolean().optional(),
   dopo: require('joi').string().pattern(/^\d{4}-\d{2}-\d{2}_[1-9]\d{0,9}$/).custom(cursoreValido).optional()
 }).oxor('conto_id', 'conti');
 
@@ -76,7 +78,7 @@ function cursoreValido(v, helpers) {
 // e a (anagrafiche), parametri da $1 (user_id). idsConti: i conti scelti o null.
 function filtriMovimenti(userId, f) {
   const { data_inizio, data_fine, conto_id, conti, anagrafica_id, tipologia_id, tipologie, categorie,
-    tipo, importo_min, importo_max, search, da_chiarire } = f;
+    tipo, importo_min, importo_max, search, da_chiarire, da_descrivere } = f;
         let whereConditions = ['m.user_id = $1'];
         let params = [userId];
         let paramIndex = 2;
@@ -151,6 +153,8 @@ function filtriMovimenti(userId, f) {
             WHERE mc.movimento_id = m.id AND cl.user_id = m.user_id AND cl.stato = 'attiva'
               AND mc.chiarimento_stato = 'aperta')`);
         }
+
+        if (da_descrivere !== undefined) whereConditions.push(`${da_descrivere ? '' : 'NOT '}m.da_descrivere`);
 
         if (search) {
           // U8e: senza badare ad accenti e maiuscole; % e _ restano caratteri.
@@ -256,6 +260,7 @@ function descriviFiltri(f) {
   if (f.importo_min !== undefined || f.importo_max !== undefined) v.push(`importo ${f.importo_min ?? '…'} – ${f.importo_max ?? '…'}`);
   if (f.search) v.push(`ricerca «${f.search}»`);
   if (f.da_chiarire) v.push('da chiarire');
+  if (f.da_descrivere) v.push('da descrivere');
   return v.join('; ') || 'nessuno: tutti i movimenti';
 }
 
@@ -963,6 +968,8 @@ if (fields.length === 0) {
 }
 
 fields.push(`updated_at = NOW()`);
+// U9a: modificato dal cliente, il movimento dell'estratto non e' piu' «da descrivere».
+fields.push('da_descrivere = false');
 values.push(movimentoId, userId);
 
 const updateQuery = `
