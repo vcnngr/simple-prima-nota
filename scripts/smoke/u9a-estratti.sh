@@ -18,8 +18,11 @@ DB_CONTAINER="${DB_CONTAINER:?DB_CONTAINER richiesto}"
 DB_NAME="${DB_NAME:-prima_nota}"
 SFX="${SFX:-$(date +%s)$RANDOM}"
 PW='Password123!'
-T="$(mktemp -d)"
-trap 'rm -rf "${T:?}"' EXIT
+CHROME="${CHROME:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
+T="$(mktemp -d)"; NGX="u9aweb-$SFX"
+trap 'docker rm -f "$NGX" >/dev/null 2>&1; rm -rf "${T:?}"' EXIT
+FOTO="${FOTO:-$T/foto}"; mkdir -p "$FOTO"
+D="$R/web"
 
 PASS=0; FAIL=0
 ok() { PASS=$((PASS+1)); printf '  OK    %s\n' "$1"; }
@@ -39,6 +42,13 @@ carica() { # carica <url> <token> <conto> <file> [mappa]
   hit -X POST -H "Authorization: Bearer $2" -F "file=@$4" --form-string "conto_id=$3" "${m[@]}" "$1"
 }
 FX="$R/scripts/smoke/dati/fineco-finto.xlsx"
+browser() {
+  "$@" > "$T/b.log" 2>&1
+  grep -v '^CONTEGGIO\|^PRIMO' "$T/b.log"
+  read -r BP BF <<< "$(awk '/^CONTEGGIO/{print $2, $3}' "$T/b.log")"
+  [ -n "${BP:-}" ] || { BP=0; BF=1; echo "  FAIL  non concluso"; tail -5 "$T/b.log"; }
+  PASS=$((PASS + BP)); FAIL=$((FAIL + BF))
+}
 
 echo "=== lettore ==="
 node "$R/scripts/smoke/lib/u9a-lettore.js" > "$T/l.log" 2>&1; rc=$?
@@ -118,6 +128,26 @@ eq "oltre 10 MB: 413" "413" "$(carica "$API/estratti/anteprima" "$UT" "$CU" "$T/
 printf '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "b">]><Document><BkToCstmrStmt/></Document>' > "$T/x.xml"
 eq "XML con entita': 422" "422" "$(carica "$API/estratti/anteprima" "$UT" "$CU" "$T/x.xml")"
 eq "nessun movimento creato dai rifiuti" "7" "$(nmov)"
+
+echo "=== browser (build, nginx con la CSP) ==="
+W="u9aw$SFX"; WT=$(reg_u "$W"); WID=$(uid "$W"); CW=$(conto Fineco 0.50 "$WID")
+q "INSERT INTO movimenti (data, conto_id, descrizione, importo, tipo, user_id) VALUES ('2026-10-24', $CW, 'Bolletta Enel', 45.30, 'Uscita', $WID) RETURNING id" >/dev/null
+(cd "$D" && npm run build) > "$T/build.log" 2>&1
+eq "npm run build: exit 0" "0" "$?"
+eq "fetch solo in src/api/client.js" "src/api/client.js" "$(cd "$D" && grep -rl 'fetch(' src | sort | paste -sd, -)"
+PORTA_API=$(python3 -c "from urllib.parse import urlparse;print(urlparse('$API').port or 80)")
+docker run -d --name "$NGX" -p 127.0.0.1::80 -e BACKEND_UPSTREAM="${BACKEND_UPSTREAM:-host.docker.internal:$PORTA_API}" \
+  -e CLIENT_MAX_BODY_SIZE=11m -e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+  -v "$D/dist:/usr/share/nginx/html:ro" -v "$R/web/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro" \
+  docker.io/library/nginx:1.30-alpine >/dev/null 2>&1
+WEB="http://127.0.0.1:$(docker port "$NGX" 80 2>/dev/null | head -1 | sed 's/.*://')"
+for _ in $(seq 1 40); do [ "$(curl -s --max-time 1 -o /dev/null -w '%{http_code}' "$WEB/api/health")" = 200 ] && break; sleep 0.5; done
+eq "nginx con la CSP del progetto" "200" "$(curl -s -o /dev/null -w '%{http_code}' "$WEB/api/health")"
+WEB="$WEB" CHROME="$CHROME" PROFILO="$T/chrome" FOTO="$FOTO" TOKEN="$WT" FILE="$FX" browser node "$R/scripts/smoke/lib/u9a-browser.mjs"
+PRIMO=$(awk '/^PRIMO/{print $2}' "$T/b.log")
+eq "dal browser: descritto con nota e categoria nuova, non piu' da descrivere; 2 restano" "spiegato al browser|Prova U9a|f|2" \
+  "$(q "SELECT note||'|'||categoria||'|'||da_descrivere FROM movimenti WHERE id=${PRIMO:-0} AND user_id=$WID")|$(q "SELECT count(*) FROM movimenti WHERE user_id=$WID AND da_descrivere")"
+echo "  fotografie: $FOTO"
 
 echo
 echo "PASS $PASS   FAIL $FAIL"

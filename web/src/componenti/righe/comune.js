@@ -17,7 +17,9 @@ export function datiRiga(m) {
     entrata: m.tipo === 'Entrata',
     saldo: m.saldo_progressivo == null ? null : centesimiDa(m.saldo_progressivo),
     conto: m.nome_banca || '',
-    daChiarire: !!m.da_chiarire
+    daChiarire: !!m.da_chiarire,
+    // U9a: dall'estratto della banca, non ancora descritto (bordo giallo).
+    daDescrivere: !!m.da_descrivere
   };
 }
 

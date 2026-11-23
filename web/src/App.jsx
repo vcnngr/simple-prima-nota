@@ -4,6 +4,7 @@ import { VOCI } from './shell/voci';
 import Shell from './shell/Shell';
 import Accedi from './pagine/Accedi';
 import Archivio from './pagine/Archivio';
+import CaricaEstratto from './pagine/CaricaEstratto';
 import Categorie from './pagine/Categorie';
 import Account from './pagine/Account';
 import { ConfermaEmail, PasswordDimenticata, Registrati, Reimposta } from './pagine/Pubbliche';
@@ -88,7 +89,8 @@ const router = createBrowserRouter([
         { path: '/impostazioni', element: <Impostazioni /> },
         { path: '/account', element: <Account /> },
         { path: '/categorie', element: <Categorie /> },
-        { path: '/archivio', element: <Archivio /> }
+        { path: '/archivio', element: <Archivio /> },
+        { path: '/estratti/carica', element: <CaricaEstratto /> }
       ]
     }]
   },

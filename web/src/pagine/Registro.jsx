@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Download, Search, SlidersHorizontal, Users, X } from 'lucide-react';
+import { ChevronDown, Download, FileUp, Search, SlidersHorizontal, Users, X } from 'lucide-react';
 import { registroApi } from '../api/registro';
 import BottomSheet from '../componenti/BottomSheet';
 import ListaInfinita from '../componenti/ListaInfinita';
@@ -17,10 +17,11 @@ import { etichettaPeriodo, giornoLungo, periodo } from '../util/date';
 import Fascia from '../componenti/Fascia';
 import TabellaRegistro from '../componenti/TabellaRegistro';
 import EsportaMovimenti from '../componenti/EsportaMovimenti';
+import DescriviMovimenti from '../componenti/DescriviMovimenti';
 
 // Filtri nell'indirizzo (si condividono e sopravvivono al ritorno indietro).
 // U8a: tipologie della controparte (id), categorie (cat, ripetuto), importo da/a (euro, "12.50").
-const CHIAVI = ['q', 'tipo', 'conto', 'dal', 'al', 'controparte', 'chiarire', 'tipologie', 'da', 'a'];
+const CHIAVI = ['q', 'tipo', 'conto', 'dal', 'al', 'controparte', 'chiarire', 'descrivere', 'tipologie', 'da', 'a'];
 const IMPORTO = /^\d{1,10}(\.\d{1,2})?$/;
 const GIORNO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -33,6 +34,7 @@ function leggiFiltri(p) {
   if (f.conto) { const v = scriviConti(contiScelti(f.conto)); if (v) f.conto = v; else delete f.conto; }
   for (const k of ['dal', 'al']) if (f[k] && !GIORNO.test(f[k])) delete f[k];
   if (f.chiarire !== '1') delete f.chiarire;
+  if (f.descrivere !== '1') delete f.descrivere;
   if (f.tipologie) { const v = scriviConti(contiScelti(f.tipologie)); if (v) f.tipologie = v; else delete f.tipologie; }
   const cat = [...new Set(p.getAll('cat').map(x => x.trim()).filter(x => x && x.length <= 100))].slice(0, 50);
   if (cat.length) f.cat = cat;
@@ -45,6 +47,7 @@ function perApi(f) {
   return {
     search: f.q, tipo: f.tipo, conti: f.conto, data_inizio: f.dal, data_fine: f.al,
     anagrafica_id: f.controparte, da_chiarire: f.chiarire ? 'true' : undefined,
+    da_descrivere: f.descrivere ? 'true' : undefined,
     tipologie: f.tipologie, categorie: f.cat, importo_min: f.da, importo_max: f.a
   };
 }
@@ -263,6 +266,7 @@ export default function Registro() {
   const [pannello, setPannello] = useState(false); // false | 'tutti' | 'altri'
   const [esporta, setEsporta] = useState(false); // U8c
   const [aperto, setAperto] = useState(null); // { id, modo }
+  const [descrivi, setDescrivi] = useState(false); // U9a, tavola 2 B
   const el = useEliminaDopo();
   const riepilogo = useQuery({ queryKey: ['riepilogo', filtri.conto ?? null], queryFn: () => registroApi.riepilogo({ conti: filtri.conto }),
     placeholderData: keepPreviousData });
@@ -309,11 +313,16 @@ export default function Registro() {
     filtri.conto && { k: ['conto'], e: ids.length > 1 ? `${ids.length} conti` : conto ? conto.nome_banca : 'Conto' },
     filtri.controparte && { k: ['controparte'], e: nomeControparte || 'Controparte' },
     filtri.chiarire && { k: ['chiarire'], e: 'Da chiarire' },
+    filtri.descrivere && { k: ['descrivere'], e: 'Da descrivere' },
     ...altre
   ].filter(Boolean);
   const sceltaPeriodo = (filtri.dal || filtri.al)
     ? PERIODI.find(([k]) => { const p = periodo(k); return (p.dal ?? undefined) === filtri.dal && (p.al ?? undefined) === filtri.al; })?.[0] ?? 'altro'
     : '';
+  // U9a: quante righe dell'estratto aspettano una descrizione (tutti i conti).
+  const daDescrivere = useQuery({ queryKey: ['movimenti', 'da-descrivere'],
+    queryFn: () => registroApi.movimenti({ limite: 1, filtri: { da_descrivere: 'true' } }) }).data?.totali?.numero_movimenti;
+  const nDescrivere = Number(daDescrivere ?? 0);
   const apri = id => setAperto({ id, modo: 'vedi' });
   const largo = useLargo();
 
@@ -321,6 +330,17 @@ export default function Registro() {
     <div className="-mx-4 md:mx-0" data-pagina="movimenti">
       <Fascia r={riepilogo.data} conto={filtri.conto} onConto={id => imposta({ ...filtri, conto: id })}
         chiarire={!!filtri.chiarire} onChiarire={() => imposta({ ...filtri, chiarire: filtri.chiarire ? null : '1' })} />
+
+      {/* U9a, tavola 2 A: righe dell'estratto da descrivere */}
+      {nDescrivere > 0 && (
+        <div className="mx-4 mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border-l-4 border-accento bg-accento/15 px-4 py-2.5 md:mx-0" data-avviso-descrivere={nDescrivere}>
+          <span className="flex-1 font-semibold">{nDescrivere} {nDescrivere === 1 ? 'movimento' : 'movimenti'} dell'estratto da descrivere</span>
+          <button type="button" onClick={() => imposta({ ...filtri, descrivere: filtri.descrivere ? null : '1' })} data-mostra-descrivere
+            className="text-sm font-semibold text-principale">{filtri.descrivere ? 'Mostra tutti' : 'Mostra'}</button>
+          <button type="button" onClick={() => setDescrivi(true)} data-uno-alla-volta
+            className="rounded-lg bg-principale px-3 py-1.5 text-sm font-bold text-su-principale">Uno alla volta</button>
+        </div>
+      )}
 
       {/* Barra dei filtri da computer */}
       <div className="mt-4 hidden flex-wrap items-center gap-2 lg:flex" data-filtri-largo>
@@ -356,6 +376,9 @@ export default function Registro() {
         <button type="button" onClick={() => setEsporta(true)} data-link-esporta className={`${selettore} inline-flex items-center gap-2`}>
           <Download size={18} aria-hidden="true" />Esporta
         </button>
+        <Link to="/estratti/carica" data-carica-estratto-largo className={`${selettore} inline-flex items-center gap-2`}>
+          <FileUp size={18} aria-hidden="true" />Carica estratto
+        </Link>
       </div>
       {altre.length > 0 && (
         <div className="mt-2 hidden flex-wrap items-center gap-2 lg:flex" data-etichette-largo>
@@ -409,6 +432,10 @@ export default function Registro() {
               className="inline-flex items-center gap-1 rounded-full border border-bordo px-2.5 py-1 text-sm text-testo lg:hidden">
               <Download size={14} aria-hidden="true" />Esporta
             </button>
+            <Link to="/estratti/carica" data-carica-estratto-telefono
+              className="inline-flex items-center gap-1 rounded-full border border-bordo px-2.5 py-1 text-sm text-testo lg:hidden">
+              <FileUp size={14} aria-hidden="true" />Estratto
+            </Link>
           </span>
           <span className="importo text-entrata">entrate {formatta(centesimiDa(tot.totale_entrate) ?? 0)}</span>
           <span className="importo text-uscita">uscite {formatta(centesimiDa(tot.totale_uscite) ?? 0)}</span>
@@ -456,6 +483,7 @@ export default function Registro() {
         numero={tot ? Number(tot.numero_movimenti) : null} onChiudi={() => setEsporta(false)} />}
       {pannello && <PannelloFiltri key={pannello} soloAltri={pannello === 'altri'} filtri={filtri} conti={conti} onChiudi={() => setPannello(false)}
         onApplica={f => { imposta({ ...f, q: filtri.q }); setPannello(false); }} />}
+      {descrivi && <DescriviMovimenti onChiudi={() => setDescrivi(false)} />}
       {aperto && <DettaglioMovimento key={`${aperto.id}-${aperto.modo}`} id={aperto.id} modo={aperto.modo} onChiudi={() => setAperto(null)} />}
     </div>
   );

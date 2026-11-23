@@ -42,9 +42,11 @@ export default function RigaMovimento({ r, onApri, onStudio, onElimina }) {
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onApri(r.id); } }}
         onPointerDown={giu} onPointerMove={muovi} onPointerUp={su} onPointerCancel={su}
         style={{ transform: `translateX(${dx}px)`, touchAction: 'pan-y' }}
-        className={`relative flex cursor-pointer select-none items-center gap-3 bg-superficie px-4 py-3 md:px-3 ${inizio.current ? '' : 'transition-transform'}`}>
+        data-da-descrivere={r.daDescrivere ? 'si' : undefined}
+        className={`relative flex cursor-pointer select-none items-center gap-3 bg-superficie px-4 py-3 md:px-3 ${r.daDescrivere ? 'border-l-4 border-accento' : ''} ${inizio.current ? '' : 'transition-transform'}`}>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[1.0625rem] font-bold">{r.chi}{r.daChiarire && <Chiarire />}</p>
+          {r.daDescrivere && <p className="text-[13px] font-semibold text-tenue">Da descrivere</p>}
           <p className="truncate text-[15px] text-tenue">{[r.cosa, r.categoria, r.conto].filter(Boolean).join(' · ') || '—'}</p>
         </div>
         <div className="shrink-0 text-right">

@@ -31,8 +31,8 @@ export default function TabellaRegistro({ gruppi, onApri, conConto }) {
               </th>
             </tr>
             {g.righe.map(r => (
-              <tr key={r.id} data-movimento={r.id} onClick={() => onApri(r.id)}
-                className="cursor-pointer border-b border-bordo bg-superficie align-top hover:bg-principale/[0.04]">
+              <tr key={r.id} data-movimento={r.id} onClick={() => onApri(r.id)} data-da-descrivere={r.daDescrivere ? 'si' : undefined}
+                className={`${r.daDescrivere ? 'shadow-[inset_4px_0_0_var(--pn-accento)] ' : ''}cursor-pointer border-b border-bordo bg-superficie align-top hover:bg-principale/[0.04]`}>
                 <td className="importo py-3 pl-3 text-tenue">{giornoCorto(r.giorno)}</td>
                 <td className="py-3 pr-3">
                   <button type="button" onClick={e => { e.stopPropagation(); onApri(r.id); }}
