@@ -38,7 +38,7 @@ try {
   await p.scrivi('input[name=password]', E.PW);
   await p.clic('button[type=submit]');
   eq('login dello studio: home «Da fare»', '/studio/da-fare', (await p.aspetta("location.pathname === '/studio/da-fare'")) && await p.valuta('location.pathname'));
-  eq('barra: Da fare, Clienti, Chat, Impostazioni', 'Da fare|Clienti|Chat|Impostazioni',
+  eq('barra: Da fare, Clienti, Estratti (U9b), Chat, Impostazioni', 'Da fare|Clienti|Estratti|Chat|Impostazioni',
     await p.valuta("[...new Set([...document.querySelectorAll('[data-shell] nav a')].map(a => a.textContent.trim()))].join('|')"));
   eq('da fare: 1 da rivedere, 2 in attesa, 1 cliente con messaggi', '1|2|1',
     (await p.aspetta("document.querySelector('[data-da-fare]')?.dataset.daFare === '4'"))
@@ -70,7 +70,7 @@ try {
   }
   eq('marzo 2026: entrate e uscite che lo studio vede', '100.50|20.25|100,50|20,25',
     `${await attr('[data-entrate]', 'data-entrate')}|${await attr('[data-uscite]', 'data-uscite')}|${(await testo('[data-entrate]')).trim()}|${(await testo('[data-uscite]')).trim()}`);
-  eq('voci della scheda', 'movimenti|report|chat|accessi', await p.valuta("[...document.querySelectorAll('[data-voce-cliente]')].map(a => a.dataset.voceCliente).join('|')"));
+  eq('voci della scheda (U9b: estratti)', 'movimenti|estratti|report|chat|accessi', await p.valuta("[...document.querySelectorAll('[data-voce-cliente]')].map(a => a.dataset.voceCliente).join('|')"));
   await stretto('Scheda del cliente');
   await foto('scheda-cliente');
 
