@@ -131,7 +131,7 @@ export default function CaricaEstratto() {
     <div className="mx-auto max-w-xl space-y-4" data-carica-estratto>
       <Link to="/" className="inline-flex items-center gap-1 text-sm text-principale"><ChevronLeft size={16} aria-hidden="true" />Registro</Link>
       <h1 className="font-importi text-2xl text-secondario">Carica l'estratto conto</h1>
-      <p className="text-sm text-tenue">Il file come lo scarichi dall'home banking: Excel (.xlsx), CSV o camt.053. I movimenti che hai già scritto non si doppiano; gli altri entrano da descrivere, così lo studio li vede tutti.</p>
+      <p className="text-sm text-tenue">Il file come lo scarichi dall'home banking: Excel (.xlsx), CSV, PDF o camt.053. I movimenti che hai già scritto non si doppiano; gli altri entrano da descrivere, così lo studio li vede tutti.</p>
       <label className="block text-sm">
         <span className="text-tenue">Conto</span>
         <select name="conto" value={conto ?? ''} onChange={e => { setContoId(Number(e.target.value)); anteprima.reset(); setMappa(null); }}
@@ -142,7 +142,7 @@ export default function CaricaEstratto() {
       <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-principale/60 bg-superficie px-4 py-4">
         <FileUp size={22} aria-hidden="true" className="text-principale" />
         <span className="min-w-0 flex-1 truncate">{file ? file.name : 'Scegli il file della banca'}</span>
-        <input type="file" name="estratto" accept=".xlsx,.csv,.txt,.xml,text/csv,application/xml" className="sr-only" data-file-estratto
+        <input type="file" name="estratto" accept=".xlsx,.csv,.txt,.xml,.pdf,text/csv,application/xml,application/pdf" className="sr-only" data-file-estratto
           onChange={e => { const f = e.target.files?.[0] ?? null; setFile(f); setMappa(null); leggi(f, null); }} />
       </label>
       {anteprima.isPending && <p role="status" className="text-sm text-tenue">Leggo il file…</p>}

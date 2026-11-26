@@ -4,7 +4,8 @@ FROM docker.io/library/node:24-alpine
 # Imposta la directory di lavoro
 WORKDIR /app
 
-RUN apk add curl
+# pdftotext (poppler) legge gli estratti conto in PDF (U9c)
+RUN apk add --no-cache curl poppler-utils
 
 # Copia package.json e package-lock.json
 COPY package*.json ./

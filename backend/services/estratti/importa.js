@@ -15,6 +15,7 @@
 //     'nuova'    diventa un movimento «da descrivere».
 //   saldoRegistro(client, userId, contoId, al) -> centesimi al giorno `al`.
 const L = require('./leggi');
+const P = require('./pdf');
 
 const TOLLERANZA_GIORNI = 3;
 const RIGHE_PER_MAPPA = 25;
@@ -25,8 +26,12 @@ function errore(msg, extra = {}) {
 
 async function prepara(buf, nomeFile, mappaUtente, cercaModello) {
   const camt = /\.xml$/i.test(nomeFile) || /^\s*(<\?xml[^>]*>\s*)?<(\w+:)?Document\b/.test(buf.subarray(0, 400).toString('utf8'));
+  const pdf = buf.subarray(0, 1024).indexOf('%PDF-') >= 0;
   let r;
-  if (camt) {
+  if (pdf) {
+    // U9c: PDF della banca (estratto o lista movimenti), letto per posizione.
+    r = { ...(await P.leggiPdf(buf)), mappa: null, firma: null, intestazione: null, modello: null };
+  } else if (camt) {
     r = { ...L.leggiCamt(buf), mappa: null, firma: null, intestazione: null, modello: null };
   } else {
     const { formato, righe } = L.leggiTabella(buf, nomeFile);
