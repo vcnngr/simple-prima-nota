@@ -86,6 +86,8 @@ echo "=== rifiuti e isolamento ==="
 eq "scansione: 422 spiegato" "422|True" "$(carica "$API/estratti/anteprima" "$UT" "$CF" "$DATI/scansione.pdf")|$(py "print('scansione' in d['error'])")"
 { printf '%%PDF-1.4\n'; head -c 3000 /dev/urandom; } > "$T/rotto.pdf"
 eq "PDF rovinato: 422" "422" "$(carica "$API/estratti/anteprima" "$UT" "$CF" "$T/rotto.pdf")"
+N0=$(q "SELECT count(*) FROM movimenti WHERE user_id=$UID_")
+eq "PDF di 61 pagine (tetto 60): 422, nessun movimento" "422|True|$N0" "$(carica "$API/estratti/anteprima" "$UT" "$CF" "$DATI/lungo.pdf")|$(py "print('60 pagine' in d['error'])")|$(carica "$API/estratti" "$UT" "$CF" "$DATI/lungo.pdf" >/dev/null; q "SELECT count(*) FROM movimenti WHERE user_id=$UID_")"
 eq "V sul conto di U con un PDF: 404" "404" "$(carica "$API/estratti/anteprima" "$VT" "$CF" "$DATI/fineco.pdf")"
 eq "nessun movimento creato dai rifiuti" "5" "$(nmov)"
 

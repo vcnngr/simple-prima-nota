@@ -1,7 +1,7 @@
 // Dati della prova U9c: due PDF inventati con l'impaginazione dei due formati
 // visti (estratto trimestrale Fineco, lista movimenti Banco BPM), scritti con
 // pdfkit in carattere a spaziatura fissa: pdftotext -layout ne ritrova le colonne.
-// Nessun dato reale. Uso: node u9c-pdf-dati.js <cartella>  -> fineco.pdf, bpm.pdf, scansione.pdf
+// Nessun dato reale. Uso: node u9c-pdf-dati.js <cartella>  -> fineco.pdf, bpm.pdf, scansione.pdf, lungo.pdf
 const path = require('path');
 const fs = require('fs');
 const PDFDocument = require(path.join(__dirname, '../../../backend/node_modules/pdfkit'));
@@ -78,5 +78,7 @@ const BPM = [[
   await pdf('fineco.pdf', FINECO);
   await pdf('bpm.pdf', BPM);
   await pdf('scansione.pdf', [[]], false);
+  // 61 pagine (tetto 60): si rifiuta, non si importano in silenzio le prime 60.
+  await pdf('lungo.pdf', [BPM[0], ...Array(60).fill(BPM[1])]);
   console.log('ok');
 })();

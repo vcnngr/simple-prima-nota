@@ -144,7 +144,7 @@ function leggiTestoPdf(testo) {
 // ------------------------------------------------------------------ pdftotext
 function testoDi(buf) {
   return new Promise((risolvi, rifiuta) => {
-    const p = execFile(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', '-q', '-l', String(MAX_PAGINE), '-', '-'],
+    const p = execFile(PDFTOTEXT, ['-layout', '-enc', 'UTF-8', '-q', '-l', String(MAX_PAGINE + 1), '-', '-'],
       { timeout: TEMPO_MS, killSignal: 'SIGKILL', maxBuffer: MAX_TESTO, encoding: 'utf8', env: { PATH: process.env.PATH || '/usr/bin:/bin' } },
       (err, stdout) => {
         if (err) {
@@ -163,6 +163,10 @@ function testoDi(buf) {
 async function leggiPdf(buf) {
   if (!Buffer.isBuffer(buf) || buf.subarray(0, 1024).indexOf('%PDF-') < 0) throw errore('Non e\' un PDF');
   const testo = await testoDi(buf);
+  // Si legge una pagina in piu' del tetto: se c'e', il PDF e' troppo lungo e si
+  // rifiuta invece di importare in silenzio solo le prime pagine.
+  if (testo.split('\f').filter(x => x.trim()).length > MAX_PAGINE)
+    throw errore(`Il PDF ha piu' di ${MAX_PAGINE} pagine: carica un periodo piu' breve`);
   if (testo.replace(/\s/g, '').length < 20) throw errore('Il PDF non contiene testo (forse e\' una scansione): scarica dalla banca l\'Excel o il CSV');
   return leggiTestoPdf(testo);
 }
