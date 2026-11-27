@@ -34,16 +34,24 @@ const FINECO = [[
   '  02.01.26      02.01.26              45,30                                   Addebito SDD Enel Energia',
   '                                                                              bolletta dicembre',
   '  10.01.26      10.01.26                                 1.500,00             Bonifico da Bianchi srl',
-  '                                                                              Fattura 12 del 05/01/2026',
+  // U9c, PDF vero: una data in testa alla riga che continua la descrizione.
+  '                                                                              05/01/2026 Fattura 12',
   '  15.01.26      15.01.26               1,20                                   Pagamento POS bar Centrale',
   '  15.01.26      15.01.26               1,20                                   Pagamento POS bar Centrale',
   'Pagina 1 di 2'
 ], [
   'DATA          DATA            USCITE                    ENTRATE              DESCRIZIONE OPERAZIONE',
   'OPERAZIONE    VALUTA',
-  '  31.03.26      31.03.26              12,50                                   Imposta di bollo 3,00 trimestre',
+  // U9c, PDF vero: su un'altra pagina il testo rientra di 7 colonne rispetto all'intestazione.
+  '  31.03.26      31.03.26              12,50                            Imposta di bollo 3,00',
+  '                                                                       31/03/2026 trimestre',
   '                                    189,40                                   Saldo finale in euro',
   '',
+  // U9c, PDF vero: dopo il saldo finale le carte di credito (gia' addebitate sul conto).
+  'Carte di credito e ricaricabili',
+  '      DATA            DATA                         DESCRIZIONE                                IMPORTO',
+  '   OPERAZIONE     REGISTRAZIONE                    OPERAZIONE                                 IN EURO',
+  '   30.03.26        31.03.26       Abbonamento streaming                                          9,99',
   'Riepilogo competenze',
   '  31.03.26      Interessi creditori                       0,00',
   'Pagina 2 di 2'

@@ -73,9 +73,13 @@ function leggiTestoPdf(testo) {
   let aperta = false;      // dentro una tabella dei movimenti
   let ultimo = null;       // movimento a cui attaccare le righe di continuazione
   let saldo_iniziale = null, saldo_finale = null, contabile = null;
+  // Dopo il «saldo finale» il conto e' chiuso: le tabelle che seguono (Fineco:
+  // movimenti delle carte di credito, gia' addebitati sul conto in un'unica riga)
+  // non sono movimenti del conto e non si leggono, neanche come scartate.
+  let chiuso = false;
 
   righe.forEach((riga, k) => {
-    if (!riga.trim()) return;
+    if (chiuso || !riga.trim()) return;
     if (RUMORE.test(riga)) { ultimo = null; return; }
     const testa = DATA_IN_TESTA.exec(riga);
     if (!testa) {
@@ -100,16 +104,22 @@ function leggiTestoPdf(testo) {
         const v = x.segno < 0 ? -x.c : x.c;
         const tipo = SALDO.exec(riga)[1].toLowerCase();
         if (tipo === 'iniziale' || tipo === 'precedente') saldo_iniziale ??= v;
-        else { saldo_finale = v; if (tipo === 'finale') aperta = false; }
+        else { saldo_finale = v; if (tipo === 'finale') { aperta = false; chiuso = true; } }
       }
       ultimo = null;
       return;
     }
 
-    if (!testa) {
+    // Una data scritta nella colonna della descrizione (Fineco: «03/01/2026 ...»
+    // nel testo di un bonifico che va a capo) non apre un movimento: e' testo.
+    // Il testo puo' rientrare di qualche colonna da una pagina all'altra: conta
+    // che cominci dopo le colonne degli importi.
+    const dopoImporti = Math.max(col.entrate?.a ?? 0, col.uscite?.a ?? 0, col.importo?.a ?? 0);
+    const inTesto = testa && riga.search(/\S/) > dopoImporti;
+    if (!testa || inTesto) {
       // Continuazione della descrizione: testo nella colonna della descrizione.
       const rientro = riga.search(/\S/);
-      if (ultimo && rientro >= limite - 6 && !importiDi(riga).some(x => x.da < limite - 2)) {
+      if (ultimo && rientro > dopoImporti && !importiDi(riga).some(x => x.da < limite - 2)) {
         ultimo.descrizione = pulisci(`${ultimo.descrizione} ${riga}`).slice(0, 1000);
       } else ultimo = null;
       return;

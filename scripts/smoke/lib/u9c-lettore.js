@@ -16,15 +16,15 @@ const leggi = n => P.leggiPdf(fs.readFileSync(path.join(dir, n)));
 (async () => {
   console.log('--- Fineco, estratto trimestrale (USCITE/ENTRATE, date gg.mm.aa, due pagine)');
   const f = await leggi('fineco.pdf');
-  eq('5 movimenti, descrizioni su due righe unite, importo nella descrizione ignorato', [
+  eq('5 movimenti, descrizioni su due righe unite (anche se la riga dopo comincia con una data o rientra), importo nella descrizione ignorato', [
     '2026-01-02|U|4530|Addebito SDD Enel Energia bolletta dicembre',
-    '2026-01-10|E|150000|Bonifico da Bianchi srl Fattura 12 del 05/01/2026',
+    '2026-01-10|E|150000|Bonifico da Bianchi srl 05/01/2026 Fattura 12',
     '2026-01-15|U|120|Pagamento POS bar Centrale', '2026-01-15|U|120|Pagamento POS bar Centrale',
-    '2026-03-31|U|1250|Imposta di bollo 3,00 trimestre'], breve(f.movimenti));
+    '2026-03-31|U|1250|Imposta di bollo 3,00 31/03/2026 trimestre'], breve(f.movimenti));
   eq('saldo iniziale e finale dalla tabella', [-125040, 18940], [f.saldo_iniziale, f.saldo_finale]);
   eq('saldo iniziale + movimenti = saldo finale', f.saldo_finale,
     f.movimenti.reduce((s, m) => s + (m.tipo === 'Entrata' ? m.centesimi : -m.centesimi), f.saldo_iniziale));
-  eq('tabella dopo il saldo finale (riepilogo competenze) ignorata', 0, f.scartate.length);
+  eq('tabelle dopo il saldo finale (carte di credito, competenze) ignorate, nessuna scartata', 0, f.scartate.length);
   eq('formato pdf', 'pdf', f.formato);
 
   console.log('--- Banco BPM, lista movimenti (un importo col segno ed EUR, causale, data sopra l\'intestazione)');
